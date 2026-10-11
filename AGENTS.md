@@ -944,3 +944,10 @@ cd edgequake_webui && npx playwright test e2e/<spec>.spec.ts
 See: [playwright-ux-ui-capture SKILL](.github/skills/playwright-ux-ui-capture/SKILL.md)
 
 Use SRP and DRY principles when developing new features or fixing bugs. For example, if you find yourself copying and pasting code, consider refactoring it into a reusable function or module. This not only reduces code duplication but also makes maintenance easier in the long run. Always aim for clean, modular code that adheres to the project's coding standards and conventions.
+
+## Cursor Cloud specific instructions
+
+- On boot, Docker is started with `fuse-overlayfs` and `iptables-legacy`, then `make db-start` brings up PostgreSQL 18 (pgvector 0.8.5, Apache AGE 1.8.0). The API and website are not started. Run `make dev` or `make dev-bg`. Local ports begin at 8090 (API) and 3010 (UI).
+- Rust **1.95.0** is the default toolchain (`edgequake/rust-toolchain.toml`). The website uses Node 22 and pnpm **10.13.1** (`pnpm install --frozen-lockfile` in `edgequake_webui`). Offline API builds use `SQLX_OFFLINE=true cargo build --locked --bin edgequake` from `edgequake/`.
+- Ollama is not installed. The API still boots with `EDGEQUAKE_LLM_PROVIDER=ollama`; `/health` stays `degraded` until a model server is reachable or `OPENAI_API_KEY` is set. Apply schema changes with `make migrate`.
+- `vm.overcommit_memory=1` is set so Rust linking is not rejected by this VM's commit limit.
