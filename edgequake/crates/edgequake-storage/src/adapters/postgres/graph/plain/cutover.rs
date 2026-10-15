@@ -3,6 +3,7 @@
 use super::super::PostgresAGEGraphStorage;
 use super::ledger::tables_present;
 use crate::error::{Result, StorageError};
+use sqlx::Row;
 
 #[derive(Debug, Clone)]
 pub struct CutoverReport {
@@ -10,6 +11,46 @@ pub struct CutoverReport {
     pub mismatches: i64,
     pub ready: bool,
     pub age_absent: bool,
+}
+
+/// Finish migrate on the plain graph.
+///
+/// A second call is a no-op once `eq_graph_cutover.status` is `ready`, so
+/// `edgequake migrate` stays idempotent and does not touch AGE label tables.
+pub async fn finish_plain_graph_cutover(pool: &sqlx::PgPool) -> Result<CutoverReport> {
+    if !super::ledger::tables_present(pool).await? {
+        return Ok(CutoverReport {
+            graphs: 0,
+            mismatches: 0,
+            ready: true,
+            age_absent: true,
+        });
+    }
+    let row = sqlx::query("SELECT status, age_absent FROM public.eq_graph_cutover WHERE id = 1")
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| StorageError::Database(format!("eq_graph_cutover read failed: {e}")))?;
+    let (status, age_absent) = match row {
+        Some(row) => (
+            row.try_get::<String, _>("status").unwrap_or_default(),
+            row.try_get::<bool, _>("age_absent").unwrap_or(false),
+        ),
+        None => (String::new(), false),
+    };
+    if status == "ready" {
+        return Ok(CutoverReport {
+            graphs: 0,
+            mismatches: 0,
+            ready: true,
+            age_absent,
+        });
+    }
+    let config = crate::adapters::postgres::PostgresConfig::default().with_namespace("default");
+    let wrapped =
+        crate::adapters::postgres::PostgresPool::from_existing(pool.clone(), config.clone());
+    wrapped.probe_graph_extension_available().await?;
+    let storage = super::super::PostgresAGEGraphStorage::with_pool(wrapped, config);
+    storage.run_spec164_cutover().await
 }
 
 pub(in crate::adapters::postgres::graph) async fn run_plain_graph_cutover(

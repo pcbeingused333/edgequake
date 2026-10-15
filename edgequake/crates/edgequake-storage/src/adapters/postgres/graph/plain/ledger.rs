@@ -13,6 +13,19 @@ impl PostgresAGEGraphStorage {
         reads_ready(&pool).await
     }
 
+    /// Writes follow the store reads use.
+    ///
+    /// Ledger `ready` → plain tables, even if Apache AGE is still installed.
+    /// Dual-writing those edges into AGE drops them when the existing endpoint
+    /// lives only in the plain tables (fresh v0.35.0, GitHub #477).
+    /// Ledger `age` → AGE plus the plain mirror, which requires the probe in #477.
+    pub(in crate::adapters::postgres::graph) async fn plain_writes(&self) -> Result<bool> {
+        if self.plain_reads_ready().await? {
+            return Ok(true);
+        }
+        Ok(!self.pool.graph_extension_available())
+    }
+
     /// Backfill every AGE graph, shadow-compare 50 starts, then mark the ledger ready.
     pub async fn run_spec164_cutover(&self) -> Result<super::cutover::CutoverReport> {
         super::cutover::run_plain_graph_cutover(self).await

@@ -55,6 +55,11 @@ required-features = []
 name = "spec115_mistral_ingest"
 path = "examples/spec115_mistral_ingest.rs"
 
+[[example]]
+name = "upgrade_visibility"
+path = "examples/upgrade_visibility.rs"
+required-features = ["postgres"]
+
 [features]
 default = ["postgres", "vision", "otel"]
 otel = ["edgequake-observability/otel", "edgequake-api/otel"]

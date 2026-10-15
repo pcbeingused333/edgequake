@@ -58,7 +58,7 @@ NNN_descriptive_name.sql
   descriptive_name: snake_case, describes what changed
 ```
 
-Current max: `206_rls_leakproof_predicates.sql` (tenant query indexes).  
+Current max: `207_age_lineage_discovery_definer.sql` (AGE lineage discovery under forced row security).  
 `170_spec164_plain_graph.sql` is expand-only (no serving_floor) so a v0.34 binary can still serve schema 170.  
 `171` drops Apache AGE only when `edgequake migrate --drop-age` is passed. A migrate that is not told to drop it leaves the extension installed.  
 `172`–`204` and `206` add request-path indexes and do not raise the serving floor.  

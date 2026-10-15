@@ -7,7 +7,7 @@ description: "Plain-English guide to upgrade any published EdgeQuake version saf
 
 This is the canonical guide to database upgrades. It is for operators who run EdgeQuake on their own PostgreSQL. Read it before you start a newer image or binary. Per-release pages (`upgrade-to-0.XX.md`) describe product changes; this page describes the migration process, which works from any published version to HEAD.
 
-> **Schema train today:** migration **206** (SPEC-164).
+> **Schema train today:** migration **207** (AGE lineage discovery, GitHub #478). The published v0.35.0 tag stops at **206**.
 > The released product is **v0.35.0** (schema 206). Migration 170 adds plain graph tables. Migration 171 drops Apache AGE only when `edgequake migrate` asks and you answer yes (`--drop-age`). The default is to leave the extension installed. `--confirm-drop` does not answer that question. Migrations 172 through 206 are expand.
 >
 > **One rule:** the API never changes the database schema. Only `edgequake migrate` (or the Compose service or Helm Job that runs it) writes schema.

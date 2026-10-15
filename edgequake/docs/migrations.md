@@ -20,7 +20,7 @@ The API process never auto-applies numbered migrations on start.
 | Epoch coverage | `./scripts/check_epoch_coverage.sh` |
 | Manifest SSOT | `edgequake/migrations/manifest.toml` |
 
-**Train:** HEAD ships through migration **206**
+**Train:** HEAD ships through migration **207** (`207_age_lineage_discovery_definer.sql`). The published v0.35.0 tag stops at **206**
 (`170_spec164_plain_graph.sql` expand, `171_spec164_drop_age.sql` confirm-drop,
 `172`–`202` request-path indexes, `203` chunk legacy-key index,
 `204` graph label search, `205` drops empty `ag_catalog` only after the

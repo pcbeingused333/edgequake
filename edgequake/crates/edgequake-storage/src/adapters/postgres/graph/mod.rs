@@ -444,7 +444,7 @@ mod plain;
 mod query_ops;
 mod scan_ops;
 
-pub use plain::CutoverReport;
+pub use plain::{finish_plain_graph_cutover, CutoverReport};
 
 /// SPEC-089 e2e hook: last prefix count passed to GIN node-count reconcile.
 pub use analytics_ops::LAST_SOURCE_PREFIX_COUNT_LEN;

@@ -286,7 +286,7 @@ impl PostgresAGEGraphStorage {
         let mut unique = node_ids.to_vec();
         unique.sort();
         unique.dedup();
-        if !self.pool.graph_extension_available() {
+        if self.plain_writes().await? {
             let mut tx = pool.begin().await.map_err(|e| {
                 StorageError::Database(format!("plain node delete begin failed: {e}"))
             })?;
@@ -598,7 +598,7 @@ impl PostgresAGEGraphStorage {
         mode: crate::traits::GraphPropertyWriteMode,
     ) -> Result<()> {
         let pool = self.pool.get().await?;
-        if !self.pool.graph_extension_available() {
+        if self.plain_writes().await? {
             let mut tx = pool.begin().await.map_err(|e| {
                 StorageError::Database(format!("plain node upsert begin failed: {e}"))
             })?;

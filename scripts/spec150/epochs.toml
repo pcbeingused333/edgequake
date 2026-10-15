@@ -3,6 +3,11 @@
 # When the next schema train opens after v0.35.0, pin it under [unreleased]
 # (hash, max, files) until that tag exists.
 
+[unreleased]
+hash = "e00418fa48d451f2"
+max = 207
+files = 205
+
 [[epoch]]
 tag = "v0.2.0"
 mode = "replay"

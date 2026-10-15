@@ -49,7 +49,7 @@ pub fn release_for_schema(max_version: i64) -> &'static str {
         166 => "v0.31.0",
         167..=168 => "v0.32.0–v0.32.2",
         169 => "v0.33.0",
-        170..=206 => "v0.35.0",
+        170..=207 => "v0.35.0",
         _ => "newer-than-matrix",
     }
 }

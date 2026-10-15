@@ -259,7 +259,7 @@ impl PostgresAGEGraphStorage {
         // Public single-edge API: remove ALL rel_types between endpoints.
         if super::native_graph_writes_enabled() {
             let pool = self.pool.get().await?;
-            if !self.pool.graph_extension_available() {
+            if self.plain_writes().await? {
                 let mut tx = pool.begin().await.map_err(|e| {
                     StorageError::Database(format!("plain edge delete begin failed: {e}"))
                 })?;
@@ -836,7 +836,7 @@ impl PostgresAGEGraphStorage {
         mode: crate::traits::GraphPropertyWriteMode,
     ) -> Result<u64> {
         let pool = self.pool.get().await?;
-        if !self.pool.graph_extension_available() {
+        if self.plain_writes().await? {
             let mut tx = pool.begin().await.map_err(|e| {
                 StorageError::Database(format!("plain edge upsert begin failed: {e}"))
             })?;

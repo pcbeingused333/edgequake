@@ -198,6 +198,7 @@ pub(crate) async fn run_migrate_cli(args: &[String]) -> Result<()> {
                 .context("re-list pending after expandable apply")?;
         let remaining_versions: Vec<i64> = remaining.iter().map(|(v, _)| *v).collect();
         if remaining.is_empty() {
+            finish_plain_graph(&bundle.admin).await?;
             if let Some((pending_before, latest, applied_count)) = expandable_summary {
                 migrate_console::print_summary(pending_before, latest, applied_count);
             }
@@ -210,6 +211,7 @@ pub(crate) async fn run_migrate_cli(args: &[String]) -> Result<()> {
             &remaining_versions,
             defer_142_after,
         ) {
+            finish_plain_graph(&bundle.admin).await?;
             if let Some((pending_before, latest, applied_count)) = expandable_summary {
                 migrate_console::print_summary(pending_before, latest, applied_count);
             }
@@ -288,11 +290,33 @@ pub(crate) async fn run_migrate_cli(args: &[String]) -> Result<()> {
         applied = report.applied_versions.len(),
         "edgequake migrate complete"
     );
+    finish_plain_graph(&bundle.admin).await?;
     migrate_console::print_summary(
         report.pending_before,
         report.latest_version,
         report.applied_versions.len(),
     );
+    Ok(())
+}
+
+/// Backfill AGE label tables into `eq_graph_*` and mark the ledger `ready`.
+/// A ledger that is already `ready` is left unchanged.
+#[cfg(feature = "postgres")]
+async fn finish_plain_graph(pool: &sqlx::PgPool) -> Result<()> {
+    let report = edgequake_storage::finish_plain_graph_cutover(pool)
+        .await
+        .map_err(|e| anyhow::anyhow!(e))
+        .context("plain graph cutover failed")?;
+    println!(
+        "plain graph cutover: ready={} graphs={} mismatches={} age_absent={}",
+        report.ready, report.graphs, report.mismatches, report.age_absent
+    );
+    if !report.ready {
+        anyhow::bail!(
+            "plain graph cutover left the ledger on AGE (mismatches={})",
+            report.mismatches
+        );
+    }
     Ok(())
 }
 

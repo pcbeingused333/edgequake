@@ -408,7 +408,7 @@ impl PostgresAGEGraphStorage {
         &self,
         workspace_id: &uuid::Uuid,
     ) -> Result<(usize, usize)> {
-        if !self.pool.graph_extension_available() {
+        if self.plain_writes().await? {
             let pool = self.pool.get().await?;
             if super::plain::tables_present(&pool).await? {
                 return super::plain::write::write::clear_workspace(

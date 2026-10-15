@@ -13,7 +13,7 @@ pub(in crate::adapters::postgres::graph) mod scan;
 pub(in crate::adapters::postgres::graph) mod search;
 pub(in crate::adapters::postgres::graph) mod write;
 
-pub use cutover::CutoverReport;
+pub use cutover::{finish_plain_graph_cutover, CutoverReport};
 pub(in crate::adapters::postgres::graph) use ledger::{
     refuse_cypher_opt_out, register_graph, tables_present,
 };

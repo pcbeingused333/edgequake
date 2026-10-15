@@ -27,6 +27,36 @@ use sqlx::Row;
 use super::config::{db_pool_role_from_env, resolve_pool_max_connections, PostgresConfig};
 use crate::error::{Result, StorageError};
 
+fn graph_read_pinned_age() -> bool {
+    matches!(
+        std::env::var("EDGEQUAKE_GRAPH_READ")
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase()
+            .as_str(),
+        "age"
+    )
+}
+
+/// True when migration 170's ledger says graph IO is on the plain tables.
+async fn cutover_status_ready(pool: &PgPool) -> bool {
+    let table_exists: bool =
+        sqlx::query_scalar("SELECT to_regclass('public.eq_graph_cutover') IS NOT NULL")
+            .fetch_one(pool)
+            .await
+            .unwrap_or(false);
+    if !table_exists {
+        return false;
+    }
+    let status: Option<String> =
+        sqlx::query_scalar("SELECT status FROM public.eq_graph_cutover WHERE id = 1")
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+    status.as_deref() == Some("ready")
+}
+
 /// True after migration 171 has recorded that Apache AGE was dropped.
 async fn cutover_marks_age_absent(pool: &PgPool) -> bool {
     let table_exists: bool =
@@ -205,17 +235,23 @@ impl PostgresPool {
         self.graph_extension_available.load(Ordering::Relaxed)
     }
 
-    /// Probe `pg_extension` for AGE (used when pool was from_existing without setup).
+    /// Probe whether graph IO should use Apache AGE.
+    ///
+    /// The extension can remain installed after migrate. Once
+    /// `eq_graph_cutover.status` is `ready`, reads and writes stay on the plain
+    /// tables, so this returns false (GitHub #477). `EDGEQUAKE_GRAPH_READ=age`
+    /// is the only pin that keeps the AGE path.
     pub async fn probe_graph_extension_available(&self) -> Result<bool> {
         let pool = self.get().await?;
-        let available: bool =
+        let installed: bool =
             sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age')")
                 .fetch_one(&pool)
                 .await
                 .map_err(|e| StorageError::Database(format!("AGE extension probe failed: {e}")))?;
+        let use_age = installed && (graph_read_pinned_age() || !cutover_status_ready(&pool).await);
         self.graph_extension_available
-            .store(available, Ordering::Relaxed);
-        Ok(available)
+            .store(use_age, Ordering::Relaxed);
+        Ok(use_age)
     }
 
     /// Get the configuration.
@@ -291,9 +327,9 @@ impl PostgresPool {
         // Enable Apache AGE extension (fail-closed unless opt-out — SPEC-090 F-090-19).
         // SPEC-164 G11: after 171 the ledger records age_absent. Do not recreate the
         // extension on a server that still has the package installed.
-        if cutover_marks_age_absent(pool).await {
-            tracing::warn!(
-                "SPEC-164 cutover ledger marks Apache AGE absent. Skipping CREATE EXTENSION age."
+        if cutover_marks_age_absent(pool).await || cutover_status_ready(pool).await {
+            tracing::info!(
+                "plain graph ledger is ready or AGE is absent; graph IO will not use Apache AGE"
             );
             self.graph_extension_available
                 .store(false, Ordering::Relaxed);
@@ -420,11 +456,13 @@ mod tests {
             .await
             .expect("AGE probe");
         eprintln!("AGE_PROBE available={probed}");
-        let expected: bool =
+        let installed: bool =
             sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age')")
                 .fetch_one(&raw)
                 .await
                 .expect("pg_extension lookup");
+        let ready = cutover_status_ready(&raw).await;
+        let expected = installed && (graph_read_pinned_age() || !ready);
         assert_eq!(probed, expected);
         assert_eq!(wrapped.graph_extension_available(), expected);
     }
