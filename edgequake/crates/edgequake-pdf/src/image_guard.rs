@@ -97,6 +97,33 @@ impl ImageGuardProvider {
     }
 }
 
+/// gpt-5.x and o-series models only accept the default temperature.
+/// edgequake-llm's `model_requires_default_temperature` also lists gpt-4.1-*,
+/// which accept one, so it is not reused here: that would drop the OCR
+/// temperature on gpt-4.1-mini.
+fn model_requires_default_temperature(model: &str) -> bool {
+    let model = model.trim();
+    let model = model
+        .rsplit('/')
+        .next()
+        .unwrap_or(model)
+        .to_ascii_lowercase();
+    model.contains("gpt-5")
+        || model.starts_with("o1")
+        || model.starts_with("o3")
+        || model.starts_with("o4")
+}
+
+/// pdf2md page calls set `temperature: 0.1`; drop it for models that reject a
+/// non-default temperature.
+fn with_effective_temperature(model: &str, options: &CompletionOptions) -> CompletionOptions {
+    let mut options = options.clone();
+    if model_requires_default_temperature(model) {
+        options.temperature = None;
+    }
+    options
+}
+
 fn guard_messages(
     messages: &[ChatMessage],
     max_bytes: usize,
@@ -214,7 +241,8 @@ impl LLMProvider for ImageGuardProvider {
         prompt: &str,
         options: &CompletionOptions,
     ) -> Result<LLMResponse> {
-        self.inner.complete_with_options(prompt, options).await
+        let options = with_effective_temperature(self.model(), options);
+        self.inner.complete_with_options(prompt, &options).await
     }
 
     async fn chat(
@@ -223,7 +251,8 @@ impl LLMProvider for ImageGuardProvider {
         options: Option<&CompletionOptions>,
     ) -> Result<LLMResponse> {
         let guarded = self.guard_messages_async(messages).await;
-        self.inner.chat(&guarded, options).await
+        let options = options.map(|o| with_effective_temperature(self.model(), o));
+        self.inner.chat(&guarded, options.as_ref()).await
     }
 
     async fn chat_with_tools(
@@ -234,8 +263,9 @@ impl LLMProvider for ImageGuardProvider {
         options: Option<&CompletionOptions>,
     ) -> Result<LLMResponse> {
         let guarded = self.guard_messages_async(messages).await;
+        let options = options.map(|o| with_effective_temperature(self.model(), o));
         self.inner
-            .chat_with_tools(&guarded, tools, tool_choice, options)
+            .chat_with_tools(&guarded, tools, tool_choice, options.as_ref())
             .await
     }
 
@@ -267,6 +297,35 @@ impl LLMProvider for ImageGuardProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn drops_temperature_for_models_that_only_accept_the_default() {
+        let options = CompletionOptions {
+            temperature: Some(0.1),
+            max_tokens: Some(4096),
+            ..Default::default()
+        };
+        let gated = with_effective_temperature("gpt-5.6-luna", &options);
+        assert_eq!(gated.temperature, None);
+        assert_eq!(gated.max_tokens, Some(4096));
+
+        assert_eq!(
+            with_effective_temperature("o4-mini", &options).temperature,
+            None
+        );
+    }
+
+    #[test]
+    fn keeps_temperature_for_gpt_4_1_and_other_models() {
+        let options = CompletionOptions {
+            temperature: Some(0.1),
+            ..Default::default()
+        };
+        for model in ["gpt-4.1-mini", "gpt-4.1-nano", "gemma4:latest"] {
+            let kept = with_effective_temperature(model, &options);
+            assert_eq!(kept.temperature, Some(0.1), "{model}");
+        }
+    }
 
     /// Build a PNG of the given dimensions filled with pseudo-random noise
     /// (noise compresses poorly → reliably exceeds the test budget).
