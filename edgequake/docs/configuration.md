@@ -203,7 +203,7 @@ EDGEQUAKE_DEFAULT_LLM_MODEL=gemma4:latest
 
 # Vision: OpenAI for better OCR on scanned PDFs
 EDGEQUAKE_VISION_PROVIDER=openai
-EDGEQUAKE_VISION_MODEL=gpt-4.1-nano
+EDGEQUAKE_VISION_MODEL=gpt-5.6-luna
 OPENAI_API_KEY=sk-...
 ```
 

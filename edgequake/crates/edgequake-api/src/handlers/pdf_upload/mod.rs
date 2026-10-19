@@ -77,8 +77,8 @@ mod tests {
             vision_provider: Some("openai".to_string()),
             ..Default::default()
         };
-        // OODA-04: Updated from gpt-4o-mini to gpt-4.1-nano per mission directive
-        assert_eq!(opts.vision_model(None, None), "gpt-4.1-nano");
+        // gpt-4.1-nano is shut down on the OpenAI API on 2026-10-23.
+        assert_eq!(opts.vision_model(None, None), "gpt-5.6-luna");
 
         opts.vision_provider = Some("ollama".to_string());
         assert_eq!(opts.vision_model(None, None), "gemma4:latest");

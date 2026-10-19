@@ -1269,7 +1269,7 @@ pub fn is_model_provider_mismatch(provider_name: &str, model: &str) -> bool {
 /// Get the default model for a given provider name.
 pub fn default_model_for_provider(provider_name: &str) -> &'static str {
     match provider_name.to_lowercase().as_str() {
-        "openai" => "gpt-4.1-nano",
+        "openai" => "gpt-5.6-luna",
         "anthropic" => "claude-sonnet-4-5-20250929",
         "gemini" => "gemini-2.5-flash",
         "xai" => "grok-4-1-fast",
@@ -1279,7 +1279,22 @@ pub fn default_model_for_provider(provider_name: &str) -> &'static str {
         "lmstudio" | "lm-studio" | "lm_studio" => "gemma-3n-e4b-it",
         "minimax" => "MiniMax-M2.7",
         "mock" => "mock-model",
-        _ => "gpt-4.1-nano",
+        _ => "gpt-5.6-luna",
+    }
+}
+
+#[cfg(test)]
+mod default_model_tests {
+    use super::*;
+
+    #[test]
+    fn openai_default_is_not_a_retired_model() {
+        // gpt-4.1-nano is shut down on the OpenAI API on 2026-10-23.
+        assert_eq!(default_model_for_provider("openai"), "gpt-5.6-luna");
+        assert_eq!(
+            default_model_for_provider("unknown-provider"),
+            "gpt-5.6-luna"
+        );
     }
 }
 

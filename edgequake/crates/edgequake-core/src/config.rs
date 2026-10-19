@@ -82,7 +82,7 @@ impl Default for LlmConfig {
             provider: "openai".to_string(),
             api_key: None,
             base_url: None,
-            model: "gpt-4.1-nano".to_string(),
+            model: "gpt-5.6-luna".to_string(),
             embedding_model: "text-embedding-3-small".to_string(),
             embedding_dim: 1536,
             max_tokens: 4096,
@@ -278,6 +278,7 @@ mod tests {
         let config = Config::default();
         assert_eq!(config.api.port, 8080);
         assert_eq!(config.llm.provider, "openai");
+        assert_eq!(config.llm.model, "gpt-5.6-luna");
         assert_eq!(config.pipeline.chunk_size, 1200);
     }
 

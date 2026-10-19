@@ -141,9 +141,20 @@ impl ResolvedParseOptions {
 
 fn default_vision_model_for_provider(provider: &str) -> &'static str {
     match provider.to_ascii_lowercase().as_str() {
-        "openai" => "gpt-4.1-nano",
+        "openai" => "gpt-5.6-luna",
         "ollama" | "lmstudio" => "gemma3:latest",
         "mock" => "mock-vision",
         _ => "gemma3:latest",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_openai_vision_model_is_not_a_retired_model() {
+        // gpt-4.1-nano is shut down on the OpenAI API on 2026-10-23.
+        assert_eq!(default_vision_model_for_provider("openai"), "gpt-5.6-luna");
     }
 }
