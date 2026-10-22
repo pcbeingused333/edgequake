@@ -1,0 +1,12 @@
+{
+  "created_at_utc": "2026-10-16T16:24:56Z",
+  "profile_id": "ACC_E2OCC_086_v1_lrlike_arms_v2",
+  "valid": true,
+  "verdict": "EdgeQuake Acc point lead (CI excludes 0; L2 not yet publishable win)",
+  "git_sha": "29df52dce",
+  "archive": "specs/001-benchmark/e2e/artifacts/history/medical-mid-20261016T162456Z",
+  "task_name": "GraphRAG-Bench/EQ-vs-LR",
+  "can_claim_beats_lightrag": false,
+  "n_questions": 200,
+  "fixture_id": "medical_publish_question_ids_v1"
+}

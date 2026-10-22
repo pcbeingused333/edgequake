@@ -1,0 +1,12 @@
+EdgeQuake vs LightRAG — GraphRAG-Bench Acc (EXEC SUMMARY)
+Verdict: STATISTICAL TIE on answer quality
+Sample: n=200 medical (publish mid)
+Acc: EQ 0.776 · LR 0.775
+Context cleanliness (ctx_rel): EQ 0.403 · LR 0.494
+Evidence coverage (recall): EQ 0.930 · LR 0.950
+Query p50 ms: EQ 7240 · LR 1315 · ratio 5.506×
+Publishable claim: peer / statistical tie with LightRAG on Acc — not SOTA win.
+Not paper Table-2 / UltraDomain; Mistral Acc pins. HippoRAG2 = aspirational retrieval SOTA.
+Reproduce: make bench  (n=200 medical-mid)
+Publish: specs/001-benchmark/e2e/artifacts/publish/latest/
+Valid: True · 2026-10-15T23:51:17Z
