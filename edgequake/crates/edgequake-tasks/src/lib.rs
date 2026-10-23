@@ -143,7 +143,10 @@ pub use queue_estimate::{
     DEFAULT_ETA_CLAMP_MAX_SECS, DEFAULT_ETA_WINDOW_SECS, ETA_CLAMP_MAX_SECS_ENV,
     ETA_WINDOW_SECS_ENV,
 };
-pub use shutdown::{shutdown_drain_budget, DEFAULT_SHUTDOWN_DRAIN_SECS, SHUTDOWN_DRAIN_SECS_ENV};
+pub use shutdown::{
+    drain_workers_then_close_pools, is_closed_pool_message, shutdown_drain_budget,
+    DEFAULT_SHUTDOWN_DRAIN_SECS, SHUTDOWN_DRAIN_SECS_ENV,
+};
 pub use state_machine::{
     is_legal as task_transition_is_legal, transition as task_transition, TaskEvent,
     TransitionError, CLAIM_PENDING_GUARD_SQL, CLAIM_STALE_GUARD_SQL, RELEASE_GUARD_SQL,

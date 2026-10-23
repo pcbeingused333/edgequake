@@ -103,6 +103,26 @@ impl TaskProcessor for DocumentTaskProcessor {
         .await
     }
 
+    async fn on_processing_deadline(&self, task: &Task) {
+        #[cfg(feature = "postgres")]
+        {
+            let Some(pool) = self.optional_pg_pool() else {
+                return;
+            };
+            if let Err(error) = edgequake_storage::log_activity_snapshot(pool).await {
+                tracing::warn!(
+                    task_id = %task.track_id,
+                    error = %error,
+                    "activity snapshot failed; deadline handling continues"
+                );
+            }
+        }
+        #[cfg(not(feature = "postgres"))]
+        {
+            let _ = task;
+        }
+    }
+
     /// Called when a task has permanently failed (retries exhausted or circuit breaker tripped).
     ///
     /// WHY: Updates document metadata to "failed" status so the frontend shows the actual

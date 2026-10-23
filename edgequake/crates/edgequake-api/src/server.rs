@@ -242,7 +242,9 @@ impl Server {
     }
 
     /// Run the server with graceful shutdown + drain budget (SPEC-083 X-31).
-    pub async fn run(self) -> Result<(), std::io::Error> {
+    ///
+    /// Pools stay open. The caller drains workers, then [`close_db_pools`].
+    pub async fn run(self) -> (AppState, std::io::Result<()>) {
         let app = self.build_router();
         let addr: SocketAddr = format!("{}:{}", self.config.host, self.config.port)
             .parse()
@@ -254,7 +256,10 @@ impl Server {
             info!("Swagger UI available at http://{}/swagger-ui", addr);
         }
 
-        let listener = tokio::net::TcpListener::bind(addr).await?;
+        let listener = match tokio::net::TcpListener::bind(addr).await {
+            Ok(listener) => listener,
+            Err(error) => return (self.state, Err(error)),
+        };
         let drain = edgequake_tasks::shutdown_drain_budget();
         let cancel = CancellationToken::new();
         let signal_cancel = cancel.clone();
@@ -288,27 +293,25 @@ impl Server {
             }
         };
 
-        // SPEC-112 LAW-112-5: close DB pools after HTTP drain (extend SPEC-083).
-        self.close_db_pools().await;
-
-        result
+        // SPEC-171: pools stay open until workers have stopped claiming.
+        (self.state, result)
     }
 
-    /// SPEC-112: release PostgreSQL backends promptly on graceful shutdown.
-    async fn close_db_pools(&self) {
+    /// SPEC-112 / SPEC-171: release PostgreSQL backends after the worker drain.
+    pub async fn close_db_pools(state: &AppState) {
         #[cfg(feature = "postgres")]
         {
-            if let Some(ref bundle) = self.state.pool_bundle {
+            if let Some(ref bundle) = state.pool_bundle {
                 info!("SPEC-112: closing PgPoolBundle after HTTP drain");
                 bundle.close().await;
-            } else if let Some(ref pool) = self.state.pg_pool {
+            } else if let Some(ref pool) = state.pg_pool {
                 info!("SPEC-112: closing pg_pool after HTTP drain");
                 pool.close().await;
             }
         }
         #[cfg(not(feature = "postgres"))]
         {
-            let _ = &self.state;
+            let _ = state;
         }
     }
 

@@ -25,6 +25,21 @@ pub fn shutdown_drain_budget() -> Duration {
     Duration::from_secs(secs)
 }
 
+/// SPEC-171: sqlx `Pool::close` rejects new acquires with this text.
+pub fn is_closed_pool_message(message: &str) -> bool {
+    message.contains("closed pool")
+}
+
+/// Workers finish, then pools close. Callers pass the production futures.
+pub async fn drain_workers_then_close_pools<W, C>(workers: W, close_pools: C)
+where
+    W: std::future::Future<Output = ()>,
+    C: std::future::Future<Output = ()>,
+{
+    workers.await;
+    close_pools.await;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -44,5 +59,35 @@ mod tests {
     #[test]
     fn shutdown_drain_clamp_rejects_zero() {
         assert_eq!(0u64.clamp(1, 3600), 1);
+    }
+
+    #[tokio::test]
+    async fn t171_38_workers_stop_before_pools_close() {
+        let order = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let workers = {
+            let order = order.clone();
+            async move {
+                order.lock().expect("order").push("worker_shutdown");
+            }
+        };
+        let pools = {
+            let order = order.clone();
+            async move {
+                order.lock().expect("order").push("pool_close");
+            }
+        };
+        drain_workers_then_close_pools(workers, pools).await;
+        assert_eq!(
+            order.lock().expect("order").as_slice(),
+            ["worker_shutdown", "pool_close"]
+        );
+    }
+
+    #[test]
+    fn t171_12_closed_pool_is_shutdown() {
+        assert!(is_closed_pool_message(
+            "attempted to acquire a connection on a closed pool"
+        ));
+        assert!(!is_closed_pool_message("connection refused"));
     }
 }

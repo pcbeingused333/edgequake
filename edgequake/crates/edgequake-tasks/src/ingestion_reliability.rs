@@ -30,6 +30,9 @@ pub enum IngestionFailureClass {
     /// the tombstone is irreversible, so retry/reprocess only burn LLM spend.
     /// Remedy is to finish the delete (or re-upload the file as a new document).
     DocumentDeleted,
+    /// SPEC-171: persist deadline, lock wait, deadlock, or server cancel.
+    /// Transient while retries remain. Not a data-integrity merge failure.
+    PersistContention,
     Unknown,
 }
 
@@ -47,6 +50,7 @@ impl IngestionFailureClass {
             Self::LlmUnsupportedParam => "llm_unsupported_param",
             Self::Cancelled => "cancelled",
             Self::DocumentDeleted => "document_deleted",
+            Self::PersistContention => "persist_contention",
             Self::Unknown => "unknown",
         }
     }
@@ -67,6 +71,7 @@ impl IngestionFailureClass {
             "llm_unsupported_param" => Some(Self::LlmUnsupportedParam),
             "cancelled" => Some(Self::Cancelled),
             "document_deleted" => Some(Self::DocumentDeleted),
+            "persist_contention" => Some(Self::PersistContention),
             "unknown" => Some(Self::Unknown),
             _ => None,
         }
@@ -85,6 +90,7 @@ impl IngestionFailureClass {
             Self::LlmUnsupportedParam => "omit_llm_temperature_or_switch_api_format",
             Self::Cancelled => "none",
             Self::DocumentDeleted => "finish_delete_or_reupload",
+            Self::PersistContention => "retry",
             Self::Unknown => "retry",
         }
     }
@@ -147,6 +153,19 @@ pub fn is_provider_misconfig_message(error_msg: &str) -> bool {
 pub fn is_document_deleted_message(error_msg: &str) -> bool {
     let lower = error_msg.to_ascii_lowercase();
     lower.contains("tombstoned document") || lower.contains("document was deleted")
+}
+
+/// SPEC-171: a deadline or a lock/deadlock/cancel from Postgres. Checked before
+/// `GraphMerge` so a retryable lock wait is not stored as a permanent merge error.
+pub fn is_persist_contention_message(error_msg: &str) -> bool {
+    let lower = error_msg.to_ascii_lowercase();
+    lower.contains("persist deadline exceeded")
+        || lower.contains("55p03")
+        || lower.contains("lock_not_available")
+        || lower.contains("40p01")
+        || lower.contains("deadlock_detected")
+        || lower.contains("57014")
+        || lower.contains("query_canceled")
 }
 
 /// True when an error string represents user/system cancel (SPEC-057).
@@ -230,6 +249,9 @@ pub fn classify_ingestion_failure(error_msg: &str) -> IngestionFailureClass {
     // `ProviderUnavailable` branch (which also matches "failed to create").
     if is_provider_misconfig_message(error_msg) {
         return IngestionFailureClass::ProviderMisconfigured;
+    }
+    if is_persist_contention_message(error_msg) {
+        return IngestionFailureClass::PersistContention;
     }
     if lower.contains("circuit breaker") {
         return IngestionFailureClass::CircuitBreaker;
@@ -316,6 +338,7 @@ pub fn failure_step(class: IngestionFailureClass) -> &'static str {
         IngestionFailureClass::LlmUnsupportedParam => "extraction",
         IngestionFailureClass::Cancelled => "cancelled",
         IngestionFailureClass::DocumentDeleted => "admission",
+        IngestionFailureClass::PersistContention => "indexing",
         IngestionFailureClass::Unknown => "processing",
     }
 }
@@ -602,5 +625,78 @@ mod tests {
         );
         assert_eq!(class.as_str(), "llm_unsupported_param");
         assert!(is_llm_unsupported_param_message(msg));
+    }
+
+    #[test]
+    fn t171_03_persist_deadline_is_transient() {
+        let msg = "persist deadline exceeded after 900s in stage indexing (attempt 1 of 3)";
+        let class = classify_ingestion_failure(msg);
+        assert_eq!(class, IngestionFailureClass::PersistContention);
+        assert!(!class.is_permanent());
+        assert!(!is_permanent_ingestion_failure(msg));
+    }
+
+    #[test]
+    fn t171_04_lock_not_available_is_transient() {
+        for msg in [
+            "sqlstate 55P03 lock_not_available: canceling statement",
+            "lock_not_available",
+        ] {
+            assert!(
+                !is_permanent_ingestion_failure(msg),
+                "{msg} must be transient"
+            );
+            assert_eq!(
+                classify_ingestion_failure(msg),
+                IngestionFailureClass::PersistContention
+            );
+        }
+    }
+
+    #[test]
+    fn t171_05_deadlock_is_transient() {
+        for msg in ["sqlstate 40P01 deadlock_detected", "deadlock_detected"] {
+            assert_eq!(
+                classify_ingestion_failure(msg),
+                IngestionFailureClass::PersistContention
+            );
+            assert!(!is_permanent_ingestion_failure(msg));
+        }
+    }
+
+    #[test]
+    fn t171_06_query_canceled_is_transient() {
+        for msg in ["sqlstate 57014 query_canceled", "query_canceled"] {
+            assert_eq!(
+                classify_ingestion_failure(msg),
+                IngestionFailureClass::PersistContention
+            );
+            assert!(!is_permanent_ingestion_failure(msg));
+        }
+    }
+
+    #[test]
+    fn t171_07_graph_merge_stays_permanent() {
+        let msg = "Pipeline processing failed: 1 knowledge-graph merge error(s) during persist";
+        assert_eq!(
+            classify_ingestion_failure(msg),
+            IngestionFailureClass::GraphMerge
+        );
+        assert!(is_permanent_ingestion_failure(msg));
+    }
+
+    #[test]
+    fn t171_08_tombstone_beats_a_deadline_only_when_it_is_a_tombstone() {
+        let deadline = "persist deadline exceeded after 30s";
+        assert_ne!(
+            classify_ingestion_failure(deadline),
+            IngestionFailureClass::DocumentDeleted
+        );
+        let tombstone = "cannot ingest into a tombstoned document";
+        assert_eq!(
+            classify_ingestion_failure(tombstone),
+            IngestionFailureClass::DocumentDeleted
+        );
+        assert!(is_permanent_ingestion_failure(tombstone));
     }
 }

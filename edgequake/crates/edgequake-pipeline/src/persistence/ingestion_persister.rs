@@ -181,6 +181,8 @@ pub struct IngestionPersistContext {
     pub source_file_path: Option<String>,
     /// Durable ingest generation. Legacy/memory callers default to generation 1.
     pub ingest_generation: Option<u64>,
+    /// Worker task id for phase logs (SPEC-171). Empty skips the log line.
+    pub task_id: Option<String>,
 }
 
 impl IngestionPersistContext {
@@ -196,6 +198,7 @@ impl IngestionPersistContext {
             source_type: None,
             source_file_path: None,
             ingest_generation: None,
+            task_id: None,
         }
     }
 
@@ -212,6 +215,16 @@ impl IngestionPersistContext {
 
     pub fn with_ingest_generation(mut self, generation: u64) -> Self {
         self.ingest_generation = Some(generation);
+        self
+    }
+
+    pub fn with_task_id(mut self, task_id: impl Into<String>) -> Self {
+        let task_id = task_id.into();
+        self.task_id = if task_id.is_empty() {
+            None
+        } else {
+            Some(task_id)
+        };
         self
     }
 }
@@ -467,7 +480,21 @@ pub struct IngestionPersistOutput {
     pub awaiting_projection: bool,
 }
 
-/// Build batched chunk vector upsert entries from a processing result.
+/// SPEC-171: one phase line with both ids as fields. Returns false when either id is empty.
+pub fn persist_phase_log(document_id: &str, task_id: &str, phase: &str) -> bool {
+    if document_id.is_empty() || task_id.is_empty() || phase.is_empty() {
+        return false;
+    }
+    tracing::info!(document_id, task_id, persist.phase = phase, "persist phase");
+    true
+}
+
+fn log_ctx_phase(ctx: &IngestionPersistContext, phase: &str) {
+    let Some(task_id) = ctx.task_id.as_deref() else {
+        return;
+    };
+    persist_phase_log(&ctx.document_id, task_id, phase);
+}
 pub fn build_chunk_vector_batch(
     result: &ProcessingResult,
     ctx: &IngestionPersistContext,
@@ -613,6 +640,7 @@ async fn persist_processing_result_impl(
                 )
                 .map_err(crate::error::PipelineError::StorageError)?;
                 let stage_start = Instant::now();
+                log_ctx_phase(ctx, "committer");
                 for command in &commands {
                     committer
                         .commit_batch(command)
@@ -681,9 +709,12 @@ async fn persist_processing_result_impl(
         // The committer owns chunks, graph facts and chunk embeddings. Entity and
         // relationship vectors are not in its command, so write them here or the
         // Local/Global/Mix vector arms see an empty index.
-        let fleet = build_merger(graph_storage, vector_storage, config, ctx)
-            .persist_fleet_vectors(&result.extractions)
-            .await?;
+        let fleet = {
+            log_ctx_phase(ctx, "fleet_vectors");
+            build_merger(graph_storage, vector_storage, config, ctx)
+                .persist_fleet_vectors(&result.extractions)
+                .await?
+        };
         tracing::info!(
             document_id = %ctx.document_id,
             entity_rows = fleet.entity_rows,
@@ -700,6 +731,7 @@ async fn persist_processing_result_impl(
     }
 
     let chunk_vectors = build_chunk_vector_batch(result, ctx, chunk_options);
+    log_ctx_phase(ctx, "chunk_vectors");
     let chunk_vector_ids: Vec<String> = chunk_vectors.iter().map(|(id, _, _)| id.clone()).collect();
 
     // SPEC-091 IP0: under typed authority legacy eq_*_vectors is write-stopped —
@@ -758,6 +790,7 @@ async fn persist_processing_result_impl(
     }
 
     let merger = build_merger(graph_storage.clone(), vector_storage.clone(), config, ctx);
+    log_ctx_phase(ctx, "merger");
 
     let merge_result = merger
         .merge_with_progress(

@@ -70,3 +70,8 @@ required-features = ["postgres"]
 name = "e2e_issue493_plain_edge_delete"
 path = "tests/e2e_issue493_plain_edge_delete.rs"
 required-features = ["postgres"]
+
+[[test]]
+name = "e2e_spec171_persist"
+path = "tests/e2e_spec171_persist.rs"
+required-features = ["postgres"]

@@ -940,6 +940,17 @@ impl PostgresAGEGraphStorage {
             let mut tx = pool.begin().await.map_err(|e| {
                 StorageError::Database(format!("plain edge upsert begin failed: {e}"))
             })?;
+            let workspace_id = edges
+                .first()
+                .and_then(|(_, _, props)| props.get("workspace_id"))
+                .and_then(|value| value.as_str())
+                .map(str::to_string);
+            super::super::statement_timeout::apply_ingest_write_guards(
+                &mut tx,
+                workspace_id.as_deref(),
+                899,
+            )
+            .await?;
             let n = super::plain::write::write::upsert_edges(&mut tx, &self.namespace, edges, mode)
                 .await?;
             tx.commit().await.map_err(|e| {

@@ -166,17 +166,13 @@ pub async fn apply_session_timeouts_on(
 }
 
 fn validate_timeout_literal(s: &str) -> Result<(), sqlx::Error> {
-    let ok = s == "0"
-        || s.chars().all(|c| c.is_ascii_alphanumeric() || c == ' ')
-            && !s.is_empty()
-            && s.len() < 32;
-    if ok {
-        Ok(())
-    } else {
-        Err(sqlx::Error::Protocol(format!(
-            "invalid timeout literal {s:?} (expected e.g. 5s, 30s, 10min, 0)"
-        )))
-    }
+    edgequake_storage::resolve_timeout_literal(
+        s,
+        "0",
+        edgequake_storage::TimeoutLiteralPolicy::RequiredAllowZero,
+    )
+    .map(|_| ())
+    .map_err(|err| sqlx::Error::Protocol(err.to_string()))
 }
 
 /// Enrich a sqlx migrate error with Dirty-version recovery hints.

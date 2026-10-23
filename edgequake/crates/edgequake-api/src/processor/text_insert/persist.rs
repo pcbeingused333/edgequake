@@ -341,8 +341,24 @@ impl DocumentTaskProcessor {
         };
 
         let mut awaiting_projection = false;
-        let chunk_embeddings_stored =
-            match crate::services::persist_with_providers_progress_and_embedder(
+        let page_count = result
+            .chunks
+            .iter()
+            .filter_map(|chunk| chunk.page_end)
+            .max()
+            .map(|page| page as usize)
+            .unwrap_or(result.chunks.len());
+        let task_timeout = task
+            .metadata
+            .as_ref()
+            .and_then(|meta| meta.get("processing_timeout_secs"))
+            .and_then(|value| value.as_u64())
+            .unwrap_or(7_200);
+        let budget_secs =
+            crate::services::persist_deadline::persist_timeout_secs(page_count, task_timeout);
+        let chunk_embeddings_stored = match tokio::time::timeout(
+            std::time::Duration::from_secs(budget_secs),
+            crate::services::persist_with_providers_progress_and_embedder(
                 persist_llm,
                 self.query_cache_invalidator
                     .as_ref()
@@ -378,30 +394,44 @@ impl DocumentTaskProcessor {
                     ChunkVectorBuildOptions::STANDARD,
                     Some(&data.file_source),
                     Some(provider_lineage.embedding_model.as_str()),
-                ),
+                )
+                .with_task_id(Some(track_id.as_str())),
                 merge_progress_cb,
-            )
-            .await
-            {
-                Ok(out) => {
-                    awaiting_projection = out.awaiting_projection;
-                    info!(
-                        document_id = %document_id,
-                        chunk_vectors = out.chunk_vector_ids.len(),
-                        entities = out.merge_stats.entities_created + out.merge_stats.entities_updated,
-                        relationships = out.merge_stats.relationships_created
-                            + out.merge_stats.relationships_updated,
-                        "P-G2 persist completed"
-                    );
-                    out.chunk_vector_ids.len()
+            ),
+        )
+        .await
+        {
+            Err(_elapsed) => {
+                let attempt = task.retry_count + 1;
+                return Err(edgequake_tasks::TaskError::Processing(format!(
+                        "persist deadline exceeded after {budget_secs}s in stage indexing (attempt {attempt} of {})",
+                        task.max_retries
+                    )));
+            }
+            Ok(Ok(out)) => {
+                awaiting_projection = out.awaiting_projection;
+                info!(
+                    document_id = %document_id,
+                    chunk_vectors = out.chunk_vector_ids.len(),
+                    entities = out.merge_stats.entities_created + out.merge_stats.entities_updated,
+                    relationships = out.merge_stats.relationships_created
+                        + out.merge_stats.relationships_updated,
+                    "P-G2 persist completed"
+                );
+                out.chunk_vector_ids.len()
+            }
+            Ok(Err(e)) => {
+                let err_msg = format!("Knowledge graph persist failed: {}", e);
+                error!(document_id = %document_id, "{}", err_msg);
+                if let Some(message) =
+                    crate::services::persist_deadline::contention_task_error(err_msg.clone())
+                {
+                    return Err(edgequake_tasks::TaskError::Processing(message));
                 }
-                Err(e) => {
-                    let err_msg = format!("Knowledge graph persist failed: {}", e);
-                    error!(document_id = %document_id, "{}", err_msg);
-                    storage_errors.push(err_msg);
-                    0
-                }
-            };
+                storage_errors.push(err_msg);
+                0
+            }
+        };
         info!(
             "Stored {} chunk embeddings in vector storage for document {}",
             chunk_embeddings_stored, document_id

@@ -304,8 +304,7 @@ impl Task {
 
         // X-30: typed timeout — only structured markers trip the breaker
         // (not business text that happens to contain the word "timeout").
-        let is_typed_timeout = error.starts_with("Operation timed out")
-            || error.contains("[ingestion_failure_class=Timeout");
+        let is_typed_timeout = crate::is_typed_timeout_message(&error);
         if is_typed_timeout {
             let made_progress = error.contains("[vision_progress=1]");
             if !made_progress {

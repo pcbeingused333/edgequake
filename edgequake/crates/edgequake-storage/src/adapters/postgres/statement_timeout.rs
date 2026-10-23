@@ -5,7 +5,7 @@
 //! cancels the statement and cannot leak into the pool after COMMIT/ROLLBACK
 //! ([PostgreSQL SET](https://www.postgresql.org/docs/16/sql-set.html)).
 
-use sqlx::{Acquire, PgConnection, Postgres, Transaction};
+use sqlx::{Acquire, PgConnection, Postgres, Row, Transaction};
 
 use crate::error::{Result, StorageError};
 
@@ -201,6 +201,229 @@ pub(in crate::adapters::postgres) fn community_statement_timeout_ms() -> u32 {
     ms.saturating_sub(GRAPH_QUERY_PG_HEADROOM_MS).max(1)
 }
 
+/// How an operator literal is accepted (SPEC-171 LAW-171-6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimeoutLiteralPolicy {
+    /// Empty uses `fallback`. `0` stays `0` (disabled).
+    AllowZero,
+    /// Empty uses `fallback`. `0` is replaced by `fallback`.
+    RejectZero,
+    /// Empty is an error. `0` stays `0`.
+    RequiredAllowZero,
+}
+
+/// One checker for migrate, vector DDL, and ingest timeouts.
+///
+/// Accepts `0` or a short unit literal (`30s`, `5min`). Rejects anything that
+/// could be interpolated into `SET`.
+pub fn resolve_timeout_literal(
+    raw: &str,
+    fallback: &str,
+    policy: TimeoutLiteralPolicy,
+) -> Result<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return match policy {
+            TimeoutLiteralPolicy::RequiredAllowZero => Err(StorageError::InvalidConfig(
+                "timeout literal is empty".into(),
+            )),
+            TimeoutLiteralPolicy::AllowZero | TimeoutLiteralPolicy::RejectZero => {
+                Ok(fallback.to_string())
+            }
+        };
+    }
+    if trimmed == "0" {
+        return match policy {
+            TimeoutLiteralPolicy::RejectZero => Ok(fallback.to_string()),
+            TimeoutLiteralPolicy::AllowZero | TimeoutLiteralPolicy::RequiredAllowZero => {
+                Ok("0".to_string())
+            }
+        };
+    }
+    if !valid_cutover_timeout_literal(trimmed) {
+        return Err(StorageError::InvalidConfig(format!(
+            "timeout literal {trimmed:?} is not 0 or a unit literal (50ms, 5s, 30min)"
+        )));
+    }
+    Ok(trimmed.to_string())
+}
+
+/// `lock_timeout` must be strictly shorter than `statement_timeout` or it never fires.
+pub fn ingest_lock_statement_pair(lock_secs: u64, statement_secs: u64) -> Result<()> {
+    if statement_secs == 0 || lock_secs >= statement_secs {
+        return Err(StorageError::InvalidConfig(format!(
+            "lock_timeout {lock_secs}s must be shorter than statement_timeout {statement_secs}s"
+        )));
+    }
+    Ok(())
+}
+
+/// `transaction_timeout` exists on PostgreSQL 17+. PostgreSQL 16 must not see the GUC.
+pub fn transaction_timeout_literal(server_version_num: i32, budget_secs: u64) -> Option<String> {
+    if server_version_num < 170_000 || budget_secs == 0 {
+        None
+    } else {
+        Some(format!("{budget_secs}s"))
+    }
+}
+
+/// Ingest session lock wait. Default 30s, clamp 1..=120. `0` does not disable it.
+pub fn ingest_lock_timeout_secs() -> u64 {
+    let raw = std::env::var("EDGEQUAKE_DB_INGEST_LOCK_TIMEOUT_SECS").unwrap_or_default();
+    let literal = resolve_timeout_literal(raw.trim(), "30s", TimeoutLiteralPolicy::RejectZero)
+        .unwrap_or_else(|_| "30s".to_string());
+    let digits: String = literal.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse::<u64>().unwrap_or(30).clamp(1, 120)
+}
+
+/// Two-key transaction advisory lock. Dies at commit or rollback.
+pub const WORKSPACE_MERGE_LOCK_SQL: &str =
+    "SELECT pg_advisory_xact_lock(hashtext('edgequake.merge'), hashtext($1))";
+
+/// Activity snapshot. `left(query, 120)` is the server-side cap. Rust redacts secrets.
+pub const ACTIVITY_SNAPSHOT_SQL: &str = "\
+SELECT a.pid, a.application_name, a.state::text AS state, a.wait_event_type, a.wait_event, \
+       (now() - a.xact_start)::text AS xact_age, pg_blocking_pids(a.pid)::text AS blocked_by, \
+       left(a.query, 120) AS query \
+FROM pg_stat_activity a \
+WHERE a.application_name LIKE 'edgequake:%' \
+  AND (a.wait_event_type = 'Lock' OR now() - a.xact_start > interval '5 minutes')";
+
+/// Drop `sk-` tokens and cap the text. A snapshot failure must not decide the task.
+pub fn redact_activity_text(query: &str) -> String {
+    let mut out = String::new();
+    let mut rest = query;
+    while let Some(index) = rest.find("sk-") {
+        out.push_str(&rest[..index]);
+        out.push_str("[redacted]");
+        rest = &rest[index + 3..];
+        let skip = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        rest = &rest[skip..];
+    }
+    out.push_str(rest);
+    if out.len() > 120 {
+        out.truncate(120);
+    }
+    out
+}
+
+pub fn snapshot_is_best_effort<T, E>(result: std::result::Result<T, E>) -> Option<T> {
+    result.ok()
+}
+
+/// Bound for the diagnostic snapshot. Shorter than any ingest lock wait.
+pub const ACTIVITY_SNAPSHOT_TIMEOUT: &str = "5s";
+
+/// Best-effort lock graph. Failure is returned; callers must not fail the task.
+pub async fn log_activity_snapshot(pool: &sqlx::PgPool) -> Result<()> {
+    let mut conn = pool
+        .acquire()
+        .await
+        .map_err(|e| StorageError::Connection(format!("activity snapshot acquire failed: {e}")))?;
+    let mut tx = conn
+        .begin()
+        .await
+        .map_err(|e| StorageError::Database(format!("activity snapshot begin failed: {e}")))?;
+    sqlx::query(&format!(
+        "SET LOCAL statement_timeout = '{ACTIVITY_SNAPSHOT_TIMEOUT}'"
+    ))
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| StorageError::Database(format!("activity snapshot timeout failed: {e}")))?;
+    let rows = sqlx::query(ACTIVITY_SNAPSHOT_SQL)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(|e| StorageError::Database(format!("activity snapshot query failed: {e}")))?;
+    for row in &rows {
+        let query: String = row.try_get("query").unwrap_or_default();
+        tracing::warn!(
+            pid = row.try_get::<i32, _>("pid").unwrap_or(0),
+            application_name = row.try_get::<String, _>("application_name").unwrap_or_default(),
+            state = row.try_get::<String, _>("state").unwrap_or_default(),
+            wait_event_type = row
+                .try_get::<Option<String>, _>("wait_event_type")
+                .ok()
+                .flatten()
+                .unwrap_or_default(),
+            wait_event = row
+                .try_get::<Option<String>, _>("wait_event")
+                .ok()
+                .flatten()
+                .unwrap_or_default(),
+            xact_age = row.try_get::<String, _>("xact_age").unwrap_or_default(),
+            blocked_by = row.try_get::<String, _>("blocked_by").unwrap_or_default(),
+            query = %redact_activity_text(&query),
+            "SPEC-171 ingest activity snapshot"
+        );
+    }
+    let _ = tx.rollback().await;
+    Ok(())
+}
+
+/// Append a stable SQLSTATE token so the task classifier can see it without sqlx.
+pub fn sqlstate_hint(error: &sqlx::Error) -> String {
+    let Some(code) = error.as_database_error().and_then(|db| db.code()) else {
+        return error.to_string();
+    };
+    match code.as_ref() {
+        "55P03" => format!("sqlstate 55P03 lock_not_available: {error}"),
+        "40P01" => format!("sqlstate 40P01 deadlock_detected: {error}"),
+        "57014" => format!("sqlstate 57014 query_canceled: {error}"),
+        _ => error.to_string(),
+    }
+}
+
+/// `SET LOCAL` lock and statement timeouts, plus `transaction_timeout` on PostgreSQL 17+.
+///
+/// `statement_secs` is the persist budget minus one second so it stays under
+/// `transaction_timeout` when that GUC is set.
+pub async fn apply_ingest_write_guards(
+    conn: &mut sqlx::PgConnection,
+    workspace_id: Option<&str>,
+    statement_secs: u64,
+) -> Result<()> {
+    let lock_secs = ingest_lock_timeout_secs();
+    let statement_secs = statement_secs.max(lock_secs.saturating_add(1));
+    ingest_lock_statement_pair(lock_secs, statement_secs)?;
+    let lock_literal = format!("{lock_secs}s");
+    let statement_literal = format!("{statement_secs}s");
+    sqlx::query(&format!("SET LOCAL lock_timeout = '{lock_literal}'"))
+        .execute(&mut *conn)
+        .await
+        .map_err(|e| StorageError::Database(format!("SET LOCAL lock_timeout failed: {e}")))?;
+    sqlx::query(&format!(
+        "SET LOCAL statement_timeout = '{statement_literal}'"
+    ))
+    .execute(&mut *conn)
+    .await
+    .map_err(|e| StorageError::Database(format!("SET LOCAL statement_timeout failed: {e}")))?;
+    let version: i32 = sqlx::query_scalar("SELECT current_setting('server_version_num')::int")
+        .fetch_one(&mut *conn)
+        .await
+        .unwrap_or(0);
+    if let Some(txn) = transaction_timeout_literal(version, statement_secs.saturating_add(1)) {
+        sqlx::query(&format!("SET LOCAL transaction_timeout = '{txn}'"))
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!("SET LOCAL transaction_timeout failed: {e}"))
+            })?;
+    }
+    if let Some(workspace_id) = workspace_id.filter(|id| !id.is_empty()) {
+        sqlx::query(WORKSPACE_MERGE_LOCK_SQL)
+            .bind(workspace_id)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                StorageError::Database(format!(
+                    "workspace merge lock failed: {}",
+                    sqlstate_hint(&e)
+                ))
+            })?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,5 +496,60 @@ mod tests {
         if let Some(v) = prev {
             std::env::set_var("EDGEQUAKE_COMMUNITY_STATEMENT_TIMEOUT_MS", v);
         }
+    }
+
+    #[test]
+    fn t171_15_timeout_literal_rejects_sql() {
+        let err = resolve_timeout_literal("1s; DROP TABLE", "30s", TimeoutLiteralPolicy::AllowZero);
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn t171_16_zero_policy() {
+        assert_eq!(
+            resolve_timeout_literal("0", "30s", TimeoutLiteralPolicy::RejectZero).unwrap(),
+            "30s"
+        );
+        assert_eq!(
+            resolve_timeout_literal("0", "30s", TimeoutLiteralPolicy::AllowZero).unwrap(),
+            "0"
+        );
+        assert!(
+            resolve_timeout_literal("", "30s", TimeoutLiteralPolicy::RequiredAllowZero).is_err()
+        );
+    }
+
+    #[test]
+    fn t171_17_lock_timeout_must_be_shorter_than_statement() {
+        assert!(ingest_lock_statement_pair(30, 30).is_err());
+        assert!(ingest_lock_statement_pair(30, 899).is_ok());
+    }
+
+    #[test]
+    fn t171_18_transaction_timeout_is_pg17_only() {
+        assert!(transaction_timeout_literal(160_000, 900).is_none());
+        assert_eq!(
+            transaction_timeout_literal(170_000, 900).as_deref(),
+            Some("900s")
+        );
+    }
+
+    #[test]
+    fn t171_19_merge_lock_sql_is_transaction_scoped() {
+        assert!(WORKSPACE_MERGE_LOCK_SQL.contains("pg_advisory_xact_lock"));
+        assert!(WORKSPACE_MERGE_LOCK_SQL.contains("hashtext('edgequake.merge')"));
+        assert!(WORKSPACE_MERGE_LOCK_SQL.contains("hashtext($1)"));
+        assert!(!WORKSPACE_MERGE_LOCK_SQL.contains("pg_advisory_lock("));
+    }
+
+    #[test]
+    fn t171_20_snapshot_redacts_and_is_best_effort() {
+        let text = redact_activity_text("select sk-secret-token from docs");
+        assert!(!text.contains("sk-secret"));
+        assert!(text.contains("[redacted]"));
+        assert!(ACTIVITY_SNAPSHOT_SQL.contains("left(a.query, 120)"));
+        assert!(ACTIVITY_SNAPSHOT_SQL.contains("pg_stat_activity"));
+        assert_eq!(ACTIVITY_SNAPSHOT_TIMEOUT, "5s");
+        assert!(snapshot_is_best_effort::<(), &str>(Err("down")).is_none());
     }
 }

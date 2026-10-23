@@ -180,6 +180,13 @@ pub trait TaskProcessor: Send + Sync {
     async fn on_permanent_failure(&self, task: &Task, error_msg: &str) {
         let _ = (task, error_msg); // suppress unused warnings
     }
+
+    /// SPEC-171: best-effort lock graph at a processing deadline.
+    ///
+    /// Default is a no-op. The implementation must not change the task outcome.
+    async fn on_processing_deadline(&self, task: &Task) {
+        let _ = task;
+    }
 }
 
 /// Shared task processor
@@ -323,6 +330,56 @@ fn permanent_failure_reason(task: &Task, error_msg: &str, is_permanent: bool) ->
             "Task failed without retry (retry_count={} max_retries={} retryable={}). Last error: {}",
             task.retry_count, task.max_retries, retryable, error_msg
         )
+    }
+}
+
+/// Outcome of the worker wall-clock arm (SPEC-171). One `mark_failed`, then the
+/// same retry decision as a returned `Err`.
+pub(crate) enum ElapsedSettlement {
+    Retry { delay_ms: u64 },
+    Permanent { reason: String },
+}
+
+pub(crate) fn format_processing_timeout(
+    effective_secs: u64,
+    stage: &str,
+    attempt: i32,
+    max_retries: i32,
+) -> String {
+    format!(
+        "Task processing timed out after {effective_secs} seconds in stage {stage} (attempt {attempt} of {max_retries})"
+    )
+}
+
+pub(crate) fn settle_elapsed_timeout(
+    config: &WorkerPoolConfig,
+    task: &mut Task,
+    effective_secs: u64,
+) -> ElapsedSettlement {
+    let stage = task
+        .progress
+        .as_ref()
+        .map(|progress| progress.current_step.as_str())
+        .unwrap_or("unknown");
+    let attempt = task.retry_count + 1;
+    let timeout_msg = format_processing_timeout(effective_secs, stage, attempt, task.max_retries);
+    task.mark_failed(timeout_msg.clone());
+    let is_permanent = crate::is_permanent_ingestion_failure(&timeout_msg);
+    let will_retry =
+        config.auto_retry && task.can_retry() && !task.circuit_breaker_tripped && !is_permanent;
+    if will_retry {
+        let delay_ms = calculate_backoff_delay(
+            task.retry_count as u32,
+            config.initial_retry_delay_ms,
+            config.max_retry_delay_ms,
+            config.backoff_multiplier,
+        );
+        task.requeue_for_retry();
+        ElapsedSettlement::Retry { delay_ms }
+    } else {
+        ElapsedSettlement::Permanent {
+            reason: permanent_failure_reason(task, &timeout_msg, is_permanent),
+        }
     }
 }
 
@@ -534,11 +591,22 @@ impl WorkerPool {
                             Ok(Some(t)) => t,
                             Ok(None) => break,
                             Err(e) => {
+                                let message = e.to_string();
+                                if crate::is_closed_pool_message(&message) {
+                                    warn!(
+                                        error.source = "task_worker",
+                                        error.action = "claim_next",
+                                        worker_id = worker_id,
+                                        error.message = %message,
+                                        "claim loop stopped: pool closed"
+                                    );
+                                    break 'worker;
+                                }
                                 error!(
                                     error.source = "task_worker",
                                     error.action = "claim_next",
                                     worker_id = worker_id,
-                                    error.message = %e,
+                                    error.message = %message,
                                     "Failed to claim next task"
                                 );
                                 // SPEC-112: dampen reconnect storms after pool
@@ -1052,21 +1120,61 @@ impl WorkerPool {
                             }
                         }
                         Err(_elapsed) => {
-                            let timeout_msg = format!(
-                                "Task processing timed out after {} seconds",
-                                config.processing_timeout_secs
-                            );
-                            task.mark_failed(timeout_msg.clone());
-
-                            error!(
-                                worker_id = worker_id,
-                                task_id = %task.track_id,
-                                tenant_id = %task.tenant_id,
-                                timeout_secs = config.processing_timeout_secs,
-                                "Task timed out — marking as permanently failed"
-                            );
-
-                            processor.on_permanent_failure(&task, &timeout_msg).await;
+                            let effective_secs = timeout_duration.as_secs();
+                            processor.on_processing_deadline(&task).await;
+                            match settle_elapsed_timeout(&config, &mut task, effective_secs) {
+                                ElapsedSettlement::Retry { delay_ms } => {
+                                    warn!(
+                                        task_id = %task.track_id,
+                                        attempt = task.retry_count,
+                                        max_retries = task.max_retries,
+                                        delay_ms,
+                                        "Scheduling retry with exponential backoff"
+                                    );
+                                    edgequake_observability::metrics::record_task_transition(
+                                        "retry",
+                                    );
+                                    let retry_task = task.clone();
+                                    let retry_queue = Arc::clone(&queue);
+                                    let retry_cancel = cancel_registry.clone();
+                                    let retry_storage = Arc::clone(&storage);
+                                    tokio::spawn(async move {
+                                        tokio::time::sleep(tokio::time::Duration::from_millis(
+                                            delay_ms,
+                                        ))
+                                        .await;
+                                        let track_id = retry_task.track_id.clone();
+                                        if should_skip_task(
+                                            &retry_storage,
+                                            &retry_cancel,
+                                            &retry_task,
+                                        )
+                                        .await
+                                        {
+                                            return;
+                                        }
+                                        if let Err(e) = retry_queue.send(retry_task).await {
+                                            error!(
+                                                error.source = "task_worker",
+                                                error.action = "requeue_retry",
+                                                task_id = %track_id,
+                                                error.message = %e,
+                                                "Failed to wake queue for retry"
+                                            );
+                                        }
+                                    });
+                                }
+                                ElapsedSettlement::Permanent { reason } => {
+                                    error!(
+                                        worker_id = worker_id,
+                                        task_id = %task.track_id,
+                                        tenant_id = %task.tenant_id,
+                                        timeout_secs = effective_secs,
+                                        "Task timed out — marking as permanently failed"
+                                    );
+                                    processor.on_permanent_failure(&task, &reason).await;
+                                }
+                            }
                         }
                     }
 
@@ -1794,6 +1902,69 @@ mod tests {
             stored.error_message
         );
 
+        pool.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn t171_36_deadline_hook_runs_and_does_not_change_the_outcome() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        struct CountingProcessor {
+            deadlines: AtomicUsize,
+        }
+        #[async_trait::async_trait]
+        impl TaskProcessor for CountingProcessor {
+            async fn process(
+                &self,
+                _task: &mut Task,
+                _cancel_token: CancellationToken,
+            ) -> TaskResult<serde_json::Value> {
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                Ok(serde_json::json!({}))
+            }
+            async fn on_processing_deadline(&self, _task: &Task) {
+                self.deadlines.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        let processor = Arc::new(CountingProcessor {
+            deadlines: AtomicUsize::new(0),
+        });
+        let queue = Arc::new(ChannelTaskQueue::new(10));
+        let storage = Arc::new(MemoryTaskStorage::new());
+        let config = WorkerPoolConfig {
+            num_workers: 1,
+            auto_retry: false,
+            initial_retry_delay_ms: 100,
+            max_retry_delay_ms: 5000,
+            backoff_multiplier: 2.0,
+            max_tasks_per_tenant: 0,
+            max_lifecycle_tasks_per_tenant: 0,
+            processing_timeout_secs: 1,
+            provider_budget: 0,
+            tenant_lane_weight: 1,
+        };
+        let mut pool = WorkerPool::new(
+            config,
+            queue.clone(),
+            storage.clone(),
+            processor.clone() as SharedTaskProcessor,
+        );
+        pool.start();
+        let task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({}),
+        );
+        let track_id = task.track_id.clone();
+        storage.create_task(&task).await.unwrap();
+        queue.send(task).await.unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        let stored = storage.get_task(&track_id).await.unwrap().unwrap();
+        assert_eq!(stored.status, TaskStatus::Failed);
+        assert!(
+            processor.deadlines.load(Ordering::SeqCst) >= 1,
+            "deadline hook must run before the task is settled"
+        );
         pool.shutdown().await;
     }
 
@@ -2708,5 +2879,87 @@ mod tests {
             .update_task_progress(&track_id, &progress)
             .await
             .expect("missing row must not fail progress heartbeat");
+    }
+
+    #[test]
+    fn t171_10_timeout_message_names_stage_and_attempt() {
+        let mut task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({}),
+        );
+        task.update_progress("indexing".into(), 4, 80);
+        task.max_retries = 3;
+        task.mark_processing();
+        let config = WorkerPoolConfig {
+            processing_timeout_secs: 7200,
+            auto_retry: true,
+            ..WorkerPoolConfig::default()
+        };
+        let settled = settle_elapsed_timeout(&config, &mut task, 42);
+        let message = task.error_message.clone().unwrap_or_default();
+        assert!(message.contains("42"));
+        assert!(!message.contains("7200"));
+        assert!(message.contains("stage indexing"));
+        assert!(message.contains("attempt 1 of 3"));
+        assert!(matches!(settled, ElapsedSettlement::Retry { .. }));
+        assert_eq!(task.retry_count, 1);
+        assert_eq!(task.status, TaskStatus::Pending);
+    }
+
+    #[test]
+    fn t171_02_timeout_at_max_retries_is_permanent() {
+        let mut task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({}),
+        );
+        task.max_retries = 1;
+        task.retry_count = 0;
+        task.mark_processing();
+        let config = WorkerPoolConfig {
+            auto_retry: true,
+            ..WorkerPoolConfig::default()
+        };
+        let settled = settle_elapsed_timeout(&config, &mut task, 7200);
+        assert!(matches!(settled, ElapsedSettlement::Permanent { .. }));
+        assert_eq!(task.retry_count, 1);
+    }
+
+    #[test]
+    fn t171_09_breaker_blocks_timeout_retry() {
+        let mut task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({}),
+        );
+        task.circuit_breaker_tripped = true;
+        task.mark_processing();
+        let config = WorkerPoolConfig {
+            auto_retry: true,
+            ..WorkerPoolConfig::default()
+        };
+        let settled = settle_elapsed_timeout(&config, &mut task, 10);
+        assert!(matches!(settled, ElapsedSettlement::Permanent { .. }));
+    }
+
+    #[test]
+    fn t171_14_elapsed_retry_increments_retry_count_once() {
+        let mut task = Task::new(
+            test_tenant_id(),
+            test_workspace_id(),
+            TaskType::Insert,
+            serde_json::json!({}),
+        );
+        task.mark_processing();
+        let config = WorkerPoolConfig {
+            auto_retry: true,
+            ..WorkerPoolConfig::default()
+        };
+        let _ = settle_elapsed_timeout(&config, &mut task, 15);
+        assert_eq!(task.retry_count, 1);
     }
 }

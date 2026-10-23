@@ -582,6 +582,13 @@ async fn lock_scoped_document(
     let tenant_id = command.scope.tenant().into_uuid();
     let workspace_id = command.scope.workspace().into_uuid();
     let document_id = command.document_id.into_uuid();
+    super::statement_timeout::apply_ingest_write_guards(
+        &mut *tx,
+        Some(&workspace_id.to_string()),
+        899,
+    )
+    .await
+    .map_err(|error| AccessError::Unavailable(format!("ingest write guards: {error}")))?;
     ensure_document_parent_in_transaction(tx, document_id, Some(tenant_id), Some(workspace_id))
         .await
         .map_err(AccessError::from)?;
@@ -1060,7 +1067,19 @@ pub(super) fn classify_sqlx(context: &str, error: sqlx::Error) -> AccessError {
     if let sqlx::Error::Database(database) = &error {
         match database.code().as_deref() {
             Some("40001" | "40P01") => {
-                return AccessError::SerializationRetry(format!("{context}: {error}"));
+                return AccessError::SerializationRetry(format!(
+                    "{context}: sqlstate 40P01 deadlock_detected: {error}"
+                ));
+            }
+            Some("55P03") => {
+                return AccessError::Unavailable(format!(
+                    "{context}: sqlstate 55P03 lock_not_available: {error}"
+                ));
+            }
+            Some("57014") => {
+                return AccessError::Unavailable(format!(
+                    "{context}: sqlstate 57014 query_canceled: {error}"
+                ));
             }
             Some("23503" | "23505" | "23514") => {
                 return AccessError::Conflict(format!("{context}: {error}"));

@@ -31,6 +31,8 @@ pub struct PersistIngestionParams<'a> {
     pub source_file_path: Option<&'a str>,
     /// Workspace-resolved embedding model for typed ANN registry (e.g. `mistral-embed`).
     pub embedding_model: Option<&'a str>,
+    /// Worker task id for persist phase logs (SPEC-171).
+    pub task_id: Option<&'a str>,
 }
 
 impl<'a> PersistIngestionParams<'a> {
@@ -56,12 +58,18 @@ impl<'a> PersistIngestionParams<'a> {
             source_type: None,
             source_file_path: source_file,
             embedding_model: embedding_model.map(str::trim).filter(|s| !s.is_empty()),
+            task_id: None,
         }
     }
 
     /// Stamp the workspace embedding model used to produce chunk/entity vectors.
     pub fn with_embedding_model(mut self, model: Option<&'a str>) -> Self {
         self.embedding_model = model.map(str::trim).filter(|s| !s.is_empty());
+        self
+    }
+
+    pub fn with_task_id(mut self, task_id: Option<&'a str>) -> Self {
+        self.task_id = task_id.filter(|id| !id.is_empty());
         self
     }
 }
@@ -298,6 +306,9 @@ pub async fn persist_with_providers_progress_and_embedder(
     merge_progress: Option<MergeProgressCallback>,
 ) -> Result<IngestionPersistOutput, edgequake_pipeline::error::PipelineError> {
     let workspace_id = params.workspace_id.clone();
+    if let Some(task_id) = params.task_id {
+        edgequake_pipeline::persist_phase_log(params.document_id, task_id, "generation");
+    }
     #[cfg(feature = "postgres")]
     let require_authority = ingestion_committer.is_some();
     #[cfg(not(feature = "postgres"))]
@@ -313,7 +324,7 @@ pub async fn persist_with_providers_progress_and_embedder(
         params.document_id,
     )
     .await?;
-    let ctx = IngestionPersistContext::new(
+    let mut ctx = IngestionPersistContext::new(
         params.document_id,
         params.tenant_id,
         Some(workspace_id.clone()),
@@ -324,6 +335,9 @@ pub async fn persist_with_providers_progress_and_embedder(
     )
     // SPEC-149: generation = authority document revision + 1 (1 on first ingest).
     .with_ingest_generation(ingest_generation);
+    if let Some(task_id) = params.task_id {
+        ctx = ctx.with_task_id(task_id);
+    }
 
     let mut persister = DefaultIngestionPersister::from_settings(
         graph_storage,

@@ -39,10 +39,12 @@ impl PgVectorStorage {
         conn: &mut sqlx::PgConnection,
         local: bool,
     ) -> Result<()> {
-        let lock_timeout = sanitize_pg_setting(
+        let lock_timeout = crate::adapters::postgres::resolve_timeout_literal(
             &std::env::var("EDGEQUAKE_GRAPH_DDL_LOCK_TIMEOUT").unwrap_or_default(),
             "5s",
-        );
+            crate::adapters::postgres::TimeoutLiteralPolicy::AllowZero,
+        )
+        .unwrap_or_else(|_| "5s".to_string());
         let maint_mem = sanitize_pg_setting(
             &std::env::var("EDGEQUAKE_INDEX_MAINTENANCE_WORK_MEM").unwrap_or_default(),
             "256MB",

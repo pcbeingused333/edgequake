@@ -129,13 +129,20 @@ pub async fn apply_session_baseline(
         "application_name must be a trusted edgequake:* label"
     );
     let idle_secs = idle_in_xact_timeout_secs();
+    let lock_timeout = if app_name == "edgequake:ingest" {
+        format!("{}s", super::statement_timeout::ingest_lock_timeout_secs())
+    } else {
+        "0".to_string()
+    };
     sqlx::query(
         "SELECT set_config('application_name', $1, false), \
                 set_config('search_path', 'public', false), \
-                set_config('idle_in_transaction_session_timeout', $2, false)",
+                set_config('idle_in_transaction_session_timeout', $2, false), \
+                set_config('lock_timeout', $3, false)",
     )
     .bind(app_name)
     .bind(format!("{idle_secs}s"))
+    .bind(lock_timeout)
     .execute(&mut *conn)
     .await?;
     Ok(())

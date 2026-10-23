@@ -1257,7 +1257,17 @@ async fn async_main_postgres() -> Result<()> {
                         "SPEC-091 R-18: swept stale fairness parks (replica-death backstop)"
                     ),
                     Ok(_) => {}
-                    Err(e) => tracing::warn!(error = %e, "stale fairness park sweep failed"),
+                    Err(e) => {
+                        let message = e.to_string();
+                        if edgequake_tasks::is_closed_pool_message(&message) {
+                            tracing::warn!(
+                                error = %message,
+                                "stale fairness park sweep stopped: pool closed"
+                            );
+                            break;
+                        }
+                        tracing::warn!(error = %message, "stale fairness park sweep failed");
+                    }
                 }
             }
         });
@@ -1743,11 +1753,14 @@ async fn async_main_postgres() -> Result<()> {
     // Run server (this blocks until shutdown) on the serving runtime.
     let listen_port = config.port;
     let server = Server::new(config, state);
-    let result = server.run().await;
+    let (state, result) = server.run().await;
 
-    // Drain ingest workers before tearing down their dedicated runtime.
     info!("Shutting down worker pool...");
-    worker_pool.shutdown().await;
+    edgequake_tasks::drain_workers_then_close_pools(worker_pool.shutdown(), async {
+        info!("SPEC-171: closing database pools after worker drain");
+        edgequake_api::Server::close_db_pools(&state).await;
+    })
+    .await;
     info!("Shutting down ingest Tokio runtime...");
     ingest_rt.shutdown_background();
 

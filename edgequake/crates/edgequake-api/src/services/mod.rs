@@ -91,6 +91,7 @@ pub mod pdf_auto_routing;
 pub mod pdf_lineage;
 pub mod pdf_workspace_dedup;
 pub mod pending_doc_task_reconcile;
+pub mod persist_deadline;
 pub mod pipeline_failure_classify;
 pub mod pipeline_ws_bridge;
 #[cfg(feature = "postgres")]
