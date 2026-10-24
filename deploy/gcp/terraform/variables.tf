@@ -33,7 +33,7 @@ variable "machine_type" {
 
 variable "boot_disk_gb" {
   type    = number
-  default = 20
+  default = 50
 }
 
 variable "data_disk_gb" {
@@ -44,7 +44,7 @@ variable "data_disk_gb" {
 variable "edgequake_version" {
   type        = string
   description = "GHCR tag pin (LAW-148-4). Never latest."
-  default     = "0.27.0"
+  default     = "0.38.0"
 }
 
 variable "hostname" {
