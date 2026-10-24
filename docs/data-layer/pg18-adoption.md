@@ -1,6 +1,6 @@
 ---
 title: "PG18 capability-gated adoption notes"
-description: "SPEC-091 IW4 decisions on PostgreSQL 18 features: which ones EdgeQuake uses through runtime probes (uuidv7, iterative ANN scans, AGE casts) and which ones are deferred (virtual columns, RETURNING OLD/NEW, async I/O, skip scan)."
+description: "SPEC-091 IW4 decisions on PostgreSQL 18 features: which ones EdgeQuake uses through runtime probes (uuidv7, iterative ANN scans) and which ones are deferred (virtual columns, RETURNING OLD/NEW, async I/O, skip scan)."
 ---
 
 # PG18 capability-gated adoption notes (SPEC-091 IW4)
@@ -13,7 +13,7 @@ EdgeQuake supports PostgreSQL 16, 17, and 18 with one SQL path. The code checks 
 |---|---|---|
 | uuidv7 document IDs | `uuidv7_available` (`PostgresCapabilityProbe` in `capabilities.rs`) | On PG18, new document IDs come from `uuidv7()`. Older versions use random v4 UUIDs. |
 | Iterative ANN scans | `iterative_scan_available` (pgvector 0.8.0 or later) | Filtered vector queries set `hnsw.iterative_scan` and `hnsw.max_scan_tuples`. See [pgvector.md](./pgvector.md#how-a-vector-search-runs). |
-| AGE jsonb to agtype casts | `age_jsonb_agtype_cast_available` (AGE 1.8.0-rc0 or later) | The probe only reports on `/health`. Application SQL stays portable until a win is measured (SPEC-091 RM3). |
+| Graph extension casts | `age_jsonb_agtype_cast_available` | Product images do not install a graph extension, so this probe stays inactive. Serving SQL reads `eq_graph_nodes`. |
 
 The diagram shows the decision for any new PG18 feature.
 

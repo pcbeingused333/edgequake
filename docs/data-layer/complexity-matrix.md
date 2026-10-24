@@ -9,7 +9,7 @@ This page describes what each class of data-layer operation costs, which limits 
 
 Notation: N is the number of rows in the table, and K is the number of rows you ask for.
 
-Each of the 235 registered operations belongs to exactly one class. A Ref number is the `NNN` suffix of an ID such as `DATA-AGE-GRAPH-HAS-NODE-025`. Look up the full entry in [postgres.md](./postgres.md), [pgvector.md](./pgvector.md), or [age.md](./age.md).
+Each of the 235 registered operations belongs to exactly one class. A Ref number is the `NNN` suffix of an ID such as `DATA-AGE-GRAPH-HAS-NODE-025`. Look up the full entry in [postgres.md](./postgres.md), [pgvector.md](./pgvector.md), or [age.md](./age.md). Those `DATA-AGE-…` IDs stay. The serving graph is `eq_graph_nodes` and `eq_graph_edges`.
 
 ## Which class is an operation in?
 
@@ -22,8 +22,8 @@ flowchart TD
     q1{"Changes schema or builds an index?"} -- "yes" --> ddl["DDL and index builds"]
     q1 -- "no" --> q2{"Changes session settings?"}
     q2 -- "yes" --> sess["Session settings"]
-    q2 -- "no" --> q3{"Uses the AGE graph?"}
-    q3 -- "yes" --> graphNode["Graph (AGE)"]
+    q2 -- "no" --> q3{"Reads or writes the knowledge graph?"}
+    q3 -- "yes" --> graphNode["Graph (eq_graph_nodes)"]
     q3 -- "no" --> q4{"Nearest-neighbor vector search?"}
     q4 -- "yes" --> vec["Vector nearest-neighbor search"]
     q4 -- "no" --> q5{"Legacy eq_*_kv table?"}

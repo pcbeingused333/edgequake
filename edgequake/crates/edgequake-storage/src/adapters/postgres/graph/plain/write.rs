@@ -1,4 +1,4 @@
-//! Plain upserts, deletes, and the post-AGE mirror copy (S4 / S5).
+//! Plain upserts and deletes on `eq_graph_nodes` and `eq_graph_edges`.
 
 use std::collections::HashMap;
 
@@ -42,36 +42,17 @@ pub(in crate::adapters::postgres::graph) mod write {
             types.push(text_prop(&full, "entity_type"));
             props.push(serde_json::to_string(&full).unwrap_or_else(|_| "{}".into()));
         }
-        sqlx::query(
-            "INSERT INTO public.eq_graph_nodes
-                (namespace, node_id, tenant_id, workspace_id, entity_type, properties)
-             SELECT $1, d.node_id, d.tenant_id, d.workspace_id, NULLIF(d.entity_type, ''), d.props::jsonb
-             FROM (
-                SELECT DISTINCT ON (node_id) node_id, tenant_id, workspace_id, entity_type, props
-                FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[])
-                     WITH ORDINALITY AS p(node_id, tenant_id, workspace_id, entity_type, props, ord)
-                ORDER BY node_id, ord DESC
-             ) d
-             ON CONFLICT (namespace, node_id) DO UPDATE SET
-                tenant_id = EXCLUDED.tenant_id,
-                workspace_id = EXCLUDED.workspace_id,
-                entity_type = EXCLUDED.entity_type,
-                properties = CASE
-                    WHEN $7 THEN public.eq_merge_graph_properties(
-                        public.eq_graph_nodes.properties, EXCLUDED.properties)
-                    ELSE EXCLUDED.properties
-                END",
-        )
-        .bind(namespace)
-        .bind(&ids)
-        .bind(&tenants)
-        .bind(&workspaces)
-        .bind(&types)
-        .bind(&props)
-        .bind(merge_flag(mode))
-        .execute(&mut **tx)
-        .await
-        .map_err(|e| StorageError::Database(format!("plain node upsert failed: {e}")))?;
+        sqlx::query(super::super::super::helpers::PLAIN_NODE_UPSERT_SQL)
+            .bind(namespace)
+            .bind(&ids)
+            .bind(&tenants)
+            .bind(&workspaces)
+            .bind(&types)
+            .bind(&props)
+            .bind(merge_flag(mode))
+            .execute(&mut **tx)
+            .await
+            .map_err(|e| StorageError::Database(format!("plain node upsert failed: {e}")))?;
         Ok(())
     }
 

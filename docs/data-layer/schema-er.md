@@ -213,7 +213,7 @@ erDiagram
     chunks |o..o{ chunk_relation_links : "logical link, no FK"
 ```
 
-`chunk_entity_links` and `chunk_relation_links` are dashed because they have no foreign key. `graph_nodes` and `graph_edges` are the fallback storage used when Apache AGE is not available, and they have no foreign keys.
+`chunk_entity_links` and `chunk_relation_links` are dashed because they have no foreign key. The serving graph is `eq_graph_nodes` and `eq_graph_edges` (migration 170). Those two tables are base tables and are omitted from this diagram.
 
 ## Step 4: Search by meaning
 
@@ -1501,16 +1501,16 @@ erDiagram
 
 - `PK` marks a primary key column and `FK` marks a declared foreign key column. A composite key marks each key column, or says so in the comment. Dashed lines are logical links with no foreign key.
 - Cardinality follows the marker next to each table: `||` is exactly one, `o|` or `|o` is zero or one, and `}o` is zero or many. A nullable foreign key uses `o|` on the parent side. Relationship labels are verbs, and each foreign key column is named in the attribute list.
-- The 12 views and the Apache AGE graph are not base tables, so they are not drawn above. They are listed in the note below the bullets, and the AGE graph is described in [age.md](./age.md).
+- The 12 views are not base tables, so they are not drawn above. `eq_graph_nodes` and `eq_graph_edges` are base tables and are also omitted here. Their columns are in [postgres.md](./postgres.md). The pre-cutover catalog is in [age.md](./age.md).
 
-**Not base tables, so not drawn above.** The schema also has 12 views. The public views are `recent_security_events`, `rate_limit_violations`, `tenant_activity_summary`, `tenant_document_stats`, and `tenant_entity_stats`. The `edgequake` schema views are `documents`, `chunks`, `entities`, `relationships`, `tasks`, `migration_progress`, and `provider_inflight`. The Apache AGE graph is created at run time by the storage adapter, not by a migration. See [age.md](./age.md). Table partitions are also not drawn: `audit_logs` has monthly children (`audit_logs_YYYY_MM`), and `tasks` has `tasks_history` plus monthly `tasks_p_YYYY_MM` children.
+**Not base tables, so not drawn above.** The schema also has 12 views. The public views are `recent_security_events`, `rate_limit_violations`, `tenant_activity_summary`, `tenant_document_stats`, and `tenant_entity_stats`. The `edgequake` schema views are `documents`, `chunks`, `entities`, `relationships`, `tasks`, `migration_progress`, and `provider_inflight`. `eq_graph_nodes` and `eq_graph_edges` are base tables from migration 170 and are omitted from the diagram. See [postgres.md](./postgres.md). Table partitions are also not drawn: `audit_logs` has monthly children (`audit_logs_YYYY_MM`), and `tasks` has `tasks_history` plus monthly `tasks_p_YYYY_MM` children.
 
 The `edgequake` schema tables carry an `edgequake_` prefix in the diagram, because Mermaid names cannot contain a dot. For example, `edgequake.audit_log` is drawn as `edgequake_audit_log`.
 
 
 ## What these diagrams leave out
 
-- **Views and the Apache AGE graph.** The 12 views and the AGE graph are listed under the full diagram, not drawn. See [age.md](./age.md).
+- **Views.** The 12 views are listed under the full diagram, not drawn. `eq_graph_nodes` and `eq_graph_edges` are omitted from the diagram and documented in [postgres.md](./postgres.md).
 - **Partitions.** `audit_logs` and `tasks` are partitioned. The diagrams show each parent once, and they omit the monthly child tables.
 - **Runtime and legacy tables.** The legacy `eq_*_kv`, `eq_*_vectors`, and `eq_*_stats` tables were dropped by migrations 125, 126, 131 and 142. The runtime adapter creates `eq_hot_ann_workspaces` only when legacy vector writes are still active, and migration 131 drops it, so it is not part of the head schema. See `edgequake/crates/edgequake-storage/src/adapters/postgres/vector/ddl.rs`.
 - **Migrator ledger.** `_sqlx_migrations` is created by the sqlx migrator, not by the SQL files, so it is not counted. Migration bookkeeping in the `edgequake` schema (`edgequake_migration_job`, `edgequake_migration_batch`, `edgequake_migration_run`, `edgequake_migration_run_step`, `edgequake_schema_compat`, `edgequake_provider_budget`, `edgequake_provider_slot`) is part of the full diagram, and it is covered in [Upgrading](../operations/upgrading.md).

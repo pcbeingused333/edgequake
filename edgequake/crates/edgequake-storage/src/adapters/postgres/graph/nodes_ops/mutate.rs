@@ -1,7 +1,9 @@
-//! Node mutate ops — GraphStorageMutateOps + native upsert (SPEC-054 ISP).
+//! Node mutate ops.
 //!
-//! Production: native SQL + UNIQUE (`EDGEQUAKE_NATIVE_GRAPH_WRITES`, default ON).
-//! Cypher MERGE = debug opt-out. Prefer bound `$1` Cypher for any new write path.
+//! A ready ledger writes `public.eq_graph_nodes` with `ON CONFLICT` on
+//! `(namespace, node_id)`. That is the default when native writes are on
+//! (`EDGEQUAKE_NATIVE_GRAPH_WRITES` unset or true) and `plain_writes()` is
+//! true. The `MERGE` statement below runs only when native writes are off.
 
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
@@ -10,16 +12,11 @@ use super::super::PostgresAGEGraphStorage;
 use crate::error::{Result, StorageError};
 
 impl PostgresAGEGraphStorage {
-    /// Upsert a node into the graph.
+    /// Upsert one node.
     ///
-    /// # WHY: MERGE-Based Upsert
-    ///
-    /// Uses Cypher MERGE instead of separate CREATE/UPDATE:
-    /// - Atomic: No race conditions between check and insert
-    /// - Idempotent: Safe to retry on network failures
-    /// - Efficient: Single round-trip vs two queries
-    ///
-    /// Also triggers lazy index creation on first node.
+    /// Native writes (the default) delegate to the batch upsert, which writes
+    /// `eq_graph_nodes` when the ledger is ready. The statement below runs
+    /// only when `EDGEQUAKE_NATIVE_GRAPH_WRITES` is off.
     pub(in crate::adapters::postgres::graph) async fn pg_upsert_node(
         &self,
         node_id: &str,

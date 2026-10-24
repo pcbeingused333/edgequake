@@ -1,6 +1,6 @@
 //! Document-scoped source lineage SQL predicates (SPEC-021 P-A3 / SPEC-045).
 //!
-//! SSOT for matching AGE node/edge properties against a document chunk prefix.
+//! SSOT for matching graph-node properties against a document chunk prefix.
 //! Two-path design (issue #305/#309):
 //! - **Modern**: one `?|` lookup over exact document/chunk candidates.
 //! - **Legacy**: bounded LIKE/unnest only when modern arrays are absent.
@@ -14,7 +14,7 @@
 /// Max chunk indices probed for GIN `@>` entity-count reconcile (list hot path).
 ///
 /// WHY: `LIKE '%…%'` / `jsonb_array_elements_text` forces a Seq Scan over
-/// `_ag_label_vertex` (~140k+ nodes → multi-second Documents list). Exact
+/// `eq_graph_nodes` (~140k+ nodes → multi-second Documents list). Exact
 /// chunk-id containment uses `idx_*_source_ids_gin` (~1 ms). Documents with
 /// more than this many chunks still get a correct lower bound; stats write
 /// path (P-A1) remains the primary count source (LAW-H5).
@@ -32,7 +32,7 @@ pub const SOURCE_PREFIX_BATCH_LIMIT: usize = 32;
 ///
 /// WHY: `tokio::time::timeout` alone abandons the Rust future while Postgres
 /// keeps running (zombie pool holders). `SET LOCAL statement_timeout` inside
-/// a transaction cancels the statement; aligned under API `AGE_RECONCILE_TIMEOUT`
+/// a transaction cancels the statement; aligned under the API reconcile timeout
 /// (400ms).
 ///
 /// Public SSOT for list analytics **and** StorageInspector INV-C (SPEC-107 R2).
@@ -45,7 +45,7 @@ pub const SOURCE_COUNT_STATEMENT_TIMEOUT_MS: u32 = 300;
 /// storms must still die ≪ minutes).
 pub(in crate::adapters::postgres::graph) const SOURCE_DISCOVERY_STATEMENT_TIMEOUT_MS: u32 = 2000;
 
-/// Server-side kill for workspace dashboard AGE counts (SPEC-089 Phase 4 / F-336-14).
+/// Server-side kill for workspace dashboard graph counts (SPEC-089 Phase 4 / F-336-14).
 ///
 /// WHY: `GET /workspaces/{id}/stats` wraps fetch in `tokio::timeout(4s)`. PG must
 /// cancel first (LAW-H2) — 250ms headroom under the app budget.
@@ -179,7 +179,7 @@ pub(in crate::adapters::postgres::graph) fn source_ids_count_probes_cte_sql() ->
 /// `from_join` includes `FROM probes pr INNER JOIN … alias` without ON.
 /// `select_list` must include `pr.prefix, pr.ord` plus a stable row id.
 /// `extra_and` is appended inside the same ON (a constant predicate such as
-/// ` AND v.namespace = $3`). Empty keeps the AGE join unchanged.
+/// ` AND v.namespace = $3`). Empty leaves the join predicate unchanged.
 ///
 /// WHY OR: the parameterized probe join plans as
 /// a `BitmapOr` over both GIN indexes, so each heap row is rechecked once.
@@ -231,12 +231,53 @@ pub fn node_counts_by_source_prefixes_sql(graph_name: &str) -> String {
     )
 }
 
+/// Startup count of nodes in one namespace. Binds `$1` = namespace.
+///
+/// A namespace that holds almost every row is a heap scan. A namespace that
+/// matches few rows uses a namespace-leading index (`eq_graph_nodes_pkey`,
+/// `idx_eq_graph_nodes_scope_node`, or `idx_eq_graph_nodes_degree`).
+pub const PLAIN_NAMESPACE_NODE_COUNT_SQL: &str =
+    "SELECT COUNT(*)::bigint FROM public.eq_graph_nodes WHERE namespace = $1";
+
+/// Which of the given node ids exist. Binds `$1` = namespace, `$2` = ids.
+/// `node_id = ANY` is an index lookup on `eq_graph_nodes_pkey`.
+pub const PLAIN_NODE_IDS_PRESENT_SQL: &str =
+    "SELECT node_id FROM public.eq_graph_nodes WHERE namespace = $1 AND node_id = ANY($2::text[])";
+
+/// Batch fetch used by `get_nodes_batch` on a ready ledger.
+/// Binds `$1` = namespace, `$2` = ids. Same primary-key shape as
+/// [`PLAIN_NODE_IDS_PRESENT_SQL`].
+pub const PLAIN_GET_NODES_BATCH_SQL: &str =
+    "SELECT node_id, properties FROM public.eq_graph_nodes WHERE namespace = $1 AND node_id = ANY($2::text[])";
+
+/// Batch upsert used by a ready ledger. Binds `$1` namespace, `$2` ids,
+/// `$3` tenants, `$4` workspaces, `$5` entity types, `$6` property JSON
+/// text, `$7` merge-sources flag. Conflict target is `eq_graph_nodes_pkey`.
+pub const PLAIN_NODE_UPSERT_SQL: &str = "
+INSERT INTO public.eq_graph_nodes
+    (namespace, node_id, tenant_id, workspace_id, entity_type, properties)
+ SELECT $1, d.node_id, d.tenant_id, d.workspace_id, NULLIF(d.entity_type, ''), d.props::jsonb
+ FROM (
+    SELECT DISTINCT ON (node_id) node_id, tenant_id, workspace_id, entity_type, props
+    FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[])
+         WITH ORDINALITY AS p(node_id, tenant_id, workspace_id, entity_type, props, ord)
+    ORDER BY node_id, ord DESC
+ ) d
+ ON CONFLICT (namespace, node_id) DO UPDATE SET
+    tenant_id = EXCLUDED.tenant_id,
+    workspace_id = EXCLUDED.workspace_id,
+    entity_type = EXCLUDED.entity_type,
+    properties = CASE
+        WHEN $7 THEN public.eq_merge_graph_properties(
+            public.eq_graph_nodes.properties, EXCLUDED.properties)
+        ELSE EXCLUDED.properties
+    END";
+
 /// Batched per-prefix node counts on `public.eq_graph_nodes`.
 ///
-/// Same probe series and both lineage GIN arms as
-/// [`node_counts_by_source_prefixes_sql`]. The serving graph after SPEC-164
-/// is this table, not an Apache AGE `"Node"` label. Binds: `$1` prefixes,
-/// `$2` probe upper bound, `$3` namespace. Returns `(prefix, cnt BIGINT)`.
+/// Same probe series and both lineage GIN arms as the pre-cutover count.
+/// Binds: `$1` prefixes, `$2` probe upper bound, `$3` namespace.
+/// Returns `(prefix, cnt BIGINT)`.
 pub fn plain_node_counts_by_source_prefixes_sql() -> String {
     let probes_cte = source_ids_count_probes_cte_sql();
     let hits_cte = lineage_count_hits_cte_sql(
@@ -385,7 +426,7 @@ mod tests {
     }
 
     #[test]
-    fn plain_count_sql_reads_eq_graph_nodes_not_age() {
+    fn plain_count_sql_reads_eq_graph_nodes() {
         let sql = plain_node_counts_by_source_prefixes_sql();
         assert!(sql.contains("DATA-PLAIN-GRAPH-NODE-COUNTS-BY-SOURCE-PREFIXES"));
         assert!(sql.contains("public.eq_graph_nodes"));

@@ -23,9 +23,9 @@
 //! | ID | Check | Source Tables |
 //! |----|-------|---------------|
 //! | INV-01 | Every chunk vector has a KV entry | eq_*_vectors, eq_*_kv |
-//! | INV-02 | Every entity vector has an AGE Node | eq_*_vectors, AGE |
+//! | INV-02 | Every entity vector has a graph node | eq_*_vectors, eq_graph_nodes |
 //! | INV-03 | Indexed documents have ≥1 chunk | documents, public.chunks (SPEC-104) |
-//! | INV-04 | CQRS sync lag (entities vs AGE) | entities, AGE |
+//! | INV-04 | CQRS sync lag (entities vs the serving graph) | entities, eq_graph_nodes |
 //! | INV-05 | No stuck PDFs (processing > 1h) | pdf_documents |
 //! | INV-07 | Aged in-flight documents have a live task | documents, tasks (issue #384) |
 
@@ -55,7 +55,7 @@ pub struct InspectorConfig {
     pub vector_table: String,
     /// Workspace namespace stored on `eq_graph_nodes.namespace` (e.g. "default").
     pub namespace: String,
-    /// AGE graph name (e.g. "eq_eq_default_graph") — only while the cutover ledger is still `age`.
+    /// Graph name used only while the cutover ledger status is still `age`.
     pub graph_name: String,
     /// Threshold (0.0-1.0) above which null materialized columns are a warning.
     pub null_rate_warning_threshold: f64,
@@ -74,7 +74,7 @@ pub struct InspectorConfig {
 
 impl InspectorConfig {
     /// Build config using the same namespace → relation naming as
-    /// [`edgequake_storage::table_prefix_for_namespace`] / AGE graph storage (SPEC-104 LAW-I1).
+    /// [`edgequake_storage::table_prefix_for_namespace`] (SPEC-104 LAW-I1).
     ///
     /// `namespace` `"default"` → prefix `eq_default` → graph `eq_eq_default_graph`.
     pub fn for_namespace(namespace: &str) -> Self {
@@ -184,7 +184,7 @@ impl RepairAction {
     pub fn description(&self) -> String {
         match self {
             Self::ResyncEntitiesFromAge { count } => {
-                format!("Re-sync {count} entities from AGE graph to relational table")
+                format!("Re-sync {count} entities onto the relational table")
             }
             Self::DeleteOrphanedVectors { count, .. } => {
                 format!("Delete {count} orphaned chunk vectors (no KV entry, no indexed document)")
@@ -257,8 +257,8 @@ impl InspectorReport {
 /// Which table holds the entities INV-C counts.
 ///
 /// `Plain` is `public.eq_graph_nodes` (the product graph). `Age` is the
-/// Apache AGE label, and only while the cutover ledger is still `age`
-/// and that label exists.
+/// label table, and only while the cutover ledger is still `age` and that
+/// label exists.
 #[cfg(feature = "postgres")]
 #[derive(Clone, Copy)]
 enum InvCLineage {
@@ -496,7 +496,7 @@ impl StorageInspector {
         self.check_all_graphs_node_source_ids_gin(report).await;
     }
 
-    /// SPEC-104 harden EC-05 (partial): GIN presence on all AGE graphs, not only default.
+    /// Lineage index on the serving graph. An empty graph catalog uses `eq_graph_nodes`.
     async fn check_all_graphs_node_source_ids_gin(&self, report: &mut InspectorReport) {
         let graphs: Vec<String> = match sqlx::query_scalar(
             r#"
@@ -525,9 +525,8 @@ impl StorageInspector {
         };
 
         if graphs.is_empty() {
-            // AGE is installed but no graph remains. The serving graph is
-            // public.eq_graph_nodes. Do not warn about a missing `"Node"` index
-            // on a graph schema that was never created or was already dropped.
+            // The graph catalog is empty. The serving graph is
+            // public.eq_graph_nodes.
             self.check_plain_graph_lineage(report).await;
             return;
         }
@@ -537,7 +536,7 @@ impl StorageInspector {
         }
     }
 
-    /// SPEC-164 EC-24: plain adjacency is the lineage authority after AGE is gone.
+    /// `eq_graph_nodes` is the lineage authority once the ledger is ready.
     async fn check_plain_graph_lineage(&self, report: &mut InspectorReport) {
         let pk: bool = sqlx::query_scalar(
             "SELECT EXISTS (
@@ -810,9 +809,7 @@ impl StorageInspector {
         self.check_inv04_cqrs_sync_lag(report).await;
         self.check_inv05_stuck_pdfs(report).await;
         self.check_inv07_inflight_docs_without_task(report).await;
-        // SPEC-021 P-B1: per-doc entity_count drift vs the authoritative AGE
-        // graph. Replaces the planned R-DRY-03 invariant that compared against
-        // the dead relational column (which would fire on every doc).
+        // SPEC-021 P-B1: per-doc entity_count drift vs the serving graph.
         self.check_inv_c_per_doc_entity_drift(report, inv_c).await;
         // SPEC-021 P-D3: silent CQRS no-op detection.
         self.check_inv04b_silent_sync_noop(report).await;
@@ -1127,7 +1124,7 @@ impl StorageInspector {
         }
     }
 
-    /// INV-04: CQRS sync lag (relational entities vs AGE nodes).
+    /// INV-04: CQRS sync lag (relational entities vs the serving graph).
     async fn check_inv04_cqrs_sync_lag(&self, report: &mut InspectorReport) {
         // Check if entity_sync_mode is 'full' (only then does lag matter)
         let mode: Option<String> = sqlx::query_scalar(
@@ -1436,9 +1433,9 @@ impl StorageInspector {
     /// KV chunk-key count — but the relational `documents.entity_count` column
     /// was never refreshed (file 16 §3), so the invariant would fire on every
     /// document. The authoritative per-doc entity count is the graph that
-    /// serves reads: `public.eq_graph_nodes` once the SPEC-164 ledger is
-    /// ready (or Apache AGE is gone). A ledger still on `age` keeps the AGE
-    /// `"Node"` GIN count. Both use the same probe series (SPEC-089 / SPEC-107).
+    /// serves reads: `public.eq_graph_nodes` once the ledger is ready.
+    /// A ledger still on `age` keeps the label-table count. Both use the
+    /// same probe series (SPEC-089 / SPEC-107).
     ///
     /// Skips docs in `processing`/`pending` state (mid-ingestion, E16) and
     /// docs with 0 chunks (legitimately 0 entities, E15).
@@ -1497,7 +1494,7 @@ impl StorageInspector {
         let total = rows.len();
 
         // SPEC-089 / LAW-H4: one batched GIN probe query (same shape as
-        // analytics_ops) instead of 50× Cypher STARTS WITH SeqScans.
+        // analytics_ops).
         let prefixes: Vec<String> = rows
             .iter()
             .map(|(doc_id, _, _, _)| format!("{doc_id}-chunk-"))
@@ -1513,7 +1510,7 @@ impl StorageInspector {
             max_chunks.clamp(1, 256)
         };
 
-        let age_counts = match self
+        let graph_counts = match self
             .inv_c_gin_node_counts_by_prefixes(&prefixes, probe_limit, inv_c, lineage)
             .await
         {
@@ -1558,16 +1555,16 @@ impl StorageInspector {
         let mut samples = Vec::new();
         for (doc_id, _chunk_count, pg_entity_count, status) in &rows {
             let prefix = format!("{doc_id}-chunk-");
-            let Some(age_count) = age_counts.get(&prefix).copied() else {
+            let Some(graph_count) = graph_counts.get(&prefix).copied() else {
                 continue; // hiccup — skip, do not false-positive (E8)
             };
             evaluated += 1;
             let pg = i64::from(*pg_entity_count);
-            if let Some(kind) = inv_c_drift::entity_count_drift(status, pg, age_count) {
+            if let Some(kind) = inv_c_drift::entity_count_drift(status, pg, graph_count) {
                 drifted += 1;
                 if samples.len() < 5 {
                     samples.push(format!(
-                        "{doc_id}: {} (mentions={pg} age={age_count})",
+                        "{doc_id}: {} (mentions={pg} graph={graph_count})",
                         kind.label()
                     ));
                 }
@@ -1585,7 +1582,7 @@ impl StorageInspector {
                 invariant_id: "INV-C".to_string(),
                 severity,
                 description: format!(
-                    "{drifted}/{evaluated} evaluated documents have entity lineage drift vs AGE \
+                    "{drifted}/{evaluated} evaluated documents have entity lineage drift vs the graph \
                      ({:.1}%)",
                     drift_rate * 100.0
                 ),
@@ -1661,13 +1658,13 @@ impl StorageInspector {
     /// Node count on the graph that serves reads.
     async fn serving_node_count(&self, lineage: InvCLineage) -> Option<i64> {
         match lineage {
-            InvCLineage::Plain => sqlx::query_scalar(
-                "SELECT COUNT(*)::bigint FROM public.eq_graph_nodes WHERE namespace = $1",
-            )
-            .bind(&self.config.namespace)
-            .fetch_one(self.pool.as_ref())
-            .await
-            .ok(),
+            InvCLineage::Plain => {
+                sqlx::query_scalar(edgequake_storage::PLAIN_NAMESPACE_NODE_COUNT_SQL)
+                    .bind(&self.config.namespace)
+                    .fetch_one(self.pool.as_ref())
+                    .await
+                    .ok()
+            }
             InvCLineage::Age => {
                 let graph = require_safe_sql_ident(&self.config.graph_name).ok()?;
                 let sql = format!("SELECT COUNT(*)::bigint FROM {graph}._ag_label_vertex");
@@ -1679,38 +1676,54 @@ impl StorageInspector {
         }
     }
 
-    /// Whether `name` is a node id or display name on the serving graph.
-    async fn serving_names_node(&self, lineage: InvCLineage, name: &str) -> Option<bool> {
-        match lineage {
-            InvCLineage::Plain => {
-                let n: i64 = sqlx::query_scalar(
-                    "SELECT COUNT(*)::bigint FROM public.eq_graph_nodes \
-                     WHERE namespace = $1 \
-                       AND (node_id = $2 OR properties->>'name' = $2)",
-                )
-                .bind(&self.config.namespace)
-                .bind(name)
-                .fetch_one(self.pool.as_ref())
-                .await
-                .ok()?;
-                Some(n > 0)
-            }
-            InvCLineage::Age => {
-                let graph = require_safe_sql_ident(&self.config.graph_name).ok()?;
-                let escaped = name.replace('\'', "''");
-                let cypher = format!(
-                    "MATCH (n:Node) WHERE n.id = '{escaped}' OR n.name = '{escaped}' RETURN count(n)"
-                );
-                let age_sql =
-                    format!("SELECT * FROM cypher('{graph}', $$ {cypher} $$) AS (result agtype)");
-                let count = sqlx::query_scalar::<_, String>(&age_sql)
-                    .fetch_one(self.pool.as_ref())
-                    .await
-                    .ok()
-                    .and_then(|s| s.trim_matches('"').parse::<i64>().ok())?;
-                Some(count > 0)
-            }
+    /// Node ids from `names` that exist on `eq_graph_nodes` for this namespace.
+    /// One primary-key probe. `None` means the query failed.
+    async fn plain_present_node_ids(
+        &self,
+        names: &[String],
+    ) -> Option<std::collections::HashSet<String>> {
+        if names.is_empty() {
+            return Some(std::collections::HashSet::new());
         }
+        let found: Vec<String> = sqlx::query_scalar(edgequake_storage::PLAIN_NODE_IDS_PRESENT_SQL)
+            .bind(&self.config.namespace)
+            .bind(names)
+            .fetch_all(self.pool.as_ref())
+            .await
+            .ok()?;
+        Some(found.into_iter().collect())
+    }
+
+    /// Node ids from `names` that exist on the label table.
+    /// One statement. `None` means the query failed.
+    async fn age_present_node_ids(
+        &self,
+        names: &[String],
+    ) -> Option<std::collections::HashSet<String>> {
+        if names.is_empty() {
+            return Some(std::collections::HashSet::new());
+        }
+        let graph = require_safe_sql_ident(&self.config.graph_name).ok()?;
+        let list = names
+            .iter()
+            .map(|name| format!("'{}'", name.replace('\'', "''")))
+            .collect::<Vec<_>>()
+            .join(",");
+        let cypher = format!(
+            "UNWIND [{list}] AS name MATCH (n:Node) WHERE n.id = name OR n.name = name OR n.node_id = name RETURN name"
+        );
+        let age_sql =
+            format!("SELECT * FROM cypher('{graph}', $eqinv$ {cypher} $eqinv$) AS (name agtype)");
+        let found: Vec<String> = sqlx::query_scalar(&age_sql)
+            .fetch_all(self.pool.as_ref())
+            .await
+            .ok()?;
+        Some(
+            found
+                .into_iter()
+                .map(|name| name.trim_matches('"').to_string())
+                .collect(),
+        )
     }
 
     /// Batched GIN `@>` entity counts for INV-C (SPEC-089 / SPEC-107 R2).
@@ -1841,7 +1854,7 @@ impl StorageInspector {
     /// WHY: `PostgresEntitySink` swallows all SQL errors (file 12 §4.3), so a
     /// deployment with `entity_sync_mode ∈ {dual_write, full}` but missing
     /// migration 039 will silently never sync. Flag a WARNING when sync is
-    /// enabled, AGE has nodes, but `entities.sync_status='synced'` count is 0.
+    /// enabled, the serving graph has nodes, but `entities.sync_status='synced'` count is 0.
     async fn check_inv04b_silent_sync_noop(&self, report: &mut InspectorReport) {
         let mode: Option<String> = sqlx::query_scalar(
             "SELECT value::text FROM server_config WHERE key = 'entity_sync_mode'",
@@ -1890,7 +1903,7 @@ impl StorageInspector {
     /// INV-D (SPEC-021 P-B3): orphan entity vectors.
     ///
     /// WHY: a vector with `metadata.type = 'entity'` whose `entity_name` no
-    /// longer exists as an AGE node is an orphan — typically left behind when
+    /// longer exists as a graph node is an orphan — typically left behind when
     /// `delete_entity` removed the graph node but the vector deletion failed
     /// (best-effort). These orphans surface in `query_local` results pointing
     /// at non-existent entities. We sample up to 100 and flag the count.
@@ -1933,14 +1946,30 @@ impl StorageInspector {
         }
 
         let mut orphans = Vec::new();
-        for (vec_id, entity_name) in rows {
-            let Some(name) = entity_name else { continue };
-            let present = match self.serving_names_node(lineage, &name).await {
-                Some(present) => present,
-                None => continue, // graph hiccup — skip, do not false-positive (E8)
-            };
-            if !present {
-                orphans.push(vec_id);
+        match lineage {
+            InvCLineage::Plain => {
+                let names: Vec<String> = rows.iter().filter_map(|(_, name)| name.clone()).collect();
+                let Some(present) = self.plain_present_node_ids(&names).await else {
+                    return;
+                };
+                for (vec_id, entity_name) in rows {
+                    let Some(name) = entity_name else { continue };
+                    if !present.contains(&name) {
+                        orphans.push(vec_id);
+                    }
+                }
+            }
+            InvCLineage::Age => {
+                let names: Vec<String> = rows.iter().filter_map(|(_, name)| name.clone()).collect();
+                let Some(present) = self.age_present_node_ids(&names).await else {
+                    return;
+                };
+                for (vec_id, entity_name) in rows {
+                    let Some(name) = entity_name else { continue };
+                    if !present.contains(&name) {
+                        orphans.push(vec_id);
+                    }
+                }
             }
         }
 
@@ -2141,8 +2170,8 @@ impl StorageInspector {
                 Ok(n > 0)
             }
             RepairAction::ResyncEntitiesFromAge { .. } => {
-                // Complex backfill — log a notice, do not auto-execute
-                // (requires AGE search_path setup; should run via apply.sql)
+                // Complex backfill — log a notice, do not auto-execute.
+                // Run migrations/support/040/apply.sql.
                 warn!("ResyncEntitiesFromAge: run migrations/support/040/apply.sql manually");
                 Ok(false)
             }
@@ -2403,6 +2432,18 @@ mod spec104_tests {
             50usize.div_ceil(edgequake_storage::SOURCE_PREFIX_BATCH_LIMIT),
             2
         );
+    }
+
+    #[test]
+    fn inv_d_plain_lookup_is_one_primary_key_batch() {
+        let src = include_str!("storage_inspector.rs");
+        let start = src
+            .find("async fn check_inv_d_orphan_entity_vectors")
+            .expect("inv-d");
+        let body = &src[start..start + 4000];
+        assert_eq!(body.matches("plain_present_node_ids(").count(), 1, "{body}");
+        assert_eq!(body.matches("age_present_node_ids(").count(), 1, "{body}");
+        assert!(!body.contains("age_names_node"), "{body}");
     }
 
     /// INV-C skip at Info must stay visible without flipping has_warning.

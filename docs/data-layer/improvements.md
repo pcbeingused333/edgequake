@@ -25,7 +25,7 @@ description: "Historical record of the SPEC-088 performance work (2026-07-25): i
 Sources (July 2026):
 - [PostgreSQL 18 release notes](https://www.postgresql.org/docs/18/release-18.html) — async I/O, B-tree skip scan, `uuidv7()`
 - [pgvector 0.8.5 README](https://github.com/pgvector/pgvector) — iterative index scans, partial HNSW, multitenancy
-- [Apache AGE](https://github.com/apache/age) + [MS Learn AGE performance](https://learn.microsoft.com/en-us/azure/postgresql/azure-ai/generative-ai-age-performance)
+- Serving graph: `eq_graph_nodes` / `eq_graph_edges` (migration 170)
 - Internal: `specs/054-fix-bugs-17/005-query-complexity-catalog.md`
 
 **Variables:** **N** = rows · **K** = batch/result size · **ef** = HNSW search width ·

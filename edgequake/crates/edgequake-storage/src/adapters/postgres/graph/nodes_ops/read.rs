@@ -263,7 +263,7 @@ impl PostgresAGEGraphStorage {
             return super::super::plain::read::read::get_nodes_batch(self, node_ids).await;
         }
 
-        // Use direct SQL with UNNEST for batch parameter binding (LightRAG pattern)
+        // Ledger status is still `age`. The ready path is `PLAIN_GET_NODES_BATCH_SQL`.
         let sql = crate::dataop::sql_comment(
             crate::dataop::DATA_AGE_GRAPH_GET_NODES_BATCH_031,
             &format!(

@@ -1,4 +1,4 @@
-//! Internal helpers for Apache AGE graph operations (SPEC-017 P1-12).
+//! Helpers for graph SQL: lineage predicates, session setup, and formatting.
 //!
 //! Split by responsibility:
 //! - `session` — AGE bootstrap + dollar-quote safety
@@ -39,8 +39,9 @@ pub(in crate::adapters::postgres::graph) use source_lineage_sql::{
 /// SPEC-089 / SPEC-107 R2: public SSOT for GIN node-count batch + timeout bounds.
 pub use source_lineage_sql::{
     node_counts_by_source_prefixes_sql, plain_node_counts_by_source_prefixes_sql,
-    LINEAGE_GIN_INDEXES, LINEAGE_GIN_PENDING_LIST_LIMIT_KB, SOURCE_COUNT_STATEMENT_TIMEOUT_MS,
-    SOURCE_PREFIX_BATCH_LIMIT,
+    LINEAGE_GIN_INDEXES, LINEAGE_GIN_PENDING_LIST_LIMIT_KB, PLAIN_GET_NODES_BATCH_SQL,
+    PLAIN_NAMESPACE_NODE_COUNT_SQL, PLAIN_NODE_IDS_PRESENT_SQL, PLAIN_NODE_UPSERT_SQL,
+    SOURCE_COUNT_STATEMENT_TIMEOUT_MS, SOURCE_PREFIX_BATCH_LIMIT,
 };
 
 #[cfg(test)]

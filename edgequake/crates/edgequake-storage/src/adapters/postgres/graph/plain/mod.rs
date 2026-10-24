@@ -1,8 +1,8 @@
 //! SPEC-164 plain adjacency graph (`eq_graph_nodes` / `eq_graph_edges`).
 //!
-//! Request reads use these queries only when `eq_graph_cutover.status = ready`.
-//! `EDGEQUAKE_GRAPH_READ` does not move a ready ledger back onto Apache AGE.
-//! A flag cannot select plain reads while the ledger is still `age`.
+//! Request reads and writes use these queries when `eq_graph_cutover.status`
+//! is `ready`. `EDGEQUAKE_GRAPH_READ` does not move a ready ledger off these
+//! tables. A flag cannot select these tables while the ledger status is `age`.
 
 pub(in crate::adapters::postgres::graph) mod counts;
 pub(in crate::adapters::postgres::graph) mod cutover;

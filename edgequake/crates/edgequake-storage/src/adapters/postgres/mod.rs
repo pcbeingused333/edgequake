@@ -129,7 +129,8 @@ pub use graph::{
     finish_plain_graph_cutover, interactive_statement_timeout_ms,
     node_counts_by_source_prefixes_sql, plain_node_counts_by_source_prefixes_sql, CutoverReport,
     PostgresAGEGraphStorage, LAST_SOURCE_PREFIX_COUNT_LEN, LINEAGE_GIN_INDEXES,
-    LINEAGE_GIN_PENDING_LIST_LIMIT_KB, SOURCE_COUNT_STATEMENT_TIMEOUT_MS,
+    LINEAGE_GIN_PENDING_LIST_LIMIT_KB, PLAIN_GET_NODES_BATCH_SQL, PLAIN_NAMESPACE_NODE_COUNT_SQL,
+    PLAIN_NODE_IDS_PRESENT_SQL, PLAIN_NODE_UPSERT_SQL, SOURCE_COUNT_STATEMENT_TIMEOUT_MS,
     SOURCE_PREFIX_BATCH_LIMIT, SOURCE_PREFIX_DISCOVERY_CALLS,
 };
 pub use hnsw_manifest::{check_hnsw_index_manifest, HnswIndexManifest, HnswManifestDrift};

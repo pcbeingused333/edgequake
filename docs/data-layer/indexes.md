@@ -55,7 +55,18 @@ Each embedding table has three partial HNSW indexes, for 768, 1024, and 1536 dim
 
 ## Graph indexes
 
-The AGE graph indexes (`idx_node_prop_node_id_unique`, `idx_node_id`, and the `EDGE` and `source_ids` indexes) are listed in [age.md](./age.md#indexes). The adapter creates them at run time.
+Migration 170 creates these on the serving graph. `eq_graph_nodes_pkey` is `(namespace, node_id)`. `eq_graph_edges_pkey` is `(namespace, source_id, target_id, rel_type)`.
+
+| Index | Table | Used for |
+|---|---|---|
+| `eq_graph_nodes_pkey` | `eq_graph_nodes` | Point reads and `node_id = ANY` batches |
+| `idx_eq_graph_nodes_scope_node` | `eq_graph_nodes` | `(namespace, tenant_id, workspace_id, node_id)` ordered scope scans (migration 209) |
+| `idx_eq_graph_nodes_degree` | `eq_graph_nodes` | Namespace-leading degree order `(namespace, degree DESC, node_id)` |
+| `idx_eq_graph_nodes_source_ids_gin` | `eq_graph_nodes` | `properties -> 'source_ids'` containment |
+| `idx_eq_graph_nodes_source_chunk_ids_gin` | `eq_graph_nodes` | `properties -> 'source_chunk_ids'` containment |
+| `idx_eq_graph_edges_source`, `idx_eq_graph_edges_target` | `eq_graph_edges` | Incident edges |
+
+A count of a namespace that holds almost every row reads the heap. A namespace that matches few rows uses a namespace-leading index (`eq_graph_nodes_pkey`, `idx_eq_graph_nodes_scope_node`, or `idx_eq_graph_nodes_degree`). The pre-cutover label indexes are listed in [age.md](./age.md).
 
 ## Hot paths and their indexes
 

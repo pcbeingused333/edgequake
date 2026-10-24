@@ -5,7 +5,7 @@ description: "The 235 data-layer Ref IDs (PG, PGVEC, AGE): counts by engine, typ
 
 # Data-Layer Operation Inventory
 
-This page lists every logical data-layer operation with its Ref ID, engine, type, and code location. Use it to find the code behind a Ref ID, or the Ref ID behind a query or log line. The engine pages ([PostgreSQL](postgres.md), [pgvector](pgvector.md), [AGE](age.md)) explain the operations in more depth.
+This page lists every logical data-layer operation with its Ref ID, engine, type, and code location. Use it to find the code behind a Ref ID, or the Ref ID behind a query or log line. The engine pages ([PostgreSQL](postgres.md), [pgvector](pgvector.md), [knowledge graph catalog](age.md)) explain the operations in more depth. The serving graph is `eq_graph_nodes` and `eq_graph_edges`. The AGE engine rows below are the pre-cutover catalog. Ref IDs do not change.
 
 **Mission:** [specs/088-data-layer/00-mission.md](../../specs/088-data-layer/00-mission.md)
 
@@ -21,8 +21,8 @@ This page lists every logical data-layer operation with its Ref ID, engine, type
 | Pooler | sqlx `PgPool` (no PgBouncer in the default compose file) | `edgequake/crates/edgequake-storage/src/adapters/postgres/connection.rs` |
 | PostgreSQL | 16, 17, and 18; default **18** | `edgequake/docker/Dockerfile.postgres` (16), `Dockerfile.postgres.pg17`, `Dockerfile.postgres.pg18` |
 | pgvector | **0.8.5** (CVE floor 0.8.2, checked at runtime) | `edgequake/docker/extension-pins.sh` |
-| Apache AGE | **1.8.0** on PG18 (1.7.0 on PG17, 1.6.0 on PG16) | `edgequake/docker/extension-pins.sh` |
-| Extensions | vector, age, pg_trgm, btree_gin, uuid-ossp | `edgequake/docker/init-extensions.sql` |
+| Knowledge graph | `eq_graph_nodes`, `eq_graph_edges`. Product images do not install a graph extension. | `edgequake/migrations/170_spec164_plain_graph.sql` |
+| Extensions | `vector`, `pg_trgm`, `btree_gin`, `uuid-ossp` | `edgequake/docker/init-extensions.sql` |
 | Optional | DiskANN / vectorscale (profile) | `edgequake/docker/Dockerfile.postgres.pg18-vectorscale` |
 
 ## Summary

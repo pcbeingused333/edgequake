@@ -5,7 +5,7 @@ description: "The relational side of the EdgeQuake data layer: table catalog, ER
 
 # PostgreSQL: tables, tenancy, pools, and operations
 
-This page covers the relational (plain SQL) side of the EdgeQuake data layer: documents, chunks, tasks, tenants, users, conversations, and the settings around them. Operators and developers use it to find which table holds what, how tenant isolation and connection pools work, and how migrations run. Vectors are on [pgvector.md](./pgvector.md). The graph is on [age.md](./age.md). The overview is in [README.md](./README.md).
+This page covers documents, chunks, tasks, tenants, users, conversations, and the knowledge graph (`eq_graph_nodes`, `eq_graph_edges`). Operators and developers use it to find which table holds what, how tenant isolation and connection pools work, and how migrations run. Vectors are on [pgvector.md](./pgvector.md). The pre-cutover Ref ID catalog is in [age.md](./age.md). The overview is in [README.md](./README.md).
 
 Facts on this page come from the migrations in `edgequake/migrations/` and the Rust code in `edgequake/crates/edgequake-storage` and `edgequake-tasks`.
 
@@ -20,7 +20,8 @@ After all 169 migration versions, the `public` schema has these main groups of t
 | Single sign-on | `identity_providers`, `federated_identities`, `federated_sessions`, `federated_access_jti`, `oidc_login_attempts`, `oidc_logout_jti` | OIDC providers and sessions (SPEC-158). |
 | Documents | `documents`, `chunks`, `chunk_serving_state`, `document_artifacts`, `document_originals`, `ingestion_dedup`, `failed_chunks` | Uploaded documents, their chunk text, and per-chunk visibility. |
 | PDF | `pdf_documents`, `pdf_document_blobs`, `document_pages`, `document_page_states`, `page_layout_regions`, `document_mm_assets` | PDF files, page geometry, layout, and page images. |
-| Graph read models | `entities`, `relationships`, `chunk_entity_links`, `chunk_relation_links`, `graph_contributions` | Relational copies of graph data for search and analytics, plus lineage from chunks. |
+| Graph read models | `entities`, `relationships`, `chunk_entity_links`, `chunk_relation_links`, `graph_contributions` | Searchable copies of graph data, plus lineage from chunks. |
+| Knowledge graph | `eq_graph_nodes`, `eq_graph_edges`, `eq_graph_cutover` | Entities and relationships. Primary key `(namespace, node_id)` on nodes. A ready ledger in `eq_graph_cutover` means these tables serve reads and writes (migration 170). |
 | Embeddings | `embedding_models`, `chunk_embeddings`, `entity_embeddings`, `relationship_embeddings`, `report_embeddings`, `embedding_manifests`, `embedding_projections` | See [pgvector.md](./pgvector.md). |
 | Jobs | `tasks` (partitioned), `task_events`, `attempts`, `jobs`, `pipeline_checkpoints` | Background work and its audit trail. |
 | Durable write path (SPEC-149) | `mutation_requests`, `object_revisions`, `ingest_batches`, `projection_events`, `projection_event_items`, `projection_event_role_proofs`, `projection_deliveries`, `projection_visibility`, `projection_cleanup_intents`, `outbox_events`, `data_bindings`, `vector_provider_cutovers`, `compensation_quarantine` | One-transaction commits, idempotency, and events for downstream stores. |
@@ -159,7 +160,7 @@ sequenceDiagram
 
 The helper functions are `current_tenant_id()`, `current_workspace_id()`, `set_tenant_context`, and `clear_tenant_context`. They read the settings `app.current_tenant_id`, `app.current_workspace_id`, and `app.current_user_id`. The Rust code in `rls.rs` first checks that the workspace belongs to the tenant, and it fails if the connected role is a superuser or has `BYPASSRLS`. Superusers skip RLS, so production must not connect as one. Administration and queue connections keep their privileged path, and not every query uses a scoped transaction, so the application layer filters by scope as well. Read [rls-superuser-acceptance.md](./rls-superuser-acceptance.md) for the decision history.
 
-The graph is outside RLS by default. See [age.md](./age.md#tenant-isolation-in-the-graph).
+The graph tables carry `tenant_id` and `workspace_id`. Migration 170 enables row-level security on them when the role `edgequake_tenant_access` exists (`eq_graph_install_plain_rls`). Scoped transactions still filter in the application.
 
 ## Connection pools
 

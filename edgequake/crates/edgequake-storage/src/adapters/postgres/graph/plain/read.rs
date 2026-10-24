@@ -21,16 +21,12 @@ pub(in crate::adapters::postgres::graph) mod read {
             return Ok(HashMap::new());
         }
         let pool = storage.pool.get().await?;
-        let rows = sqlx::query(
-            "SELECT node_id, properties
-             FROM public.eq_graph_nodes
-             WHERE namespace = $1 AND node_id = ANY($2::text[])",
-        )
-        .bind(&storage.namespace)
-        .bind(node_ids)
-        .fetch_all(&pool)
-        .await
-        .map_err(|e| StorageError::Database(format!("plain get_nodes_batch failed: {e}")))?;
+        let rows = sqlx::query(super::super::super::helpers::PLAIN_GET_NODES_BATCH_SQL)
+            .bind(&storage.namespace)
+            .bind(node_ids)
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| StorageError::Database(format!("plain get_nodes_batch failed: {e}")))?;
         Ok(rows
             .iter()
             .filter_map(node_from_row)

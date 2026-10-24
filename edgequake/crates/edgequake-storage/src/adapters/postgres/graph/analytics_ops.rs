@@ -320,8 +320,7 @@ impl PostgresAGEGraphStorage {
         })?;
         let mut timed = super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
 
-        // SPEC-084 / LAW-9 / GH-331 + IMP-031-08 + SPEC-089 + SPEC-149.
-        // Plain reads use eq_graph_nodes. A ledger still on AGE keeps "Node".
+        // Ready ledger: eq_graph_nodes. Otherwise the label-table count.
         let rows: std::result::Result<Vec<(String, i64)>, sqlx::Error> = if plain {
             let sql = super::helpers::plain_node_counts_by_source_prefixes_sql();
             sqlx::query_as(&sql)

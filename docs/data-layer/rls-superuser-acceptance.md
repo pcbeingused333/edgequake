@@ -57,7 +57,7 @@ What still holds from the original decision:
 
 - Administration and queue connections keep their privileged path.
 - Not every query goes through a scoped transaction, so every scoped read path must still filter in the application.
-- The AGE graph has no tenant policies by default. Isolation there is by `tenant_id` and `workspace_id` properties and application filters. An optional AGE RLS mode exists (set `EDGEQUAKE_AGE_RLS` to `1`, `true`, `yes`, or `on`, with AGE 1.7.0 or later). See [age.md](./age.md#tenant-isolation-in-the-graph).
+- `eq_graph_nodes` and `eq_graph_edges` carry `tenant_id` and `workspace_id`. Migration 170 installs row-level security on them when `edgequake_tenant_access` exists. Scoped reads still filter in the application. See [postgres.md](./postgres.md#tenant-isolation).
 
 ## Consequences
 

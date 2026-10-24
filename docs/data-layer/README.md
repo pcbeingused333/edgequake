@@ -5,7 +5,7 @@ description: "How EdgeQuake stores documents, vectors, and the knowledge graph i
 
 # Data layer overview
 
-EdgeQuake keeps all of its data in one PostgreSQL database. Plain tables hold documents, chunks, tasks, and users. The pgvector extension holds embeddings. The Apache AGE extension holds the knowledge graph. This page is the map; the other pages go deep.
+EdgeQuake keeps all of its data in one PostgreSQL database. Plain tables hold documents, chunks, tasks, users, and the knowledge graph (`eq_graph_nodes`, `eq_graph_edges`). The pgvector extension holds embeddings. This page is the map; the other pages go deep.
 
 ## Stack
 
@@ -13,7 +13,7 @@ EdgeQuake keeps all of its data in one PostgreSQL database. Plain tables hold do
 |---|---|---|
 | PostgreSQL | 16, 17, or 18 (image default: 18) | `edgequake/docker/extension-pins.sh` |
 | pgvector (vector search) | 0.8.5 on all three majors. Readiness warns below 0.8.2 (CVE floor). | `extension-pins.sh`; probed at runtime by `edgequake/crates/edgequake-storage/src/adapters/postgres/capabilities.rs` |
-| Apache AGE (graph) | 1.6.0 on PG16, 1.7.0 on PG17, 1.8.0 on PG18 | `extension-pins.sh` |
+| Graph tables | `eq_graph_nodes`, `eq_graph_edges`. Product images do not install a graph extension. | `edgequake/migrations/170_spec164_plain_graph.sql` |
 | Other extensions | `pg_trgm`, `btree_gin`, `uuid-ossp` | `edgequake/docker/init-extensions.sql` |
 | Driver | `sqlx` 0.8, raw SQL, no ORM | `edgequake/Cargo.toml` |
 | Schema changes | Applied by `edgequake migrate`. The server does not change the schema by default; `EDGEQUAKE_SERVE_RECONCILE=1` is a one-release escape hatch. | [Upgrading](../operations/upgrading.md) |
@@ -28,7 +28,7 @@ EdgeQuake keeps all of its data in one PostgreSQL database. Plain tables hold do
 | Documents and their chunk text | `documents`, `chunks` | [postgres.md](./postgres.md) |
 | Embeddings | `chunk_embeddings`, `entity_embeddings`, `relationship_embeddings`, `report_embeddings` | [pgvector.md](./pgvector.md) |
 | Keyword search over chunks | `chunks.content_tsv` with a GIN index | [pgvector.md](./pgvector.md) |
-| Knowledge graph | One AGE graph, labels `Node` and `EDGE` | [age.md](./age.md) |
+| Knowledge graph | `eq_graph_nodes` and `eq_graph_edges` | [postgres.md](./postgres.md) |
 | Background jobs | `tasks` (partitioned by month) | [postgres.md](./postgres.md) |
 | LLM response cache | `llm_cache` | [llm-cache-scope.md](./llm-cache-scope.md) |
 | Encrypted provider connections (SPEC-163) | `provider_connections` (ciphertext columns) | [postgres.md](./postgres.md) |
@@ -66,7 +66,7 @@ flowchart LR
     B --> C["Worker claims task"]
     C --> D["Chunk and extract"]
     D --> E["One transaction: chunks and embeddings"]
-    E --> F["Merge into AGE graph"]
+    E --> F["Merge into the knowledge graph"]
     F --> G["Mark chunks ready"]
     G --> H["Visible to queries"]
 %% eq-classes
@@ -82,7 +82,7 @@ class F eqStore
 
 ## How queries read data
 
-Each storage type has its own read path, and all of them are scoped by tenant and workspace. Only the vector and keyword paths pass through the serving fence. The graph path reads AGE directly.
+Each storage type has its own read path, and all of them are scoped by tenant and workspace. Only the vector and keyword paths pass through the serving fence. The graph path reads `eq_graph_nodes` and `eq_graph_edges`.
 
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"primaryColor":"#E0E7FF","primaryBorderColor":"#6366F1","primaryTextColor":"#1E1B4B","secondaryColor":"#D1FAE5","secondaryBorderColor":"#10B981","secondaryTextColor":"#064E3B","tertiaryColor":"#FEF3C7","tertiaryBorderColor":"#F59E0B","tertiaryTextColor":"#6B7A90","lineColor":"#7A889C","clusterBkg":"rgba(99,102,241,0.07)","clusterBorder":"#A5B4FC","noteBkgColor":"#FEF9C3","noteTextColor":"#422006","textColor":"#6B7A90","titleColor":"#6B7A90","signalColor":"#7A889C","signalTextColor":"#6B7A90","loopTextColor":"#6B7A90","edgeLabelBackground":"#F1F5F9","actorLineColor":"#94A3B8"}}}%%
@@ -93,7 +93,7 @@ flowchart TD
     Q --> G["Graph path"]
     V --> V1["chunk_embeddings, HNSW index"]
     K --> K1["chunks.content_tsv, GIN index"]
-    G --> G1["AGE Node and EDGE tables"]
+    G --> G1["eq_graph_nodes and eq_graph_edges"]
     V1 --> F["Fence check: state is ready"]
     K1 --> F
     G1 --> R["Context for the answer"]
@@ -109,7 +109,7 @@ class G1 eqStore
 
 - Scoped tables carry `tenant_id`, `workspace_id`, or both.
 - Scoped data-access transactions set the tenant context and switch to the `edgequake_tenant_access` role. That role has `NOBYPASSRLS`, so Row-Level Security (RLS, policies that filter rows per session) applies to it. The application layer also filters by scope, because not every query runs in a scoped transaction.
-- The AGE graph is shared. Isolation there comes from `tenant_id` and `workspace_id` properties on nodes and edges, plus application filters.
+- The graph tables are shared across workspaces. Isolation comes from `tenant_id` and `workspace_id` columns, plus application filters.
 
 For the details and the history of this decision, see [rls-superuser-acceptance.md](./rls-superuser-acceptance.md).
 
@@ -120,7 +120,7 @@ For the details and the history of this decision, see [rls-superuser-acceptance.
 | [schema-er.md](./schema-er.md) | Full Mermaid E/R diagrams of every domain (tenancy, documents, PDF, graph read models, embeddings, tasks, durable writes, SSO, caches) |
 | [postgres.md](./postgres.md) | Tables, tenancy, connection pools, timeouts, migrations, plain-SQL operation catalog |
 | [pgvector.md](./pgvector.md) | Embedding tables, HNSW indexes, search tuning, vector operation catalog |
-| [age.md](./age.md) | Graph model, Cypher and native SQL, graph operation catalog |
+| [age.md](./age.md) | Historical catalog. The serving graph is `eq_graph_nodes` / `eq_graph_edges`. |
 | [indexes.md](./indexes.md) | Which indexes exist and which operations use them |
 | [complexity-matrix.md](./complexity-matrix.md) | Expected cost and failure modes per operation class |
 | [00-inventory.md](./00-inventory.md) | What Ref IDs are and how many exist |
@@ -133,7 +133,7 @@ For the details and the history of this decision, see [rls-superuser-acceptance.
 
 ## Ref IDs and tests
 
-Every operation in the original SPEC-088 inventory has a Ref ID such as `DATA-AGE-GRAPH-UPSERT-NODES-BATCH-046`. IDs never change. They appear as `/* DATA-... */` comment prefixes on SQL, so you can match a slow statement to its operation. Metrics use the same ID (`TimedStorageOp::start_dataop`). See [00-inventory.md](./00-inventory.md).
+Every operation in the original SPEC-088 inventory has a Ref ID. IDs never change. They appear as `/* DATA-... */` comment prefixes on SQL, so you can match a slow statement to its operation. Metrics use the same ID (`TimedStorageOp::start_dataop`). See [00-inventory.md](./00-inventory.md).
 
 Run the unit tests (no database needed):
 
