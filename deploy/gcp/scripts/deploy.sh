@@ -24,6 +24,11 @@ if [[ ! -f "${ENV_FILE}" ]]; then
   STACK_ENV_FILE="${ENV_FILE}" "${ROOT}/scripts/render-env.sh"
 fi
 
+# A version bump must still attach the originals key. A missing secret
+# leaves the server on database mode.
+log "render originals key"
+STACK_ENV_FILE="${ENV_FILE}" "${ROOT}/scripts/render-originals.sh"
+
 set -a
 # shellcheck disable=SC1090
 source "${ENV_FILE}"

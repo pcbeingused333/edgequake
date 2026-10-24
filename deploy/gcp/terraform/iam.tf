@@ -6,6 +6,20 @@ resource "google_service_account" "gce" {
   depends_on = [google_project_service.required]
 }
 
+resource "google_service_account" "originals" {
+  account_id   = "${var.name_prefix}-originals"
+  display_name = "EdgeQuake originals bucket"
+  project      = var.project_id
+
+  depends_on = [google_project_service.required]
+}
+
+resource "google_storage_bucket_iam_member" "originals_admin" {
+  bucket = google_storage_bucket.originals.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.originals.email}"
+}
+
 resource "google_service_account" "github" {
   account_id   = "${var.name_prefix}-github"
   display_name = "EdgeQuake GitHub Actions deploy (WIF)"

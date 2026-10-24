@@ -30,6 +30,10 @@ output "artifacts_bucket" {
   value = google_storage_bucket.artifacts.name
 }
 
+output "originals_bucket" {
+  value = google_storage_bucket.originals.name
+}
+
 output "edgequake_version" {
   value = var.edgequake_version
 }
@@ -54,5 +58,6 @@ output "secret_ids" {
     master_api_key           = google_secret_manager_secret.app["master-api-key"].secret_id
     openai_api_key           = google_secret_manager_secret.openai.secret_id
     mistral_api_key          = google_secret_manager_secret.mistral.secret_id
+    gcs_originals_key        = google_secret_manager_secret.gcs_originals.secret_id
   }
 }

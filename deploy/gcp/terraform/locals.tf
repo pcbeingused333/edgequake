@@ -28,7 +28,8 @@ locals {
     "compose/.env.example"       = "${path.module}/../compose/.env.example"
     "scripts/deploy.sh"          = "${path.module}/../scripts/deploy.sh"
     "scripts/install-release.sh" = "${path.module}/../scripts/install-release.sh"
-    "scripts/render-env.sh"      = "${path.module}/../scripts/render-env.sh"
+    "scripts/render-env.sh"       = "${path.module}/../scripts/render-env.sh"
+    "scripts/render-originals.sh" = "${path.module}/../scripts/render-originals.sh"
     "scripts/load-metadata.sh"   = "${path.module}/../scripts/load-metadata.sh"
     "scripts/generate-tls.sh"    = "${path.module}/../scripts/generate-tls.sh"
   }

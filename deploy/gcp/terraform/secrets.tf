@@ -103,6 +103,26 @@ resource "google_secret_manager_secret_version" "mistral_placeholder" {
   }
 }
 
+# Container for the bucket key. The version is added with gcloud, not here.
+resource "google_secret_manager_secret" "gcs_originals" {
+  secret_id = "${var.name_prefix}-gcs-originals-key"
+  project   = var.project_id
+  labels    = local.labels
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.required]
+}
+
+resource "google_secret_manager_secret_iam_member" "gce_originals" {
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.gcs_originals.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.gce.email}"
+}
+
 resource "google_secret_manager_secret_iam_member" "gce_mistral" {
   project   = var.project_id
   secret_id = google_secret_manager_secret.mistral.secret_id

@@ -72,6 +72,11 @@ services:
       EDGEQUAKE_BOOTSTRAP_ADMIN_EMAIL: ${EDGEQUAKE_BOOTSTRAP_ADMIN_EMAIL:-admin@elitizon.local}
       EDGEQUAKE_MASTER_API_KEY: ${EDGEQUAKE_MASTER_API_KEY}
       JWT_SECRET: ${JWT_SECRET}
+      EDGEQUAKE_ORIGINAL_STORE: ${EDGEQUAKE_ORIGINAL_STORE:-database}
+      EDGEQUAKE_ORIGINAL_STORE_URL: ${EDGEQUAKE_ORIGINAL_STORE_URL:-}
+      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-}
+    volumes:
+      - /opt/edgequake/secrets/gcs-originals.json:/run/secrets/gcs-originals.json:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

@@ -99,3 +99,6 @@ CADDY_ACME_EMAIL=${ACME_EMAIL}
 EOF
 chmod 600 "${ENV_FILE}"
 chown root:root "${ENV_FILE}"
+
+STACK_ENV_FILE="${ENV_FILE}" STACK_PROJECT="${PROJECT}" STACK_INSTALL_ROOT="${INSTALL_ROOT}" \
+  "$(dirname "$0")/render-originals.sh"
