@@ -24,6 +24,26 @@ pub struct StorageRuntime {
     /// SPEC-151 per-page parse/figures/entities health.
     pub page_state_storage: Option<Arc<dyn edgequake_storage::PageStateStorage>>,
     pub mode: StorageMode,
+    /// SPEC-172. `ready` is false when object mode cannot see the bucket.
+    pub original_store: OriginalStoreHealth,
+}
+
+/// Where uploaded originals live. Mode is fleet-wide, not a workspace setting.
+#[derive(Clone)]
+pub struct OriginalStoreHealth {
+    pub mode: String,
+    pub ready: bool,
+    pub client: Option<std::sync::Arc<edgequake_storage::originals::OriginalsClient>>,
+}
+
+impl Default for OriginalStoreHealth {
+    fn default() -> Self {
+        Self {
+            mode: "database".into(),
+            ready: true,
+            client: None,
+        }
+    }
 }
 
 impl StorageRuntime {
@@ -58,6 +78,7 @@ impl StorageRuntime {
             page_layout_storage: Some(Arc::new(edgequake_storage::MemoryPageLayoutStorage::new())),
             page_state_storage: Some(Arc::new(edgequake_storage::MemoryPageStateStorage::new())),
             mode: StorageMode::Memory,
+            original_store: OriginalStoreHealth::default(),
         }
     }
 
@@ -144,6 +165,7 @@ mod tests {
             page_layout_storage: None,
             page_state_storage: None,
             mode: StorageMode::PostgreSQL,
+            original_store: OriginalStoreHealth::default(),
         };
         assert!(missing_pdf.validate_postgres_adapters().is_err());
     }
@@ -181,6 +203,7 @@ mod tests {
             page_layout_storage: Some(layout),
             page_state_storage: Some(page_state),
             mode: StorageMode::Memory,
+            original_store: OriginalStoreHealth::default(),
         };
 
         assert!(storage.is_memory());

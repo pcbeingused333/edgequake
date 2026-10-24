@@ -5,7 +5,7 @@
 > **Graph-RAG in Rust: one binary, one Postgres, any LLM — cloud or fully local.**  
 > Turn documents into a knowledge graph and get answers with sources, not just similar chunks.
 
-[![Version](https://img.shields.io/badge/version-0.36.0-blue.svg?style=flat)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.37.0-blue.svg?style=flat)](CHANGELOG.md)
 [![CI](https://github.com/raphaelmansuy/edgequake/actions/workflows/ci.yml/badge.svg)](https://github.com/raphaelmansuy/edgequake/actions/workflows/ci.yml)
 [![Rust](https://img.shields.io/badge/rust-1.95+-orange.svg?style=flat&logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat)](LICENSE)
@@ -52,7 +52,7 @@ curl -X POST http://localhost:8080/api/v1/query \
 | REST API / Swagger | http://localhost:8080 · `/swagger-ui` | see `make status` |
 | Health | http://localhost:8080/health | see `make status` |
 
-Pin a version: `EDGEQUAKE_VERSION=0.36.0 sh quickstart.sh`. More options: [Docker deployment options](docs/operations/docker-deployment-options.md) · [Enable login](docs/operations/auth-quickstart.md).
+Pin a version: `EDGEQUAKE_VERSION=0.37.0 sh quickstart.sh`. More options: [Docker deployment options](docs/operations/docker-deployment-options.md) · [Enable login](docs/operations/auth-quickstart.md).
 
 ---
 
@@ -119,7 +119,7 @@ So the pitch is not "more accurate than LightRAG". It is **the same retrieval qu
 
 ## Built for production
 
-- **One datastore.** PostgreSQL 16/17/18 with pgvector + Apache AGE. No separate vector DB or graph DB to run.
+- **One datastore for the graph.** PostgreSQL 16/17/18 with pgvector. No separate vector DB or graph DB to run. PDF bytes, uploads, page images, and extracted markdown can move to a private bucket. Text and chunks stay in Postgres. The default is still the database. See [originals](docs/operations/originals.md).
 - **Safe upgrades.** The API never migrates your database. `edgequake migrate` is explicit, progressive, and replay-tested from every published release ([SPEC-150](specs/150-reliable-migration-system/README.md), [upgrading](docs/operations/upgrading.md)).
 - **Secure defaults.** Quickstart binds to loopback; secrets are generated; connection keys are AES-256-GCM encrypted and write-only ([SECURITY.md](SECURITY.md), [SPEC-163](specs/163-onboarding-provider-config/README.md)).
 - **Multi-tenant.** Fail-closed workspace isolation for query, delete, and recovery. Built-in auth, SSO (Keycloak/OIDC), and audit logging.
@@ -147,7 +147,7 @@ So the pitch is not "more accurate than LightRAG". It is **the same retrieval qu
 | Choose / configure a model | [Providers](docs/providers/index.md) · [Env reference](docs/operations/env-reference.md) |
 | Deploy | [Deployment](docs/operations/deployment.md) · [Docker options](docs/operations/docker-deployment-options.md) · [Configuration](docs/operations/configuration.md) |
 | Upgrade | [Upgrading](docs/operations/upgrading.md) · [What's new](docs/whats-new.md) · [CHANGELOG](CHANGELOG.md) |
-| Operate | [Monitoring](docs/operations/monitoring.md) · [Runtime auth](docs/operations/runtime-auth-hardening.md) · [Troubleshooting](docs/troubleshooting/) |
+| Operate | [Monitoring](docs/operations/monitoring.md) · [Runtime auth](docs/operations/runtime-auth-hardening.md) · [Originals](docs/operations/originals.md) · [Troubleshooting](docs/troubleshooting/) |
 | Understand | [Architecture](docs/architecture/overview.md) · [Deep dives](docs/deep-dives/lightrag-algorithm.md) · [FAQ](docs/faq.md) |
 
 ## Contributing

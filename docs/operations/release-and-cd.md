@@ -7,11 +7,11 @@ description: "Release and continuous-delivery runbook."
 
 This runbook covers cutting a product release: the local quality gates, the tag-triggered Docker publish, and the checks after publish. Workspace crates are **not** published to crates.io. Product delivery is GHCR Docker images, built when you push a `vX.Y.Z` tag.
 
-> **Product: v0.36.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.37.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 >
-> Upgrade: [upgrade-to-0.36.0.md](upgrade-to-0.36.0.md) (members, invitations, access links, and query migrations 208–212; schema **214**). Previous: [upgrade-to-0.35.7.md](upgrade-to-0.35.7.md) (admin organization switch and plain-graph search without Apache AGE; schema **207**), [upgrade-to-0.35.5.md](upgrade-to-0.35.5.md) (Postgres images without Apache AGE; schema **207**), [upgrade-to-0.35.0.md](upgrade-to-0.35.0.md) (SPEC-164 plain graph; schema **206**), [upgrade-to-0.34.0.md](upgrade-to-0.34.0.md) (visual tour; schema **169**).
+> Upgrade: [upgrade-to-0.37.0.md](upgrade-to-0.37.0.md) (original bytes in a private bucket; schema **218**). Previous: [upgrade-to-0.36.0.md](upgrade-to-0.36.0.md) (members, invitations, access links, and query migrations 208–212; schema **214**), [upgrade-to-0.35.7.md](upgrade-to-0.35.7.md) (admin organization switch and plain-graph search without Apache AGE; schema **207**), [upgrade-to-0.35.5.md](upgrade-to-0.35.5.md) (Postgres images without Apache AGE; schema **207**), [upgrade-to-0.35.0.md](upgrade-to-0.35.0.md) (SPEC-164 plain graph; schema **206**).
 >
-> **SPEC-001 Acc (this cut):** medical-mid n=200, archive [`medical-mid-20261019T141211Z`](../../specs/001-benchmark/e2e/artifacts/history/medical-mid-20261019T141211Z/) (`valid: true`): EdgeQuake **0.8240**, LightRAG **0.8016**, delta **+0.0223**, 95% CI **[-0.0132, +0.0780]** (n_paired 97). The interval includes 0, so this is a statistical tie. EdgeQuake does not claim a win. Decision mode is unscored.
+> **SPEC-001 Acc (this cut):** medical-mid n=200, archive [`medical-mid-20261024T031725Z`](../../specs/001-benchmark/e2e/artifacts/history/medical-mid-20261024T031725Z/) (`valid: true`): EdgeQuake **0.8084**, LightRAG **0.7681**, delta **+0.0403**, 95% CI **[-0.0241, +0.1036]** (n_paired 72). The interval includes 0, so this is a statistical tie. EdgeQuake does not claim a win. Decision mode is unscored.
 >
 > **Pinned crates.io versions** (`edgequake/Cargo.toml`): `edgequake-llm` 0.10.9, `edgequake-pdf2md` 0.9.11, `edgeparse-core` 0.3.2. The Rust SDK in `sdks/rust` is version 0.4.0.
 

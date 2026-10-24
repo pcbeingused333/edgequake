@@ -21,7 +21,7 @@ PAIRS=(
   "EDGEQUAKE_GRAPH_SCAN_THRESHOLD:edgequake/crates/edgequake-core/src/resource/budget.rs"
   "EDGEQUAKE_GRAPH_MATERIALIZE_CONCURRENT:edgequake/crates/edgequake-core/src/resource/budget.rs"
   "EDGEQUAKE_GRAPH_QUERY_TIMEOUT_SECS:edgequake/crates/edgequake-core/src/resource/budget.rs"
-  "EDGEQUAKE_MAX_UPLOAD_BYTES:edgequake/crates/edgequake-core/src/resource/budget.rs"
+  "EDGEQUAKE_MAX_UPLOAD_BYTES:edgequake/crates/edgequake-storage/src/originals/cap.rs"
   "EDGEQUAKE_MEM_LIMIT:edgequake/src/main.rs"
 )
 

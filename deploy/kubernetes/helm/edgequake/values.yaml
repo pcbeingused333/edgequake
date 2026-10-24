@@ -33,6 +33,18 @@ api:
   replicaCount: 1
   # SPEC-150: wait for migrate instead of exit-78 crash loop.
   schemaGate: wait
+  # SPEC-172. database is the safe default. object needs a private bucket.
+  # Credentials come from an existing secret, never from this file.
+  originalStore:
+    mode: database
+    url: ""
+    endpoint: ""
+    region: us-east-1
+    pathStyle: ""
+    allowHttp: false
+    existingSecret: ""
+    accessKeySecretKey: ""
+    secretAccessKeySecretKey: ""
   image:
     repository: ghcr.io/raphaelmansuy/edgequake
     tag: ""

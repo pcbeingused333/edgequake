@@ -22,8 +22,8 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
-/** One footprint for loading / healthy / degraded so the slot never resizes (CLS). */
-const STATUS_SLOT = 'flex h-9 min-w-[13.5rem] items-center gap-2 rounded-lg border px-3 text-xs';
+/** One footprint for loading / healthy / degraded. Two lines when the originals label wraps. */
+const STATUS_SLOT = 'flex min-h-9 w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs leading-snug';
 
 export function SystemStatus() {
   const { t } = useTranslation();
@@ -68,6 +68,7 @@ export function SystemStatus() {
   const allHealthy =
     state === 'ready' &&
     !isHealthLoading &&
+    health?.components?.original_store_ready !== false &&
     (health?.components?.graph_storage === true ||
       health?.components?.storage === 'up' ||
       health?.components?.storage === true) &&
@@ -85,10 +86,18 @@ export function SystemStatus() {
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75 motion-safe:animate-ping" />
           <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
         </span>
-        <span>
-          {t('dashboard.system.healthy', 'All systems operational')}
-          {health?.llm_provider_name && (
-            <span className="ml-1 text-muted-foreground">· {health.llm_provider_name}</span>
+        <span className="flex min-w-0 flex-col">
+          <span>
+            {t('dashboard.system.healthy', 'All systems operational')}
+            {health?.llm_provider_name && (
+              <span className="ml-1 text-muted-foreground">· {health.llm_provider_name}</span>
+            )}
+          </span>
+          {health?.original_store && (
+            <span className="text-muted-foreground" data-testid="original-store-mode">
+              Originals: {health.original_store === 'object' ? 'Object store' : 'Database'}
+              {health.components?.original_store_ready === false ? ' (not ready)' : ''}
+            </span>
           )}
         </span>
       </div>
@@ -108,7 +117,15 @@ export function SystemStatus() {
       data-testid="dashboard-system-degraded"
     >
       <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
-      <span className="truncate">{degradedLabel}</span>
+      <span className="flex min-w-0 flex-col">
+        <span className="truncate">{degradedLabel}</span>
+        {health?.original_store && (
+          <span className="text-muted-foreground" data-testid="original-store-mode">
+            Originals: {health.original_store === 'object' ? 'Object store' : 'Database'}
+            {health.components?.original_store_ready === false ? ' (not ready)' : ''}
+          </span>
+        )}
+      </span>
     </div>
   );
 }

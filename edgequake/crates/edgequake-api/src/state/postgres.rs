@@ -675,6 +675,7 @@ impl AppState {
             page_layout_storage: Some(Arc::clone(&documents.page_layouts)),
             page_state_storage: Some(Arc::clone(&documents.page_states)),
             mode: StorageMode::PostgreSQL,
+            original_store: materialized.relational.original_store.clone(),
         };
         storage.validate_postgres_adapters()?;
 

@@ -96,6 +96,7 @@ futures = { workspace = true }
 num_cpus = { workspace = true }
 sqlx = { workspace = true, optional = true }
 chrono = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
@@ -120,7 +121,7 @@ name = "graphrag_bench"
 harness = false
 
 [workspace.package]
-version = "0.36.0"
+version = "0.37.0"
 edition = "2021"
 rust-version = "1.95"
 license = "Apache-2.0"

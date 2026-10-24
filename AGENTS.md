@@ -710,6 +710,7 @@ make backend-bg
 | `EDGEQUAKE_VISION_MODEL_MANUSCRIPT` | Optional | Vision model override for manuscript-class docs (SPEC-134 WP-10; no vendor hardcoded) | `gpt-5.2`, … |
 | `EDGEQUAKE_VISION_MAX_IMAGE_BYTES` | Optional | Per-image binary budget for vision calls (SPEC-134 Slice D; default **3500000**). Oversized PNGs are re-encoded to JPEG. `0` disables | `3500000` |
 | `EDGEQUAKE_PDF_EMPTY_PAGE_RETRY` | Optional | Re-OCR pages that returned the empty placeholder while a page render exists (SPEC-134 Slice D; default **on**) | `0` / `false` disables |
+| `EDGEQUAKE_ORIGINAL_STORE` | Optional | Where original uploads live: `database` (default) or `object`. `make dev` sets `object` and starts MinIO. `make dev-database` keeps `database`. | `database` |
 | `EDGEQUAKE_SCHEMA_GATE` | Optional | Serve boot when schema pending: `fail` (exit 78) or `wait` (lite `/live` 200, `/ready` 503) (SPEC-150; default **fail**; Helm/compose set **wait**) | `wait` |
 | `EDGEQUAKE_SCHEMA_GATE_POLL` | Optional | Seconds between ledger polls in wait mode (SPEC-150; default **2**) | `2` |
 | `EDGEQUAKE_MIGRATE_LOCK_DEADLINE` | Optional | Seconds to wait for migrate advisory lock before exit 75 (SPEC-150; default **60**) | `60` |
@@ -854,7 +855,7 @@ Checklist summary:
 5. `git tag vX.Y.Z && git push origin vX.Y.Z` → GHCR via `release-docker.yml`
 6. Verify: `gh release view vX.Y.Z` + `docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:X.Y.Z`
 
-Current product pin: **v0.36.0**.
+Current product pin: **v0.37.0**.
 
 ## Automation & Agent Workflow
 

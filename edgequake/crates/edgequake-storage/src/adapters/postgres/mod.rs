@@ -63,6 +63,8 @@ mod original_storage_impl;
 mod page_layout_storage_impl;
 mod page_state_storage_impl;
 mod pdf_list_query;
+mod pdf_markdown_object;
+mod pdf_object;
 mod pdf_storage_impl;
 mod pool_budget;
 mod pool_bundle;

@@ -62,6 +62,27 @@ impl RelationalProviderFactory for PgRelationalProviderFactory {
                 StorageError::Database(format!("provision relational defaults: {e}"))
             })?;
         }
+        let opened = edgequake_storage::originals::open_from_env()
+            .await
+            .map_err(|err| StorageError::InvalidConfig(err.to_string()))?;
+        let decision = edgequake_storage::originals::assess_boot(&r.admin, &opened)
+            .await
+            .map_err(|err| StorageError::InvalidConfig(err.to_string()))?;
+        let original_ready = match decision {
+            edgequake_storage::originals::BootDecision::Exit(message) => {
+                return Err(StorageError::InvalidConfig(message));
+            }
+            edgequake_storage::originals::BootDecision::Serve { ready } => ready,
+        };
+        if let Some(client) = &opened.client {
+            tracing::info!(
+                bucket = %client.bucket,
+                host = %client.endpoint_host,
+                ready = original_ready,
+                "original store configured"
+            );
+        }
+        let objects = opened.client.clone();
         Ok(RelationalProviderRuntime {
             kv_storage: kv,
             kv_query,
@@ -83,11 +104,22 @@ impl RelationalProviderFactory for PgRelationalProviderFactory {
             access_link_store: Arc::new(crate::services::access_links::pg_store::PgAccessLinkStore::new(pool.clone())),
             decision_store: Arc::new(edgequake_storage::adapters::postgres::decision_store::PostgresDecisionStore::new(pool.clone())),
             documents: DocumentStores {
-                pdf: Arc::new(edgequake_storage::PostgresPdfStorage::new(pool.clone())),
-                originals: Arc::new(edgequake_storage::PostgresOriginalStorage::new(pool.clone())),
-                multimodal_assets: Arc::new(edgequake_storage::PostgresMmAssetStorage::new(pool.clone())),
+                pdf: Arc::new(edgequake_storage::PostgresPdfStorage::new(pool.clone()).with_objects(objects.clone())),
+                originals: Arc::new(edgequake_storage::PostgresOriginalStorage::new(pool.clone()).with_objects(objects.clone())),
+                multimodal_assets: Arc::new(
+                    edgequake_storage::PostgresMmAssetStorage::new(pool.clone())
+                        .with_objects(objects.clone()),
+                ),
                 page_layouts: Arc::new(edgequake_storage::PostgresPageLayoutStorage::new(pool.clone())),
                 page_states: Arc::new(edgequake_storage::PostgresPageStateStorage::new(pool)),
+            },
+            original_store: crate::state::storage_runtime::OriginalStoreHealth {
+                mode: match opened.mode {
+                    edgequake_storage::originals::StoreMode::Database => "database".into(),
+                    edgequake_storage::originals::StoreMode::Object => "object".into(),
+                },
+                ready: original_ready,
+                client: objects,
             },
         })
     }

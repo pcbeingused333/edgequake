@@ -9,7 +9,7 @@
     "license": {
       "name": "Apache-2.0"
     },
-    "version": "0.36.0"
+    "version": "0.37.0"
   },
   "servers": [
     {
@@ -4033,8 +4033,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reprocess_failed",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reprocess_failed"
       }
     },
     "/api/v1/documents/scan": {
@@ -5289,8 +5289,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reanalyze_multimodal",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reanalyze_multimodal"
       }
     },
     "/api/v1/documents/{document_id}/retry-chunks": {
@@ -10832,8 +10832,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "rebuild_embeddings"
+        "x-edgequake-v2-job-type": "rebuild_embeddings",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/rebuild-knowledge-graph": {
@@ -10906,8 +10906,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "rebuild_knowledge_graph"
+        "x-edgequake-v2-job-type": "rebuild_knowledge_graph",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/reprocess-documents": {
@@ -13663,6 +13663,10 @@
             "type": "boolean",
             "description": "LLM provider status."
           },
+          "original_store_ready": {
+            "type": "boolean",
+            "description": "SPEC-172. True in database mode. In object mode, true after the bucket probe."
+          },
           "vector_storage": {
             "type": "boolean",
             "description": "Vector storage status."
@@ -13674,6 +13678,7 @@
           "graph_storage": {},
           "kv_storage": {},
           "llm_provider": {},
+          "original_store_ready": {},
           "vector_storage": {}
         }
       },
@@ -19638,6 +19643,10 @@
                 "description": "Operational signals for dashboards (SPEC-024 Phase 4.3)."
               }
             ]
+          },
+          "original_store": {
+            "type": "string",
+            "description": "Where original uploaded bytes live: `database` or `object` (SPEC-172)."
           },
           "pdf_storage_enabled": {
             "type": [
@@ -34568,7 +34577,7 @@
     "asyncapi": "2.6.0",
     "info": {
       "title": "EdgeQuake WebSocket Progress",
-      "version": "0.36.0",
+      "version": "0.37.0",
       "description": "Real-time pipeline and document processing progress over WebSocket (RFC 6455). SPEC-149: clients subscribe to owned track_ids on the global channel; events use a tagged {type,data} envelope."
     },
     "defaultContentType": "application/json",

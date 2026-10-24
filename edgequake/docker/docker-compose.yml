@@ -190,6 +190,145 @@ services:
       retries: 5
       start_period: 10s
 
+  # SPEC-172: local originals bucket. Single-node MinIO reports parity 0.
+  # This is a development store, not a production volume. Image user is 65532.
+  # The image has no shell and no curl, so readiness is EdgeQuake /ready, not an
+  # in-container healthcheck. Bucket creation is the minio-client one-shot.
+  # Do not set MINIO_DOMAIN; the SDK uses path-style against this endpoint.
+  minio:
+    profiles: ["minio"]
+    image: cgr.dev/chainguard/minio:latest
+    container_name: edgequake-minio
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    volumes:
+      - minio-data:/data
+    networks:
+      - edgequake-network
+
+  minio-init:
+    profiles: ["minio"]
+    image: cgr.dev/chainguard/minio-client:latest
+    container_name: edgequake-minio-init
+    depends_on:
+      - minio
+    environment:
+      MC_HOST_local: http://${MINIO_ROOT_USER:-minioadmin}:${MINIO_ROOT_PASSWORD:-minioadmin123}@minio:9000
+    command: ["mb", "--ignore-existing", "local/${MINIO_BUCKET:-eq-originals}"]
+    networks:
+      - edgequake-network
+    restart: "no"
+
+  # The client image is mc itself, with no shell, so each admin call is its own
+  # one-shot. Root creates the policy and the app user. The API does not use root.
+  minio-policy:
+    profiles: ["minio"]
+    image: cgr.dev/chainguard/minio-client:latest
+    depends_on:
+      - minio
+    environment:
+      MC_HOST_local: http://${MINIO_ROOT_USER:-minioadmin}:${MINIO_ROOT_PASSWORD:-minioadmin123}@minio:9000
+    volumes:
+      - ./minio/originals-policy.json:/policy/originals-policy.json:ro
+    command: ["admin", "policy", "create", "local", "originals-app", "/policy/originals-policy.json"]
+    networks:
+      - edgequake-network
+    restart: "no"
+
+  minio-policy-info:
+    profiles: ["minio"]
+    image: cgr.dev/chainguard/minio-client:latest
+    depends_on:
+      - minio
+    environment:
+      MC_HOST_local: http://${MINIO_ROOT_USER:-minioadmin}:${MINIO_ROOT_PASSWORD:-minioadmin123}@minio:9000
+    command: ["admin", "policy", "info", "local", "originals-app"]
+    networks:
+      - edgequake-network
+    restart: "no"
+
+  minio-user:
+    profiles: ["minio"]
+    image: cgr.dev/chainguard/minio-client:latest
+    depends_on:
+      - minio
+    environment:
+      MC_HOST_local: http://${MINIO_ROOT_USER:-minioadmin}:${MINIO_ROOT_PASSWORD:-minioadmin123}@minio:9000
+    command: ["admin", "user", "add", "local", "${MINIO_APP_USER:-eq-originals-app}", "${MINIO_APP_PASSWORD:-eq-originals-app-dev}"]
+    networks:
+      - edgequake-network
+    restart: "no"
+
+  minio-user-info:
+    profiles: ["minio"]
+    image: cgr.dev/chainguard/minio-client:latest
+    depends_on:
+      - minio
+    environment:
+      MC_HOST_local: http://${MINIO_ROOT_USER:-minioadmin}:${MINIO_ROOT_PASSWORD:-minioadmin123}@minio:9000
+    command: ["admin", "user", "info", "local", "${MINIO_APP_USER:-eq-originals-app}"]
+    networks:
+      - edgequake-network
+    restart: "no"
+
+  minio-attach:
+    profiles: ["minio"]
+    image: cgr.dev/chainguard/minio-client:latest
+    depends_on:
+      - minio
+    environment:
+      MC_HOST_local: http://${MINIO_ROOT_USER:-minioadmin}:${MINIO_ROOT_PASSWORD:-minioadmin123}@minio:9000
+    command: ["admin", "policy", "attach", "local", "originals-app", "--user", "${MINIO_APP_USER:-eq-originals-app}"]
+    networks:
+      - edgequake-network
+    restart: "no"
+
+  minio-canary:
+    profiles: ["minio"]
+    image: cgr.dev/chainguard/minio-client:latest
+    depends_on:
+      - minio
+    environment:
+      MC_HOST_local: http://${MINIO_ROOT_USER:-minioadmin}:${MINIO_ROOT_PASSWORD:-minioadmin123}@minio:9000
+    volumes:
+      - ./minio/canary.txt:/policy/canary.txt:ro
+    command: ["cp", "/policy/canary.txt", "local/${MINIO_BUCKET:-eq-originals}/other/policy-canary"]
+    networks:
+      - edgequake-network
+    restart: "no"
+
+  # MinIO ignores AbortIncompleteMultipartUpload. Stale parts expire through this
+  # server setting. The AWS file is for an operator; this process does not apply it.
+  minio-config-get:
+    profiles: ["minio"]
+    image: cgr.dev/chainguard/minio-client:latest
+    depends_on:
+      - minio
+    environment:
+      MC_HOST_local: http://${MINIO_ROOT_USER:-minioadmin}:${MINIO_ROOT_PASSWORD:-minioadmin123}@minio:9000
+    command: ["admin", "config", "get", "local", "api"]
+    networks:
+      - edgequake-network
+    restart: "no"
+
+  minio-config-set:
+    profiles: ["minio"]
+    image: cgr.dev/chainguard/minio-client:latest
+    depends_on:
+      - minio
+    environment:
+      MC_HOST_local: http://${MINIO_ROOT_USER:-minioadmin}:${MINIO_ROOT_PASSWORD:-minioadmin123}@minio:9000
+    command: ["admin", "config", "set", "local", "api", "stale_uploads_expiry=24h"]
+    networks:
+      - edgequake-network
+    restart: "no"
+
   # Optional: Jaeger all-in-one for OTLP trace export (SPEC-018).
   # Usage: docker compose -f docker-compose.yml -f docker-compose.observability.yml --profile observability up
   jaeger:
@@ -212,6 +351,9 @@ volumes:
   postgres-data-pg17:
     driver: local
   postgres-data-pg16:
+    driver: local
+  # SPEC-172 dev object store. Named volume so the Chainguard user 65532 can write it.
+  minio-data:
     driver: local
 
 networks:

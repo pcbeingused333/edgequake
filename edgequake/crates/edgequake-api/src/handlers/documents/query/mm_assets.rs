@@ -14,10 +14,11 @@ use std::path::{Component, Path, PathBuf};
 
 use axum::body::Body;
 use axum::extract::{Path as AxumPath, State};
-use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
+use axum::http::header::{CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_TYPE};
 use axum::http::{HeaderValue, StatusCode};
 use axum::response::Response;
 use axum::Json;
+use edgequake_storage::safe_mm_asset_content_type;
 use tracing::debug;
 
 use crate::error::{ApiError, ApiResult};
@@ -138,9 +139,17 @@ fn binary_asset_response(
     );
     let mut res = Response::new(Body::from(bytes));
     *res.status_mut() = StatusCode::OK;
-    let ct = HeaderValue::from_str(content_type)
-        .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream"));
-    res.headers_mut().insert(CONTENT_TYPE, ct);
+    let ct = safe_mm_asset_content_type(content_type);
+    res.headers_mut()
+        .insert(CONTENT_TYPE, HeaderValue::from_static(ct));
+    res.headers_mut().insert(
+        axum::http::header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    if ct == "application/octet-stream" {
+        res.headers_mut()
+            .insert(CONTENT_DISPOSITION, HeaderValue::from_static("attachment"));
+    }
     res.headers_mut().insert(
         CACHE_CONTROL,
         HeaderValue::from_static("private, max-age=3600"),
@@ -344,6 +353,28 @@ pub async fn download_document_mm_asset(
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn html_asset_is_an_attachment_and_png_stays_inline() {
+        let html = binary_asset_response(b"<html>".to_vec(), "text/html", "doc", "x.html");
+        assert_eq!(
+            html.headers().get(CONTENT_TYPE).unwrap(),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            html.headers().get(CONTENT_DISPOSITION).unwrap(),
+            "attachment"
+        );
+        assert_eq!(
+            html.headers()
+                .get(axum::http::header::X_CONTENT_TYPE_OPTIONS)
+                .unwrap(),
+            "nosniff"
+        );
+        let png = binary_asset_response(vec![0x89, b'P', b'N', b'G'], "image/png", "doc", "a.png");
+        assert_eq!(png.headers().get(CONTENT_TYPE).unwrap(), "image/png");
+        assert!(png.headers().get(CONTENT_DISPOSITION).is_none());
+    }
 
     #[test]
     fn rejects_path_traversal() {

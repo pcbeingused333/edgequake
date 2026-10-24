@@ -163,6 +163,18 @@ pub fn normalize_mm_asset_id(asset_id: &str) -> Result<String> {
     Ok(trimmed.to_string())
 }
 
+/// Content type safe to put on an image response. Anything else, including
+/// HTML and SVG, is an opaque download so the API origin cannot render it.
+pub fn safe_mm_asset_content_type(content_type: &str) -> &'static str {
+    match content_type.trim().to_ascii_lowercase().as_str() {
+        "image/png" => "image/png",
+        "image/jpeg" => "image/jpeg",
+        "image/webp" => "image/webp",
+        "image/gif" => "image/gif",
+        _ => "application/octet-stream",
+    }
+}
+
 /// Guess content-type from path extension.
 pub fn guess_mm_asset_content_type(asset_path: &str) -> &'static str {
     let lower = asset_path.to_ascii_lowercase();
@@ -205,6 +217,24 @@ mod tests {
         assert_eq!(
             asset_id_from_path("assets/page-0002-chart.png"),
             "page-0002-chart"
+        );
+    }
+
+    #[test]
+    fn content_type_allowlist_blocks_html_and_svg() {
+        assert_eq!(safe_mm_asset_content_type("image/png"), "image/png");
+        assert_eq!(safe_mm_asset_content_type("IMAGE/JPEG"), "image/jpeg");
+        assert_eq!(
+            safe_mm_asset_content_type("text/html"),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            safe_mm_asset_content_type("image/svg+xml"),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            safe_mm_asset_content_type("image/png\r\nX-Evil: 1"),
+            "application/octet-stream"
         );
     }
 

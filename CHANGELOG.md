@@ -4,6 +4,33 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.37.0] — 2026-10-24
+
+Original document bytes can live in a private bucket. Schema moves from **214** to **218**. An upgrade from 0.36.0 runs migrations **215** through **218**:
+[`docs/operations/upgrade-to-0.37.0.md`](docs/operations/upgrade-to-0.37.0.md).
+
+**CD:** GHCR `edgequake`, `edgequake-frontend`, `edgequake-postgres` (`0.37.0`, `-pg16`, `-pg17`, `-pg18`), and `edgequake-keycloak` on tag `v0.37.0`.
+
+**SPEC-001 Acc:** scored on this cut, medical-mid n=200, Mistral pins, archive
+[`medical-mid-20261024T031725Z`](specs/001-benchmark/e2e/artifacts/history/medical-mid-20261024T031725Z/)
+(`valid: true`). EdgeQuake **0.8084**, LightRAG **0.7681**, delta **+0.0403**
+(95% bootstrap CI [-0.0241, +0.1036], n_paired 72). The interval includes 0,
+so this is a statistical tie. EdgeQuake does not claim a win. Evidence recall is
+0.928 versus 0.945, and context relevancy is 0.414 versus 0.494.
+
+### Added (SPEC-172 — original bytes in an object store)
+
+- PDF bytes, uploaded originals, page images, and extracted markdown can live in a private bucket (`s3://`, `gs://`, or `az://`). `documents.content` and chunks stay in Postgres. The code default remains `EDGEQUAKE_ORIGINAL_STORE=database`. `make dev` sets `object` and starts MinIO. `make dev-database` stays on Postgres.
+- `edgequake originals` plans, copies, verifies, and restores. `clear` is a separate step and needs `--yes` after a clean verify. `--kind both` is PDF plus original. `--kind all` includes images and markdown.
+- A replacement writes a new object key. The previous key is deleted only after the database row commits. A failed commit deletes the new key and leaves the old one.
+- Keys must stay under `{prefix}/t/{tenant}/w/{workspace}/`. `make dev` uses the prefix-only app user `eq-originals-app`. The process does not create a bucket. `EDGEQUAKE_ORIGINAL_STORE_CREATE_BUCKET=true` fails at boot.
+- Amazon S3 (no custom endpoint) sends `x-amz-checksum-sha256` and skips the read-back. MinIO, GCS, and Azure still read the object back. Operator notes: [originals](docs/operations/originals.md).
+
+### Limits
+
+- Amazon S3, GCS, and Azure are implemented and unproven on a live account. MinIO is the store exercised end to end.
+- Moving bytes out of Postgres is an operator step (`edgequake originals`). A workspace is not cleared by the upgrade.
+
 ## [0.36.0] — 2026-10-19
 
 Members, invitations, and one-time sign-in links. Schema moves from **207** to **214**. An upgrade from 0.35.7 runs migrations **208** through **214**:

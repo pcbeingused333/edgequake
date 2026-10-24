@@ -5112,6 +5112,7 @@ export interface components {
          *       "graph_storage": {},
          *       "kv_storage": {},
          *       "llm_provider": {},
+         *       "original_store_ready": {},
          *       "vector_storage": {}
          *     }
          */
@@ -5134,6 +5135,8 @@ export interface components {
             kv_storage: boolean;
             /** @description LLM provider status. */
             llm_provider: boolean;
+            /** @description SPEC-172. True in database mode. In object mode, true after the bucket probe. */
+            original_store_ready?: boolean;
             /** @description Vector storage status. */
             vector_storage: boolean;
         };
@@ -8096,6 +8099,8 @@ export interface components {
             /** @description LLM provider name (e.g., "openai", "mock", "ollama"). */
             llm_provider_name?: string | null;
             operational?: null | components["schemas"]["OperationalHealth"];
+            /** @description Where original uploaded bytes live: `database` or `object` (SPEC-172). */
+            original_store?: string;
             /**
              * @description Whether PDF storage is enabled.
              *

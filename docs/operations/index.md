@@ -7,7 +7,7 @@ description: Run EdgeQuake in production - deploy, configure, secure, upgrade, m
 
 This section is for people who run EdgeQuake: platform engineers, SREs, and anyone who owns a deployment. Start here to find the right page for your task.
 
-> **Current release: v0.33.0** · Schema train **169** · Contract: OpenAPI
+> **Current release: v0.37.0** · Schema train **218** · Contract: OpenAPI
 
 ## Operating rules
 
@@ -54,9 +54,10 @@ How to read it: pick the branch that matches your situation. Each leaf is a page
 | Fix stalled local extraction (Ollama, LM Studio) | [Local extract reliability](local-extract-reliability.md) |
 | Debug missing metadata or lineage | [Metadata debugging](metadata-debugging.md) |
 | Fix empty vector search after an embedding change | [Embedding registry backfill](embedding-registry-backfill.md) |
+| Move original document bytes into the object store | [Originals migration](originals.md) |
 | Repair the entity spine or edge index (SPEC-098) | [Entity spine ensure](spec098-entity-spine-ensure.md) |
 | Send traces to Langfuse 3.1.x | [Langfuse 3.1.x](langfuse-3.1.md) |
 | Cut a release | [Release and CD](release-and-cd.md) and the [pre-delivery checklist](pre-delivery-checklist.md) |
-| Read what changed in a release | [Upgrade to v0.33.0](upgrade-to-0.33.0.md), [v0.32.2](upgrade-to-0.32.2.md), [v0.32.1](upgrade-to-0.32.1.md) |
+| Read what changed in a release | [Upgrade to v0.37.0](upgrade-to-0.37.0.md), [v0.36.0](upgrade-to-0.36.0.md), [v0.35.7](upgrade-to-0.35.7.md) |
 | Use decision extraction (preview) | [Decision extraction](../concepts/decision-extraction.md) |
 | Understand cancel, lease and fairness | [Ingestion cancel and fairness](../ingestion-cancel-and-fairness.md) |

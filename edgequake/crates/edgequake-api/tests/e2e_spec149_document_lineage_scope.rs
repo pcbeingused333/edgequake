@@ -186,6 +186,7 @@ async fn create_postgres_state(pool: &PgPool) -> (AppState, PostgresConfig) {
             page_layout_storage: None,
             page_state_storage: None,
             mode: StorageMode::PostgreSQL,
+            original_store: Default::default(),
         },
         query: edgequake_api::state::QueryRuntime {
             llm_provider: Arc::clone(&mock_provider) as Arc<dyn edgequake_llm::traits::LLMProvider>,

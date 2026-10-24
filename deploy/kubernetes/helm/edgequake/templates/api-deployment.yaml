@@ -49,6 +49,37 @@ spec:
             # SPEC-150: wait for migrate Job instead of crash-looping on exit 78.
             - name: EDGEQUAKE_SCHEMA_GATE
               value: {{ .Values.api.schemaGate | default "wait" | quote }}
+            {{- $original := .Values.api.originalStore | default dict }}
+            - name: EDGEQUAKE_ORIGINAL_STORE
+              value: {{ $original.mode | default "database" | quote }}
+            {{- if $original.url }}
+            - name: EDGEQUAKE_ORIGINAL_STORE_URL
+              value: {{ $original.url | quote }}
+            {{- end }}
+            {{- if $original.endpoint }}
+            - name: EDGEQUAKE_ORIGINAL_STORE_ENDPOINT
+              value: {{ $original.endpoint | quote }}
+            {{- end }}
+            - name: EDGEQUAKE_ORIGINAL_STORE_REGION
+              value: {{ $original.region | default "us-east-1" | quote }}
+            {{- if $original.pathStyle }}
+            - name: EDGEQUAKE_ORIGINAL_STORE_PATH_STYLE
+              value: {{ $original.pathStyle | quote }}
+            {{- end }}
+            - name: EDGEQUAKE_ORIGINAL_STORE_ALLOW_HTTP
+              value: {{ $original.allowHttp | default false | quote }}
+            {{- if $original.existingSecret }}
+            - name: EDGEQUAKE_ORIGINAL_STORE_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $original.existingSecret }}
+                  key: {{ $original.accessKeySecretKey }}
+            - name: EDGEQUAKE_ORIGINAL_STORE_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $original.existingSecret }}
+                  key: {{ $original.secretAccessKeySecretKey }}
+            {{- end }}
           lifecycle:
             preStop:
               exec:

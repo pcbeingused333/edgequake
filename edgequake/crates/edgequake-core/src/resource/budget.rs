@@ -141,11 +141,7 @@ impl ResourceBudgetConfig {
                 config.graph_query_timeout_secs = n.clamp(1, 120);
             }
         }
-        if let Ok(v) = std::env::var("EDGEQUAKE_MAX_UPLOAD_BYTES") {
-            if let Ok(n) = v.parse::<usize>() {
-                config.max_upload_bytes = n.max(1024 * 1024);
-            }
-        }
+        config.max_upload_bytes = edgequake_storage::originals::max_upload_bytes();
         if let Ok(v) = std::env::var("EDGEQUAKE_PDF_VISION_JOBS") {
             if let Ok(n) = v.parse::<usize>() {
                 config.pdf_vision_jobs_concurrent = n.clamp(1, 8);

@@ -4,7 +4,7 @@
 
 schema_version = 1
 compat_serve_min = 149
-compat_serve_max = 214
+compat_serve_max = 218
 irreversible_drop = [125, 126, 131, 171]
 legacy_cutover_assert = 142
 
@@ -1549,6 +1549,34 @@ lock_class = "ddl_access_exclusive"
 [[migration]]
 version = 214
 file = "214_spec169_user_access_links.sql"
+phase = "expand"
+no_transaction = false
+lock_class = "ddl_access_exclusive"
+
+[[migration]]
+version = 215
+file = "215_spec172_original_object_refs.sql"
+phase = "expand"
+no_transaction = false
+lock_class = "ddl_access_exclusive"
+
+[[migration]]
+version = 216
+file = "216_spec172_tenant_object_scope.sql"
+phase = "expand"
+no_transaction = false
+lock_class = "ddl_access_exclusive"
+
+[[migration]]
+version = 217
+file = "217_spec172_mm_asset_objects.sql"
+phase = "expand"
+no_transaction = false
+lock_class = "ddl_access_exclusive"
+
+[[migration]]
+version = 218
+file = "218_spec172_pdf_chunk_sha.sql"
 phase = "expand"
 no_transaction = false
 lock_class = "ddl_access_exclusive"

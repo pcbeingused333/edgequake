@@ -246,6 +246,31 @@ LANGFUSE_LOCAL_PROJECT_ID := edgequake-local
 # (overrides .env Cloud/placeholder keys). Used by make dev-langfuse / spec124-langfuse-e2e.
 WITH_LANGFUSE ?=
 
+# SPEC-172: `make dev` stores original uploads in MinIO. `make dev-database`
+# keeps them in Postgres BYTEA and does not start a bucket.
+WITH_MINIO ?= 1
+MINIO_ROOT_USER ?= minioadmin
+MINIO_ROOT_PASSWORD ?= minioadmin123
+# App identity for the API. Root only creates the bucket, the prefix policy, and the canary.
+MINIO_APP_USER ?= eq-originals-app
+MINIO_APP_PASSWORD ?= eq-originals-app-dev
+MINIO_BUCKET ?= eq-originals
+MINIO_API_PORT ?= 9000
+MINIO_CONSOLE_PORT ?= 9001
+ifeq ($(WITH_MINIO),1)
+ORIGINAL_STORE_MODE := object
+ORIGINAL_STORE_URL := s3://$(MINIO_BUCKET)/dev
+ORIGINAL_STORE_ENDPOINT := http://127.0.0.1:$(MINIO_API_PORT)
+ORIGINAL_STORE_ALLOW_HTTP := true
+ORIGINAL_STORE_PATH_STYLE := true
+else
+ORIGINAL_STORE_MODE := database
+ORIGINAL_STORE_URL :=
+ORIGINAL_STORE_ENDPOINT :=
+ORIGINAL_STORE_ALLOW_HTTP := false
+ORIGINAL_STORE_PATH_STYLE :=
+endif
+
 # SPEC-042: PostgreSQL major profile (pg16|pg17|pg18). PG18 is recommended for new dev installs.
 # Override via: make dev-pg17 | EQ_POSTGRES_PROFILE=pg16 make dev | .env EQ_POSTGRES_PROFILE=pg17
 EQ_POSTGRES_PROFILE ?= pg18
@@ -894,6 +919,7 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 	@echo ""
 	@echo "$(YELLOW)→ Ensuring PostgreSQL availability (profile: $(EQ_POSTGRES_PROFILE))...$(RESET)"
 	@$(MAKE) db-start --no-print-directory
+	@$(MAKE) minio-up --no-print-directory
 	@if [ "$(WITH_LANGFUSE)" = "1" ]; then \
 		echo "$(YELLOW)→ Starting local Langfuse v4 (WITH_LANGFUSE=1)...$(RESET)"; \
 		$(MAKE) langfuse-up --no-print-directory; \
@@ -931,6 +957,7 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 	echo "$$$$" > "$$DEV_LOCK/pid"; \
 	trap 'echo ""; echo "$(YELLOW)Stopping only the processes started by this make dev session...$(RESET)"; [ -n "$$BACKEND_PID" ] && kill "$$BACKEND_PID" 2>/dev/null || true; [ -n "$$FRONTEND_PID" ] && kill "$$FRONTEND_PID" 2>/dev/null || true; rm -rf /tmp/edgequake-make-dev.lock; echo "$(GREEN)✓ App processes stopped. PostgreSQL is left running for faster restarts.$(RESET)"; exit 0' INT; \
 	set -a && . $(DEV_PORTS_ENV) && set +a; \
+	set -a && [ -f /tmp/edgequake-minio.env ] && . /tmp/edgequake-minio.env; set +a; \
 	BACKEND_PID=""; \
 	FRONTEND_PID=""; \
 	$(LOAD_EFF_DB_URL); \
@@ -957,6 +984,14 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 		EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS="$(EDGEQUAKE_MM_PASS_B_TIMEOUT_SECS)" \
 		EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS="$(EDGEQUAKE_MM_PASS_B_PAGE_TIMEOUT_SECS)" \
 		EDGEQUAKE_MM_IMAGE_CONCURRENCY="$(EDGEQUAKE_MM_IMAGE_CONCURRENCY)" \
+		EDGEQUAKE_ORIGINAL_STORE="$(ORIGINAL_STORE_MODE)" \
+		EDGEQUAKE_ORIGINAL_STORE_URL="$(ORIGINAL_STORE_URL)" \
+		EDGEQUAKE_ORIGINAL_STORE_ENDPOINT="$${EDGEQUAKE_ORIGINAL_STORE_ENDPOINT:-$(ORIGINAL_STORE_ENDPOINT)}" \
+		EDGEQUAKE_ORIGINAL_STORE_REGION="us-east-1" \
+		EDGEQUAKE_ORIGINAL_STORE_ACCESS_KEY_ID="$(MINIO_APP_USER)" \
+		EDGEQUAKE_ORIGINAL_STORE_SECRET_ACCESS_KEY="$(MINIO_APP_PASSWORD)" \
+		EDGEQUAKE_ORIGINAL_STORE_ALLOW_HTTP="$(ORIGINAL_STORE_ALLOW_HTTP)" \
+		EDGEQUAKE_ORIGINAL_STORE_PATH_STYLE="$(ORIGINAL_STORE_PATH_STYLE)" \
 		cargo run 2>&1 | sed 's/^/[backend] /') & \
 	BACKEND_PID=$$!; \
 	else \
@@ -978,6 +1013,14 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 			OLLAMA_MODEL="gemma4:latest" \
 			OLLAMA_EMBEDDING_MODEL="embeddinggemma:latest" \
 			OLLAMA_CONTEXT_LENGTH="$${OLLAMA_CONTEXT_LENGTH:-8192}" \
+			EDGEQUAKE_ORIGINAL_STORE="$(ORIGINAL_STORE_MODE)" \
+			EDGEQUAKE_ORIGINAL_STORE_URL="$(ORIGINAL_STORE_URL)" \
+			EDGEQUAKE_ORIGINAL_STORE_ENDPOINT="$${EDGEQUAKE_ORIGINAL_STORE_ENDPOINT:-$(ORIGINAL_STORE_ENDPOINT)}" \
+			EDGEQUAKE_ORIGINAL_STORE_REGION="us-east-1" \
+			EDGEQUAKE_ORIGINAL_STORE_ACCESS_KEY_ID="$(MINIO_APP_USER)" \
+			EDGEQUAKE_ORIGINAL_STORE_SECRET_ACCESS_KEY="$(MINIO_APP_PASSWORD)" \
+			EDGEQUAKE_ORIGINAL_STORE_ALLOW_HTTP="$(ORIGINAL_STORE_ALLOW_HTTP)" \
+			EDGEQUAKE_ORIGINAL_STORE_PATH_STYLE="$(ORIGINAL_STORE_PATH_STYLE)" \
 			cargo run 2>&1 | sed 's/^/[backend] /') & \
 		BACKEND_PID=$$!; \
 	fi; \
@@ -1047,6 +1090,70 @@ dev-langfuse: ## Start full development stack with local Langfuse v4 (UI :3310)
 dev-bg-langfuse: ## Start background stack with local Langfuse v4 (UI :3310)
 	@$(MAKE) dev-bg --no-print-directory WITH_LANGFUSE=1
 
+dev-database: ## SPEC-172: full stack with originals in Postgres and no MinIO
+	@$(MAKE) dev WITH_MINIO=0 --no-print-directory
+
+dev-bg-database: ## SPEC-172: background stack with originals in Postgres and no MinIO
+	@$(MAKE) dev-bg WITH_MINIO=0 --no-print-directory
+
+minio-up: ## SPEC-172: Chainguard MinIO plus a one-shot bucket create
+	@if [ "$(WITH_MINIO)" != "1" ]; then \
+		echo "$(YELLOW)MinIO skipped (WITH_MINIO=0); originals stay in Postgres$(RESET)"; \
+		rm -f /tmp/edgequake-minio.env; \
+		exit 0; \
+	fi
+	@echo "$(YELLOW)→ Starting Chainguard MinIO (dev store, single-node parity 0)...$(RESET)"
+	@api_port=$(MINIO_API_PORT); console_port=$(MINIO_CONSOLE_PORT); \
+	if lsof -nP -iTCP:$$api_port -sTCP:LISTEN >/dev/null 2>&1; then \
+		echo "$(YELLOW)Port $$api_port is in use; choosing a free MinIO port$(RESET)"; \
+		api_port=19010; \
+		while lsof -nP -iTCP:$$api_port -sTCP:LISTEN >/dev/null 2>&1; do api_port=$$((api_port+1)); done; \
+	fi; \
+	if lsof -nP -iTCP:$$console_port -sTCP:LISTEN >/dev/null 2>&1 || [ "$$console_port" = "$$api_port" ]; then \
+		console_port=$$((api_port+1)); \
+		while lsof -nP -iTCP:$$console_port -sTCP:LISTEN >/dev/null 2>&1; do console_port=$$((console_port+1)); done; \
+	fi; \
+	printf '%s\n' "EDGEQUAKE_ORIGINAL_STORE_ENDPOINT=http://127.0.0.1:$$api_port" "MINIO_API_PORT=$$api_port" "MINIO_CONSOLE_PORT=$$console_port" "EDGEQUAKE_ORIGINAL_STORE_ACCESS_KEY_ID=$(MINIO_APP_USER)" "EDGEQUAKE_ORIGINAL_STORE_SECRET_ACCESS_KEY=$(MINIO_APP_PASSWORD)" > /tmp/edgequake-minio.env; \
+	MINIO_API_PORT=$$api_port MINIO_CONSOLE_PORT=$$console_port docker compose -f $(DOCKER_DIR)/docker-compose.yml --profile minio up -d minio; \
+	ready=0; \
+	for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do \
+		if curl -fsS "http://127.0.0.1:$$api_port/minio/health/live" >/dev/null 2>&1; then \
+			ready=1; break; \
+		fi; \
+		sleep 1; \
+	done; \
+	if [ "$$ready" != "1" ]; then \
+		echo "$(RED)✗ MinIO did not answer on port $$api_port$(RESET)"; \
+		exit 1; \
+	fi; \
+	MINIO_API_PORT=$$api_port MINIO_CONSOLE_PORT=$$console_port docker compose -f $(DOCKER_DIR)/docker-compose.yml --profile minio run --rm --no-deps minio-init; \
+	if ! MINIO_API_PORT=$$api_port MINIO_CONSOLE_PORT=$$console_port docker compose -f $(DOCKER_DIR)/docker-compose.yml --profile minio run --rm --no-deps minio-policy; then \
+		MINIO_API_PORT=$$api_port MINIO_CONSOLE_PORT=$$console_port docker compose -f $(DOCKER_DIR)/docker-compose.yml --profile minio run --rm --no-deps minio-policy-info; \
+	fi; \
+	if ! MINIO_API_PORT=$$api_port MINIO_CONSOLE_PORT=$$console_port MINIO_APP_USER="$(MINIO_APP_USER)" MINIO_APP_PASSWORD="$(MINIO_APP_PASSWORD)" docker compose -f $(DOCKER_DIR)/docker-compose.yml --profile minio run --rm --no-deps minio-user; then \
+		MINIO_API_PORT=$$api_port MINIO_CONSOLE_PORT=$$console_port MINIO_APP_USER="$(MINIO_APP_USER)" docker compose -f $(DOCKER_DIR)/docker-compose.yml --profile minio run --rm --no-deps minio-user-info; \
+	fi; \
+	MINIO_API_PORT=$$api_port MINIO_CONSOLE_PORT=$$console_port MINIO_APP_USER="$(MINIO_APP_USER)" docker compose -f $(DOCKER_DIR)/docker-compose.yml --profile minio run --rm --no-deps minio-attach; \
+	MINIO_API_PORT=$$api_port MINIO_CONSOLE_PORT=$$console_port docker compose -f $(DOCKER_DIR)/docker-compose.yml --profile minio run --rm --no-deps minio-canary; \
+	stale=$$(MINIO_API_PORT=$$api_port MINIO_CONSOLE_PORT=$$console_port docker compose -f $(DOCKER_DIR)/docker-compose.yml --profile minio run --rm --no-deps -T minio-config-get 2>&1 || true); \
+	if ! printf '%s\n' "$$stale" | grep -q 'stale_uploads_expiry=24h'; then \
+		echo "$(YELLOW)→ Setting MinIO stale multipart expiry to 24h and restarting MinIO only$(RESET)"; \
+		MINIO_API_PORT=$$api_port MINIO_CONSOLE_PORT=$$console_port docker compose -f $(DOCKER_DIR)/docker-compose.yml --profile minio run --rm --no-deps minio-config-set; \
+		docker restart edgequake-minio; \
+		ready=0; \
+		for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do \
+			if curl -fsS "http://127.0.0.1:$$api_port/minio/health/live" >/dev/null 2>&1; then \
+				ready=1; break; \
+			fi; \
+			sleep 1; \
+		done; \
+		if [ "$$ready" != "1" ]; then \
+			echo "$(RED)✗ MinIO did not answer after the stale-upload restart$(RESET)"; \
+			exit 1; \
+		fi; \
+	fi; \
+	echo "$(GREEN)✓ MinIO http://127.0.0.1:$$api_port  console http://127.0.0.1:$$console_port  bucket $(MINIO_BUCKET)  user $(MINIO_APP_USER)$(RESET)"
+
 dev-frontend: ## Start only frontend dev server
 	@$(MAKE) frontend-dev --no-print-directory
 
@@ -1082,6 +1189,7 @@ dev-bg: check-deps check-ports ## Start full development stack in BACKGROUND wit
 	fi
 	@echo "$(YELLOW)→ Ensuring PostgreSQL availability (profile: $(EQ_POSTGRES_PROFILE))...$(RESET)"
 	@$(MAKE) db-wait --no-print-directory
+	@$(MAKE) minio-up --no-print-directory
 	@if [ "$(WITH_LANGFUSE)" = "1" ]; then \
 		echo "$(YELLOW)→ Starting local Langfuse v4 (WITH_LANGFUSE=1)...$(RESET)"; \
 		$(MAKE) langfuse-up --no-print-directory; \
@@ -1495,6 +1603,15 @@ backend-bg: sync-dev-ports db-wait ## Run backend in background with PostgreSQL 
 		printf '%s\n' "export EDGEQUAKE_DEV_MODE=\"$(DEV_EDGEQUAKE_DEV_MODE)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_AUTH_ENABLED=\"$(DEV_AUTH_ENABLED)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export AUTH_ENABLED=\"$(DEV_AUTH_ENABLED)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE=\"$(ORIGINAL_STORE_MODE)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE_URL=\"$(ORIGINAL_STORE_URL)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE_ENDPOINT=\"$(ORIGINAL_STORE_ENDPOINT)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE_REGION=\"us-east-1\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE_ACCESS_KEY_ID=\"$(MINIO_APP_USER)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE_SECRET_ACCESS_KEY=\"$(MINIO_APP_PASSWORD)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE_ALLOW_HTTP=\"$(ORIGINAL_STORE_ALLOW_HTTP)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE_PATH_STYLE=\"$(ORIGINAL_STORE_PATH_STYLE)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "[ -f /tmp/edgequake-minio.env ] && set -a && . /tmp/edgequake-minio.env && set +a" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_LLM_PROVIDER=\"mistral\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_EMBEDDING_PROVIDER=\"mistral\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export MISTRAL_EMBEDDING_MODEL=\"mistral-embed\"" >> /tmp/edgequake-start.sh; \
@@ -1520,6 +1637,15 @@ backend-bg: sync-dev-ports db-wait ## Run backend in background with PostgreSQL 
 		printf '%s\n' "export EDGEQUAKE_DEV_MODE=\"$(DEV_EDGEQUAKE_DEV_MODE)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_AUTH_ENABLED=\"$(DEV_AUTH_ENABLED)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export AUTH_ENABLED=\"$(DEV_AUTH_ENABLED)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE=\"$(ORIGINAL_STORE_MODE)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE_URL=\"$(ORIGINAL_STORE_URL)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE_ENDPOINT=\"$(ORIGINAL_STORE_ENDPOINT)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE_REGION=\"us-east-1\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE_ACCESS_KEY_ID=\"$(MINIO_APP_USER)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE_SECRET_ACCESS_KEY=\"$(MINIO_APP_PASSWORD)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE_ALLOW_HTTP=\"$(ORIGINAL_STORE_ALLOW_HTTP)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE_PATH_STYLE=\"$(ORIGINAL_STORE_PATH_STYLE)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "[ -f /tmp/edgequake-minio.env ] && set -a && . /tmp/edgequake-minio.env && set +a" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_LLM_PROVIDER=\"openai\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_ALLOWED_PROVIDERS=\"*\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "$$_RUN" >> /tmp/edgequake-start.sh; \
@@ -1535,6 +1661,15 @@ backend-bg: sync-dev-ports db-wait ## Run backend in background with PostgreSQL 
 		printf '%s\n' "export EDGEQUAKE_DEV_MODE=\"$(DEV_EDGEQUAKE_DEV_MODE)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_AUTH_ENABLED=\"$(DEV_AUTH_ENABLED)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export AUTH_ENABLED=\"$(DEV_AUTH_ENABLED)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE=\"$(ORIGINAL_STORE_MODE)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE_URL=\"$(ORIGINAL_STORE_URL)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE_ENDPOINT=\"$(ORIGINAL_STORE_ENDPOINT)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE_REGION=\"us-east-1\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE_ACCESS_KEY_ID=\"$(MINIO_APP_USER)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE_SECRET_ACCESS_KEY=\"$(MINIO_APP_PASSWORD)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE_ALLOW_HTTP=\"$(ORIGINAL_STORE_ALLOW_HTTP)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export EDGEQUAKE_ORIGINAL_STORE_PATH_STYLE=\"$(ORIGINAL_STORE_PATH_STYLE)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "[ -f /tmp/edgequake-minio.env ] && set -a && . /tmp/edgequake-minio.env && set +a" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_LLM_PROVIDER=\"ollama\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export OLLAMA_HOST=\"http://localhost:11434\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export OLLAMA_MODEL=\"gemma4:latest\"" >> /tmp/edgequake-start.sh; \

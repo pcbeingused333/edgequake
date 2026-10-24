@@ -82,6 +82,10 @@ Catalog reads (document list, detail, search, tenants, workspaces) share one dea
 | `EDGEQUAKE_COMMUNITY_BACKFILL_MAX_NODES` | `50000` | none | Skip automatic community refresh above this node count. |
 | `EDGEQUAKE_COMMUNITY_MAX_NODES` | `50000` | 100 to 5000000 | Nodes loaded for detection. Larger graphs are sampled. |
 
+### Original document bytes
+
+Text, chunks, and the graph stay in Postgres. PDF bytes, uploads, page images, and extracted markdown stay in Postgres too unless `EDGEQUAKE_ORIGINAL_STORE=object`. The process does not create the bucket. `make dev` points at local MinIO with a prefix-only app user. Variable list: [environment reference](env-reference.md#original-bytes-object-store). Move and verify: [originals](originals.md).
+
 ## LLM providers and models
 
 Provider guides, the role matrix and saved Connections are in [Providers](../providers/index.md). This table lists only what the server reads from the environment.
@@ -432,6 +436,7 @@ Run `edgequake doctor` (add `--json` for scripts). It checks `DATABASE_URL`, the
 
 ## See also
 
+- [Originals migration](originals.md)
 - [Deployment](deployment.md)
 - [Monitoring](monitoring.md)
 - [Performance tuning](performance-tuning.md)

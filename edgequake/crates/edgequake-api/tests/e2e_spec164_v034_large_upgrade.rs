@@ -1,6 +1,6 @@
 //! Upgrade a v0.34.0 schema (migration 169, published checksum of 167) that
 //! already holds a full-size corpus. The migrator must accept that ledger,
-//! apply 170–214, keep every row, and leave the new status index able to
+//! apply 170–218, keep every row, and leave the new status index able to
 //! stop at the page.
 
 #![cfg(feature = "postgres")]
@@ -78,7 +78,7 @@ async fn v034_large_database_upgrades_without_losing_rows() {
             .fetch_one(&pool)
             .await
             .expect("head");
-    assert_eq!(head, 214, "the large database must reach migration 214");
+    assert_eq!(head, 218, "the large database must reach migration 218");
     assert_public_ledger(&pool, &[15, 16, 169, 202]).await;
     let stored_167: String = sqlx::query_scalar(
         "SELECT encode(checksum, 'hex') FROM public._sqlx_migrations WHERE version = 167",

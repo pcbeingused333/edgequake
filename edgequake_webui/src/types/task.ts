@@ -94,7 +94,11 @@ export interface HealthResponse {
     kv_storage?: boolean;
     vector_storage?: boolean;
     graph_storage?: boolean;
+    /** SPEC-172. True in database mode; in object mode, true after the bucket probe. */
+    original_store_ready?: boolean;
   };
+  /** SPEC-172. `database` or `object`. Read-only; the mode is an environment variable. */
+  original_store?: "database" | "object" | string;
   /** LLM provider name (e.g., "openai", "mock", "ollama") */
   llm_provider_name?: string;
   /** Current active provider configuration (LLM and embedding) */

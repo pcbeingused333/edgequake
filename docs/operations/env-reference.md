@@ -168,6 +168,25 @@ Full guides: [Enable login](auth-quickstart.md) and [Runtime auth hardening](run
 
 Details: [Configuration: decision extraction](configuration.md#decision-extraction-spec-160-preview).
 
+## Original bytes (object store)
+
+The code default keeps every byte in Postgres. Set `EDGEQUAKE_ORIGINAL_STORE=object` only when the bucket already exists. The process does not create one. `make dev` writes the local values into `/tmp/edgequake-minio.env`. Steps: [Originals migration](originals.md).
+
+| Variable | Default | Purpose |
+| -------- | ------- | ------- |
+| `EDGEQUAKE_ORIGINAL_STORE` | `database` | `object` stores PDF bytes, uploads, page images, and extracted markdown in the bucket. |
+| `EDGEQUAKE_ORIGINAL_STORE_URL` | unset | `s3://`, `gs://`, or `az://` URL. The path is the key prefix. |
+| `EDGEQUAKE_ORIGINAL_STORE_ENDPOINT` | unset | Custom S3 endpoint. Set this for MinIO. Leave it unset on Amazon S3 so the client sends a SHA-256 checksum. |
+| `EDGEQUAKE_ORIGINAL_STORE_REGION` | `us-east-1` | S3 region. Ignored by the GCS and Azure builders. |
+| `EDGEQUAKE_ORIGINAL_STORE_ACCESS_KEY_ID` | unset | App key. On `make dev` this is `eq-originals-app`, not the MinIO root user. |
+| `EDGEQUAKE_ORIGINAL_STORE_SECRET_ACCESS_KEY` | unset | Secret for that key. |
+| `EDGEQUAKE_ORIGINAL_STORE_ALLOW_HTTP` | false | Allow an `http://` endpoint. Local MinIO needs `true`. |
+| `EDGEQUAKE_ORIGINAL_STORE_CREATE_BUCKET` | false | `true` is a boot error. Create the bucket outside the process. |
+| `EDGEQUAKE_OBJECT_STORE_SSE` | unset | `AES256` is Amazon S3 only. GCS, Azure, and a KMS key id are refused. |
+| `EDGEQUAKE_MAX_UPLOAD_BYTES` | 50 MiB | Product upload cap. The floor is 1 MiB and the ceiling is 1 GiB. |
+| `EDGEQUAKE_ORIGINALS_DATABASE_URL` | unset | Maintenance URL for `edgequake originals`. Falls back to `DATABASE_URL`. |
+| `EDGEQUAKE_ORIGINALS_LOG` | unset | When set, `edgequake originals` keeps `RUST_LOG`. When unset, it forces `RUST_LOG=error`. |
+
 ## Web UI
 
 | Variable | Default | Purpose |

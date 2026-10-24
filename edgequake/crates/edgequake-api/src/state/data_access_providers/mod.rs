@@ -86,6 +86,8 @@ pub struct RelationalProviderRuntime {
     pub access_link_store: crate::services::access_links::SharedAccessLinkStore,
     pub decision_store: Arc<dyn edgequake_storage::decision::DecisionStore>,
     pub documents: DocumentStores,
+    /// SPEC-172 original-byte location. Database mode keeps `client` empty.
+    pub original_store: crate::state::storage_runtime::OriginalStoreHealth,
 }
 
 /// Binary documents and their relational metadata use small existing ports.

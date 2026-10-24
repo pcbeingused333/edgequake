@@ -22,32 +22,32 @@
 
 | SUT | Acc | F1 | cos |
 |-----|-----|----|-----|
-| EdgeQuake mix | 0.8240 | 0.7767 | 0.9658 |
-| LightRAG mix | 0.8016 | 0.7471 | 0.9653 |
-| Δ (EQ − LR) | +0.0223 | 0.0296 | 0.0005 |
+| EdgeQuake mix | 0.8084 | 0.7561 | 0.9651 |
+| LightRAG mix | 0.7681 | 0.7031 | 0.9631 |
+| Δ (EQ − LR) | +0.0403 | 0.0531 | 0.0021 |
 
-- **Δ Acc 95% CI (bootstrap):** [-0.0132, +0.0780] (n=97)
+- **Δ Acc 95% CI (bootstrap):** [-0.0241, +0.1036] (n=72)
 
 ## Retrieval (L2)
 
 | SUT | evidence_recall | context_relevancy |
 |-----|-----------------|-------------------|
-| EdgeQuake | 0.9232 | 0.3902 |
-| LightRAG | 0.9691 | 0.4892 |
+| EdgeQuake | 0.9275 | 0.4142 |
+| LightRAG | 0.9452 | 0.4938 |
 
 ## By question_type (EQ Acc)
 
-- **Fact Retrieval:** 0.7750
-- **Complex Reasoning:** 0.8137
-- **Contextual Summarize:** 0.8360
-- **Creative Generation:** 0.8712
+- **Fact Retrieval:** 0.7624
+- **Complex Reasoning:** 0.8021
+- **Contextual Summarize:** 0.8171
+- **Creative Generation:** 0.8519
 
 ## By question_type (LR Acc)
 
-- **Fact Retrieval:** 0.7857
-- **Complex Reasoning:** 0.7526
-- **Contextual Summarize:** 0.8399
-- **Creative Generation:** 0.8283
+- **Fact Retrieval:** 0.7091
+- **Complex Reasoning:** 0.7685
+- **Contextual Summarize:** 0.8023
+- **Creative Generation:** 0.7924
 
 ## Ops
 
@@ -55,17 +55,17 @@
 - LR empty-answer rate: 0.000
 - EQ empty-context rate: 0.000
 - LR empty-context rate: 0.000
-- EQ query p50/p95 ms: 7011 / 11727
-- LR query p50/p95 ms: 802 / 1865
-- ingest wall s: 1291.6
-- EQ/LR p50 ratio: 8.742 (SLO ≤1.5×: FAIL/WAIVE)
-- EQ stage p50 ms: keyword=1348, embed=1173, retrieve=366, generate=3117
+- EQ query p50/p95 ms: 8762 / 15715
+- LR query p50/p95 ms: 2161 / 3696
+- ingest wall s: 722.0
+- EQ/LR p50 ratio: 4.055 (SLO ≤1.5×: FAIL/WAIVE)
+- EQ stage p50 ms: keyword=1274, embed=3809, retrieve=331, generate=3042
 
 ## Pins
 
 ```json
 {
-  "edgequake_git_sha": "b80819aa7",
+  "edgequake_git_sha": "acfb1fbf5",
   "dataset_id": "GraphRAG-Bench/GraphRAG-Bench",
   "dataset_revision": "dc3a111e77dbaf8bbaf51ef331f3cfc9b1b5c546",
   "fixture_id": "medical_publish_question_ids_v1",

@@ -16,7 +16,7 @@ Terms used below:
 - **CI** is a 95% confidence interval. If the CI for the difference includes 0, the result is a tie.
 - **Cold** means no LLM cache. **Warm** means the LLM and embedding caches are on for both systems.
 
-> Publish Acc SSOT: GraphRAG-Bench medical-mid, run with `make bench`. `publish/latest/` is the archive `medical-mid-20260815T110218Z` (2026-08-15). The medical-full peer (n=2062) ran on 2026-08-16. It is a labeled scale check, not the SSOT.
+> Publish Acc SSOT: GraphRAG-Bench medical-mid, run with `make bench`. `publish/latest/` is the archive `medical-mid-20261024T031725Z` (2026-10-24, v0.37.0). The medical-full peer (n=2062) ran on 2026-08-16. It is a labeled scale check, not the SSOT.
 
 The test is fair and dual-system: same corpus, same questions, Mix mode, Mistral Small plus `mistral-embed`, and the official `generation_eval`. It is **not** the UltraDomain win-rate test, and it is **not** the paper's Table 2 (GPT-4o-mini plus BGE).
 
@@ -43,14 +43,16 @@ Protocol: [SPEC-001 index](../../specs/001-benchmark/000-index.md). Business bri
 
 | Layer             | EdgeQuake | LightRAG  | Claim                                                                 |
 | ----------------- | --------- | --------- | --------------------------------------------------------------------- |
-| **Acc** (n=200)   | **0.792** | **0.786** | Statistical tie (Δ CI includes 0); **not Acc Beat**                   |
+| **Acc** (n=200)   | **0.808** | **0.768** | Statistical tie (Δ CI includes 0); **not Acc Beat**                   |
 | **Acc** (n=2062)  | **0.786** | **0.786** | Point tie on Acc-law full (peer `ACC_E2OCC_086_MEDICAL_FULL_v1`); **not Beat** |
-| Evidence recall   | 0.932     | 0.949     | LightRAG                                                              |
-| Context relevancy | 0.471     | 0.510     | LightRAG (`ctx_rel` still below the 0.50 promote gate)                      |
+| Evidence recall   | 0.928     | 0.945     | LightRAG                                                              |
+| Context relevancy | 0.414     | 0.494     | LightRAG (`ctx_rel` still below the 0.50 promote gate)                      |
 | Cold query p50    | 4447 ms   | 4359 ms   | **≈ tied (1.02×)** (peer `C1COLD_v1`, unchanged)                      |
 | Warm cache p50    | **82 ms** | 993 ms    | **EQ 0.083×** — labeled peer `EQ_LLM_CACHE_WARM_v1` (LLM+embed cache) |
 
-**v0.36.0 re-score** (2026-10-19, archive [`medical-mid-20261019T141211Z`](../../specs/001-benchmark/e2e/artifacts/history/medical-mid-20261019T141211Z/), same Acc profile, `valid: true`, n=200): EdgeQuake **0.8240**, LightRAG **0.8016**, Δ **+0.0223**, 95% CI **[-0.0132, +0.0780]** (n_paired 97). The interval includes 0, so this is a statistical tie. Evidence recall **0.923** versus **0.969**. Context relevancy **0.390** versus **0.489**. Not an Acc Beat. `publish/latest` stays the August pack.
+**v0.37.0 re-score** (2026-10-24, archive [`medical-mid-20261024T031725Z`](../../specs/001-benchmark/e2e/artifacts/history/medical-mid-20261024T031725Z/), same Acc profile, `valid: true`, n=200): EdgeQuake **0.8084**, LightRAG **0.7681**, Δ **+0.0403**, 95% CI **[-0.0241, +0.1036]** (n_paired 72). The interval includes 0, so this is a statistical tie. Evidence recall **0.928** versus **0.945**. Context relevancy **0.414** versus **0.494**. Not an Acc Beat. `publish/latest` is this pack.
+
+**v0.36.0 re-score** (2026-10-19, archive [`medical-mid-20261019T141211Z`](../../specs/001-benchmark/e2e/artifacts/history/medical-mid-20261019T141211Z/), same Acc profile, `valid: true`, n=200): EdgeQuake **0.8240**, LightRAG **0.8016**, Δ **+0.0223**, 95% CI **[-0.0132, +0.0780]** (n_paired 97). The interval includes 0, so this is a statistical tie. Evidence recall **0.923** versus **0.969**. Context relevancy **0.390** versus **0.489**. Not an Acc Beat.
 
 **v0.35.3 re-score** (2026-10-16, archive [`medical-mid-20261016T002647Z`](../../specs/001-benchmark/e2e/artifacts/history/medical-mid-20261016T002647Z/), same Acc profile, `valid: true`, n=200): EdgeQuake **0.7910**, LightRAG **0.7870**, Δ **+0.0040**, 95% CI **[-0.0238, +0.0306]**. Still a statistical tie. Evidence recall **0.893** versus **0.948**. Context relevancy **0.391** versus **0.490**. Not an Acc Beat. The August table above is the earlier publish pack and is not this cut.
 
@@ -64,11 +66,11 @@ Protocol: [SPEC-001 index](../../specs/001-benchmark/000-index.md). Business bri
 
 | Field | Value |
 |-------|--------|
-| Archive | [`medical-mid-20260815T110218Z`](../../specs/001-benchmark/e2e/artifacts/history/medical-mid-20260815T110218Z/) |
+| Archive | [`medical-mid-20261024T031725Z`](../../specs/001-benchmark/e2e/artifacts/history/medical-mid-20261024T031725Z/) |
 | Publish pack | [`publish/latest/`](../../specs/001-benchmark/e2e/artifacts/publish/latest/) |
 | Profile | `ACC_E2OCC_086_v1_lrlike_arms_v2` |
 | Fixture | `medical_publish_question_ids_v1` (50 questions / type) |
-| Δ Acc 95% CI | **[-0.022, +0.034]** (bootstrap; CI includes 0 ⇒ tie) |
+| Δ Acc 95% CI | **[-0.0241, +0.1036]** (bootstrap, n_paired 72; CI includes 0 ⇒ tie) |
 | Valid | `true` |
 | `can_claim_beats_lightrag` | `false` (Acc CI includes 0; L2 ctx / Fact ER promote gates unmet) |
 
@@ -76,15 +78,15 @@ Protocol: [SPEC-001 index](../../specs/001-benchmark/000-index.md). Business bri
 
 | Type | EdgeQuake | LightRAG | Lead |
 |------|-----------|----------|------|
-| Fact Retrieval | 0.779 | 0.756 | EdgeQuake |
-| Complex Reasoning | 0.797 | 0.778 | EdgeQuake |
-| Contextual Summarize | 0.814 | 0.844 | LightRAG |
-| Creative Generation | 0.776 | 0.766 | EdgeQuake |
+| Fact Retrieval | 0.762 | 0.709 | EdgeQuake |
+| Complex Reasoning | 0.802 | 0.769 | EdgeQuake |
+| Contextual Summarize | 0.817 | 0.802 | EdgeQuake |
+| Creative Generation | 0.852 | 0.792 | EdgeQuake |
 
 ### Ops (Acc pack)
 
 - Empty-answer rates: EQ 0% · LR 0%
-- Ingest wall: warm query-only (full-corpus workspace `23b09c73-…`)
+- Ingest wall: 722 s on this cut. Query p50: EdgeQuake 8762 ms, LightRAG 2161 ms. That p50 is the Acc pack, not the cold peer and not the warm-cache claim.
 - Acc pack latency is **not** the warm product claim — Acc pins `EDGEQUAKE_LLM_CACHE=0`; LR warm looks faster only with LLM cache ([063](../../specs/001-benchmark/001-edgquake-improvements/063-why-lightrag-faster-cache-fairness.md))
 
 ---

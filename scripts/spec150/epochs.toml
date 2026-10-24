@@ -2,8 +2,12 @@
 #
 # v0.35.1 owns schema 207. v0.35.2 through v0.35.7 serve that migration set.
 # v0.36.0 owns schema 214.
+# v0.37.0 will own schema 218 when the tag exists. Until then the pin below is the working set.
 
 [unreleased]
+hash = "9756b28fc8cc9c87"
+max = 218
+files = 216
 
 [[epoch]]
 tag = "v0.2.0"

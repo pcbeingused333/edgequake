@@ -118,6 +118,7 @@ pub async fn health_check(State(state): State<AppState>) -> ApiResult<Json<Healt
         )
         .await,
         eq_id_schema,
+        original_store_ready: state.storage.original_store.ready,
     };
 
     // Get the LLM provider name from the configured provider
@@ -189,6 +190,7 @@ pub async fn health_check(State(state): State<AppState>) -> ApiResult<Json<Healt
             build_number: env!("EDGEQUAKE_BUILD_NUMBER").to_string(),
         }),
         storage_mode: state.storage.mode.as_str().to_string(),
+        original_store: state.storage.original_store.mode.clone(),
         workspace_id: state.config.workspace_id.clone(),
         components,
         llm_provider_name,
@@ -710,6 +712,17 @@ pub async fn readiness_check(State(state): State<AppState>) -> impl IntoResponse
                         );
                     }
                 }
+            }
+        }
+
+        if state.storage.original_store.mode == "object" && !state.storage.original_store.ready {
+            ready = false;
+            blockers.push("original_store_unreachable".into());
+            if operator_action.is_none() {
+                operator_action = Some(
+                    "Original object store is unreachable. /health stays 200; check EDGEQUAKE_ORIGINAL_STORE_ENDPOINT and the bucket."
+                        .into(),
+                );
             }
         }
 

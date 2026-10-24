@@ -263,6 +263,28 @@ impl Server {
         let drain = edgequake_tasks::shutdown_drain_budget();
         let cancel = CancellationToken::new();
         let signal_cancel = cancel.clone();
+        #[cfg(feature = "postgres")]
+        if let Some(client) = self.state.storage.original_store.client.clone() {
+            if let Some(pool) = self.state.pg_pool.clone() {
+                let cancel_reap = cancel.clone();
+                tokio::spawn(async move {
+                    loop {
+                        if let Err(err) = edgequake_storage::originals::reap_postgres(
+                            &pool,
+                            client.blobs.as_ref(),
+                        )
+                        .await
+                        {
+                            warn!(error = %err, "original store reaper pass failed");
+                        }
+                        tokio::select! {
+                            _ = cancel_reap.cancelled() => break,
+                            _ = tokio::time::sleep(std::time::Duration::from_secs(60)) => {}
+                        }
+                    }
+                });
+            }
+        }
         tokio::spawn(async move {
             wait_for_shutdown_signal().await;
             info!(

@@ -92,7 +92,7 @@ Full catalog: [004](004_resource_budget_catalog.md). High-signal subset:
 | `EDGEQUAKE_GRAPH_SCAN_THRESHOLD` | 50000 | 50000 | `resource/budget.rs` |
 | `EDGEQUAKE_GRAPH_MATERIALIZE_CONCURRENT` | 1 | 1–2 | `resource/semaphore.rs` |
 | `EDGEQUAKE_GRAPH_QUERY_TIMEOUT_SECS` | 15 | 15–30 | `graph_materialization.rs` |
-| `EDGEQUAKE_MAX_UPLOAD_BYTES` | 52428800 | 52428800 | `server.rs` via `resource_budget()` |
+| `EDGEQUAKE_MAX_UPLOAD_BYTES` | 52428800 | 52428800 | `originals/cap.rs` via `resource_budget()` |
 | `DATABASE_URL` | required | required | — |
 
 ### 2.3 Kubernetes (OR-006-002)

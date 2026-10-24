@@ -1,32 +1,32 @@
 {
   "stage": "medical-mid",
-  "started_at_utc": "2026-10-19T14:11:23Z",
-  "updated_at_utc": "2026-10-19T14:12:11Z",
+  "started_at_utc": "2026-10-24T03:16:40Z",
+  "updated_at_utc": "2026-10-24T03:17:25Z",
   "phases": [
     {
       "phase": "score_parallel",
       "status": "running",
-      "at_utc": "2026-10-19T14:12:11Z",
-      "run_elapsed_s": 1786.338932625018,
+      "at_utc": "2026-10-24T03:17:25Z",
+      "run_elapsed_s": 1275.9503866247833,
       "detail": "EQ=done LR=done eval\u2225=24",
-      "phase_elapsed_s": 105.28849329100922
+      "phase_elapsed_s": 60.20597649994306
     },
     {
       "phase": "score_parallel",
       "status": "done",
-      "at_utc": "2026-10-19T14:12:11Z",
-      "run_elapsed_s": 1786.3397056658287,
-      "detail": "elapsed=1m45s"
+      "at_utc": "2026-10-24T03:17:25Z",
+      "run_elapsed_s": 1275.9511546248104,
+      "detail": "elapsed=1m00s"
     },
     {
       "phase": "report",
       "status": "done",
-      "at_utc": "2026-10-19T14:12:11Z",
-      "run_elapsed_s": 1786.5778213329613,
-      "detail": "valid=True archive=medical-mid-20261019T141211Z",
+      "at_utc": "2026-10-24T03:17:25Z",
+      "run_elapsed_s": 1276.1352518748026,
+      "detail": "valid=True archive=medical-mid-20261024T031725Z",
       "counts": {
-        "eq_acc": 0.8239532894343866,
-        "lr_acc": 0.8016487550136638
+        "eq_acc": 0.8083853293468457,
+        "lr_acc": 0.7680757255967342
       }
     }
   ],
@@ -35,8 +35,8 @@
     "done": 50,
     "total": 50,
     "eta_s": 0.0,
-    "eq_acc": 0.8239532894343866,
-    "lr_acc": 0.8016487550136638
+    "eq_acc": 0.8083853293468457,
+    "lr_acc": 0.7680757255967342
   },
-  "run_elapsed_s": 1786.5778319158126
+  "run_elapsed_s": 1276.1352598748636
 }

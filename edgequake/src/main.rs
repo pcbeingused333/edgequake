@@ -12,6 +12,8 @@ mod migrate_console;
 #[cfg(feature = "postgres")]
 mod migrate_preflight;
 #[cfg(feature = "postgres")]
+mod originals_cmd;
+#[cfg(feature = "postgres")]
 mod schema_gate_wait;
 
 use anyhow::{Context, Result};
@@ -908,14 +910,26 @@ async fn async_main() -> Result<()> {
 
 #[cfg(feature = "postgres")]
 async fn async_main_postgres() -> Result<()> {
+    // Operator transcript. Inherit RUST_LOG only when EDGEQUAKE_ORIGINALS_LOG=1.
+    let originals_cli = std::env::args().nth(1).as_deref() == Some("originals");
+    if originals_cli && std::env::var_os("EDGEQUAKE_ORIGINALS_LOG").is_none() {
+        std::env::set_var("RUST_LOG", "error");
+    }
     let _obs_guard = init_observability(ObservabilityConfig::from_env());
 
     // SPEC-090 F-090-20b: `edgequake migrate` — admin-pool migrate + reconcile ledger.
     // SPEC-091 P4: `edgequake migrate status` — read-only progress ledger surface.
     let mut args = std::env::args().skip(1);
-    if args.next().as_deref() == Some("migrate") {
-        let rest: Vec<String> = args.collect();
-        return dispatch_migrate(&rest).await;
+    match args.next().as_deref() {
+        Some("migrate") => {
+            let rest: Vec<String> = args.collect();
+            return dispatch_migrate(&rest).await;
+        }
+        Some("originals") => {
+            let rest: Vec<String> = args.collect();
+            return originals_cmd::run(&rest).await;
+        }
+        _ => {}
     }
 
     info!("Starting EdgeQuake v{}", env!("CARGO_PKG_VERSION"));

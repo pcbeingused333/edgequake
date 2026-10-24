@@ -107,6 +107,14 @@ pub async fn download_pdf(
             return Err(ApiError::forbidden());
         }
     }
+    #[cfg(feature = "postgres")]
+    if let Some(pool) = state.optional_pg_pool() {
+        let tenant = context
+            .tenant_id_uuid()
+            .unwrap_or_else(crate::middleware::default_tenant_uuid);
+        crate::services::tenant_isolation::ensure_caller_tenant(pool, tenant, info.workspace_id)
+            .await?;
+    }
 
     let range_header = headers
         .get(axum::http::header::RANGE)
@@ -142,7 +150,7 @@ pub async fn download_pdf(
 ///
 /// Each poll of the body awaits at most one storage read, so pdf.js aborting
 /// the unranged probe after headers costs at most one chunk (never `get_pdf`).
-fn pdf_byte_stream(
+pub(crate) fn pdf_byte_stream(
     storage: std::sync::Arc<dyn PdfDocumentStorage>,
     pdf_id: Uuid,
     start: u64,
@@ -263,7 +271,7 @@ pub async fn get_pdf_content(
     let pdf_storage = get_pdf_storage(&state)?;
 
     let pdf = pdf_storage
-        .get_pdf(&pdf_id)
+        .get_pdf_content_view(&pdf_id)
         .await
         .map_err(|e| ApiError::Internal(format!("Failed to get PDF: {}", e)))?
         .ok_or_else(|| ApiError::NotFound("PDF not found".to_string()))?;
@@ -275,6 +283,14 @@ pub async fn get_pdf_content(
         if pdf.workspace_id != workspace_id {
             return Err(ApiError::forbidden());
         }
+    }
+    #[cfg(feature = "postgres")]
+    if let Some(pool) = state.optional_pg_pool() {
+        let tenant = context
+            .tenant_id_uuid()
+            .unwrap_or_else(crate::middleware::default_tenant_uuid);
+        crate::services::tenant_isolation::ensure_caller_tenant(pool, tenant, pdf.workspace_id)
+            .await?;
     }
 
     let is_processed = pdf.processing_status == PdfProcessingStatus::Completed;

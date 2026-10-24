@@ -20,7 +20,7 @@ The API process never auto-applies numbered migrations on start.
 | Epoch coverage | `./scripts/check_epoch_coverage.sh` |
 | Manifest SSOT | `edgequake/migrations/manifest.toml` |
 
-**Train:** v0.36.0 ships through migration **214** (`214` one-time access links; `213` tenant invitations; `212` backfills relationship chunk keys; `211` adds `relationships.source_chunk_keys`; `210_graph_label_typo_search_rls.sql`; `209` ordered graph page indexes; `208` wraps row-security helper calls as InitPlans). The published v0.35.7 tag stops at **207**. The published v0.35.0 tag stops at **206**
+**Train:** v0.37.0 ships through migration **218** (`218` PDF window digest; `217` image and markdown object refs; `216` originals maintenance role; `215` object-ref ledger). The published v0.36.0 tag stops at **214** (`214` one-time access links; `213` tenant invitations; `212` backfills relationship chunk keys; `211` adds `relationships.source_chunk_keys`; `210_graph_label_typo_search_rls.sql`; `209` ordered graph page indexes; `208` wraps row-security helper calls as InitPlans). The published v0.35.7 tag stops at **207**. The published v0.35.0 tag stops at **206**
 (`170_spec164_plain_graph.sql` expand, `171_spec164_drop_age.sql` confirm-drop,
 `172`–`202` request-path indexes, `203` chunk legacy-key index,
 `204` graph label search, `205` drops empty `ag_catalog` only after the

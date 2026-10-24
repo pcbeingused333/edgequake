@@ -3,7 +3,7 @@ title: "What's new"
 description: "Per-release highlights moved out of the README."
 ---
 
-This page lists the highlights of each release from v0.36.0 back to v0.24.0, newest first. Most entries name the schema number, so you can plan a database migration before you upgrade. For the full change list, see the [CHANGELOG](CHANGELOG.md), and for the upgrade steps, see the linked upgrade guide. A plain-English [picture tour](https://edgequake.com/tutorial/) of the UI is on the marketing site.
+This page lists the highlights of each release from v0.37.0 back to v0.24.0, newest first. Most entries name the schema number, so you can plan a database migration before you upgrade. For the full change list, see the [CHANGELOG](CHANGELOG.md), and for the upgrade steps, see the linked upgrade guide. A plain-English [picture tour](https://edgequake.com/tutorial/) of the UI is on the marketing site.
 
 ## Schema train at a glance
 
@@ -28,11 +28,25 @@ timeline
     v0.35.0 : 206
     v0.35.1 : 207
     v0.36.0 : 214
+    v0.37.0 : 218
 ```
 
-The timeline shows the schema number each release leaves the database at, from v0.23.0 through v0.36.0.
+The timeline shows the schema number each release leaves the database at, from v0.23.0 through v0.37.0.
 
 Run `edgequake migrate` when you move to a release with a higher number. The [upgrading guide](operations/upgrading.md) covers the steps.
+
+### What's new in 0.37.0
+
+Original document bytes can move to a private bucket (SPEC-172). Schema moves **214 → 218**. Upgrade from 0.36.0 runs migrations **215** through **218**. Text, chunks, and the graph stay in Postgres. The code default remains the database. `make dev` uses the bucket.
+
+- PDF bytes, uploads, page images, and extracted markdown.
+- `edgequake originals` copies and verifies. `clear --yes` is a separate step after a clean verify.
+- A replacement writes a new object key. The previous key is deleted only after the database row commits.
+- Keys stay under the configured prefix. The process does not create a bucket.
+
+Operator steps: [originals](operations/originals.md). SPEC-001 Acc on this cut (medical-mid n=200): EdgeQuake **0.8084** vs LightRAG **0.7681** — statistical tie (95% CI [-0.0241, +0.1036] includes 0). EdgeQuake does not claim a win. Archive [`medical-mid-20261024T031725Z`](../specs/001-benchmark/e2e/artifacts/history/medical-mid-20261024T031725Z/).
+
+Upgrade: **[upgrade-to-0.37.0.md](operations/upgrade-to-0.37.0.md)** · changelog: [CHANGELOG.md](CHANGELOG.md).
 
 ### What's new in 0.36.0
 
@@ -183,8 +197,7 @@ Upgrade: **[upgrade-to-0.25.0.md](operations/upgrade-to-0.25.0.md)** · changelo
 
 #### Database migration (read this first)
 
-**The API never migrates the database.** Schema changes are an explicit operator step.
-Current schema train: **168** (product pin **v0.32.2**). `main` is at **169** for v0.33.0, which is in progress.
+**The API never migrates the database.** Schema changes are an explicit operator step. The current train is on the [upgrading guide](operations/upgrading.md).
 
 | Situation | What to run |
 |-----------|-------------|

@@ -43,9 +43,32 @@ pub struct PdfBlobInfo {
     pub workspace_id: Uuid,
     /// Original filename.
     pub filename: String,
+    /// MIME type stored with the PDF.
+    pub content_type: String,
     /// Exact stored byte length.
     pub total_bytes: u64,
 }
+
+/// Header and markdown for the viewer. The PDF bytes are not loaded.
+#[derive(Debug, Clone)]
+pub struct PdfContentView {
+    pub pdf_id: Uuid,
+    pub workspace_id: Uuid,
+    pub document_id: Option<Uuid>,
+    pub filename: String,
+    pub content_type: String,
+    pub file_size_bytes: i64,
+    pub markdown_content: Option<String>,
+    pub processing_status: PdfProcessingStatus,
+}
+
+/// Viewer metadata. Must not name the PDF byte column.
+pub const PDF_CONTENT_VIEW_SQL: &str = r#"
+SELECT d.pdf_id, d.workspace_id, d.document_id, d.filename, d.content_type,
+       d.file_size_bytes, d.processing_status, d.markdown_content, d.markdown_location
+FROM pdf_documents d
+WHERE d.pdf_id = $1
+"#;
 
 /// PDF document stored in database.
 ///
@@ -378,7 +401,22 @@ pub trait PdfDocumentStorage: Send + Sync {
         Ok(self.get_pdf(pdf_id).await?.map(|pdf| PdfBlobInfo {
             workspace_id: pdf.workspace_id,
             filename: pdf.filename,
+            content_type: pdf.content_type,
             total_bytes: pdf.pdf_data.len() as u64,
+        }))
+    }
+
+    /// Markdown and header fields. The default still loads the PDF; Postgres does not.
+    async fn get_pdf_content_view(&self, pdf_id: &Uuid) -> Result<Option<PdfContentView>> {
+        Ok(self.get_pdf(pdf_id).await?.map(|pdf| PdfContentView {
+            pdf_id: pdf.pdf_id,
+            workspace_id: pdf.workspace_id,
+            document_id: pdf.document_id,
+            filename: pdf.filename,
+            content_type: pdf.content_type,
+            file_size_bytes: pdf.file_size_bytes,
+            markdown_content: pdf.markdown_content,
+            processing_status: pdf.processing_status,
         }))
     }
 
@@ -624,12 +662,13 @@ pub fn validate_pdf_data(data: &[u8]) -> Result<()> {
         return Err(StorageError::InvalidData("PDF data is empty".to_string()));
     }
 
-    // SPEC-083 D-44: must match edgequake_core::MAX_UPLOAD_BYTES (50 MiB).
-    const MAX_PDF_BYTES: usize = 50 * 1024 * 1024;
-    if data.len() > MAX_PDF_BYTES {
+    // SPEC-083 D-44: one cap with ResourceBudget (SPEC-172).
+    let max_pdf_bytes = crate::originals::max_upload_bytes();
+    if data.len() > max_pdf_bytes {
         return Err(StorageError::InvalidData(format!(
-            "PDF size {} exceeds 50 MiB limit",
-            data.len()
+            "PDF size {} exceeds the upload cap of {} bytes",
+            data.len(),
+            max_pdf_bytes
         )));
     }
 
@@ -711,5 +750,12 @@ mod tests {
         // Too large (simulate)
         let large_data = vec![b'%'; 105_000_000];
         assert!(validate_pdf_data(&large_data).is_err());
+    }
+
+    #[test]
+    fn content_view_sql_does_not_read_the_pdf_bytes() {
+        assert!(PDF_CONTENT_VIEW_SQL.contains("markdown_content"));
+        assert!(!PDF_CONTENT_VIEW_SQL.contains("pdf_data"));
+        assert!(!PDF_CONTENT_VIEW_SQL.contains("pdf_document_blobs"));
     }
 }

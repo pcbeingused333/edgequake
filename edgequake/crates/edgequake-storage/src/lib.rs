@@ -114,6 +114,7 @@ pub mod metadata_filter_sql;
 pub mod mm_asset_storage;
 pub mod namespace_tables;
 pub mod original_storage;
+pub mod originals;
 pub mod outbox;
 #[cfg(feature = "postgres")]
 pub mod outbox_drain;
@@ -223,9 +224,10 @@ pub use lineage_canon::{
 };
 pub use mm_asset_storage::{
     asset_id_from_path, classify_mm_asset_path, guess_mm_asset_content_type, normalize_mm_asset_id,
-    normalize_mm_asset_path, validate_mm_asset_data, DocumentMmAsset, DocumentMmAssetStorage,
-    DocumentMmAssetSummary, StoreMmAssetRequest, ASSET_KIND_EMBEDDED_FIGURE,
-    ASSET_KIND_PAGE_CHART_CROP, ASSET_KIND_PAGE_FULL, ASSET_KIND_TABLE_CROP,
+    normalize_mm_asset_path, safe_mm_asset_content_type, validate_mm_asset_data, DocumentMmAsset,
+    DocumentMmAssetStorage, DocumentMmAssetSummary, StoreMmAssetRequest,
+    ASSET_KIND_EMBEDDED_FIGURE, ASSET_KIND_PAGE_CHART_CROP, ASSET_KIND_PAGE_FULL,
+    ASSET_KIND_TABLE_CROP,
 };
 pub use original_storage::{
     validate_original_data, DocumentOriginal, DocumentOriginalStorage, StoreOriginalRequest,

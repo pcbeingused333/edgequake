@@ -107,6 +107,7 @@ impl AppState {
                 page_layout_storage: memory_page_layout_storage(),
                 page_state_storage: memory_page_state_storage(),
                 mode: StorageMode::Memory,
+                original_store: Default::default(),
             },
             query: QueryRuntime {
                 llm_provider,
@@ -281,6 +282,7 @@ impl AppState {
                 page_layout_storage: memory_page_layout_storage(),
                 page_state_storage: memory_page_state_storage(),
                 mode: StorageMode::Memory,
+                original_store: Default::default(),
             },
             query: QueryRuntime {
                 llm_provider: Arc::clone(&llm_provider),
@@ -461,6 +463,7 @@ impl AppState {
                 page_layout_storage: memory_page_layout_storage(),
                 page_state_storage: memory_page_state_storage(),
                 mode: StorageMode::Memory,
+                original_store: Default::default(),
             },
             query: QueryRuntime {
                 llm_provider: Arc::clone(&mock_provider)

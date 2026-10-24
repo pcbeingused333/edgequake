@@ -28,6 +28,10 @@ pub struct HealthResponse {
     /// Storage mode: "memory" or "postgresql".
     pub storage_mode: String,
 
+    /// Where original uploaded bytes live: `database` or `object` (SPEC-172).
+    #[serde(default = "default_original_store_mode")]
+    pub original_store: String,
+
     /// Workspace ID.
     pub workspace_id: String,
 
@@ -454,6 +458,18 @@ pub struct ComponentHealth {
     /// Liveness `/health` stays HTTP 200 with `status: degraded`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub eq_id_schema: Option<bool>,
+
+    /// SPEC-172. True in database mode. In object mode, true after the bucket probe.
+    #[serde(default = "default_original_store_ready")]
+    pub original_store_ready: bool,
+}
+
+fn default_original_store_mode() -> String {
+    "database".into()
+}
+
+fn default_original_store_ready() -> bool {
+    true
 }
 
 // ============================================================================
@@ -518,6 +534,7 @@ mod tests {
             version: "0.1.0".to_string(),
             build_info: None,
             storage_mode: "memory".to_string(),
+            original_store: "database".into(),
             workspace_id: "default".to_string(),
             components: ComponentHealth {
                 kv_storage: true,
@@ -526,6 +543,7 @@ mod tests {
                 graph_available: None,
                 llm_provider: true,
                 eq_id_schema: None,
+                original_store_ready: true,
             },
             llm_provider_name: Some("openai".to_string()),
             schema: None,
@@ -555,6 +573,7 @@ mod tests {
             version: "0.1.0".to_string(),
             build_info: None,
             storage_mode: "postgresql".to_string(),
+            original_store: "database".into(),
             workspace_id: "ws-123".to_string(),
             components: ComponentHealth {
                 kv_storage: true,
@@ -563,6 +582,7 @@ mod tests {
                 graph_available: None,
                 llm_provider: true,
                 eq_id_schema: Some(true),
+                original_store_ready: true,
             },
             llm_provider_name: Some("ollama".to_string()),
             schema: Some(SchemaHealth {
@@ -620,6 +640,7 @@ mod tests {
             graph_available: None,
             llm_provider: false,
             eq_id_schema: Some(false),
+            original_store_ready: true,
         };
         let json = serde_json::to_string(&components).unwrap();
         assert!(json.contains("\"kv_storage\":false"));
@@ -636,6 +657,7 @@ mod tests {
             version: "0.1.0".to_string(),
             build_info: None,
             storage_mode: "postgresql".to_string(),
+            original_store: "database".into(),
             workspace_id: "ws-123".to_string(),
             components: ComponentHealth {
                 kv_storage: true,
@@ -644,6 +666,7 @@ mod tests {
                 graph_available: None,
                 llm_provider: false,
                 eq_id_schema: Some(true),
+                original_store_ready: true,
             },
             llm_provider_name: None,
             schema: None,
@@ -669,6 +692,7 @@ mod tests {
             graph_available: None,
             llm_provider: true,
             eq_id_schema: Some(true),
+            original_store_ready: true,
         };
         let json = serde_json::to_string(&components).unwrap();
         assert!(json.contains("\"kv_storage\":true"));
@@ -705,6 +729,7 @@ mod tests {
             version: "0.1.0".to_string(),
             build_info: None,
             storage_mode: "postgresql".to_string(),
+            original_store: "database".into(),
             workspace_id: "default".to_string(),
             components: ComponentHealth {
                 kv_storage: true,
@@ -713,6 +738,7 @@ mod tests {
                 graph_available: None,
                 llm_provider: true,
                 eq_id_schema: Some(true),
+                original_store_ready: true,
             },
             llm_provider_name: Some("openai".to_string()),
             schema: None,

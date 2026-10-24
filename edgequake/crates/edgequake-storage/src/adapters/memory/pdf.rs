@@ -118,6 +118,7 @@ impl PdfDocumentStorage for MemoryPdfStorage {
         Ok(pdfs.get(pdf_id).map(|pdf| PdfBlobInfo {
             workspace_id: pdf.workspace_id,
             filename: pdf.filename.clone(),
+            content_type: pdf.content_type.clone(),
             total_bytes: pdf.pdf_data.len() as u64,
         }))
     }

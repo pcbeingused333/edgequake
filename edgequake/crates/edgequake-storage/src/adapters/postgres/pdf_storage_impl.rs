@@ -6,21 +6,209 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Row};
+use std::str::FromStr;
+use std::sync::Arc;
 use tracing::{debug, warn};
 use uuid::Uuid;
 
 use crate::error::{Result, StorageError};
+use crate::originals::{
+    after_object_checksum, chunk_matches, chunks_covering, column_matches_ref, digest_at,
+    get_inclusive, markdown_pointer, pdf_pointer, prefer_object, read_verified,
+    remove_delete_queue, scoped_object_key, workspace_tenant, BlobStore, ObjectPointer,
+    ObjectServe, OriginalsClient, OriginalsError, OwnerKind, PDF_CHUNK_BYTES,
+};
 use crate::pdf_storage::*;
+
+use super::pdf_object::create_object_pdf;
 
 /// PostgreSQL implementation of PdfDocumentStorage.
 pub struct PostgresPdfStorage {
     pool: PgPool,
+    objects: Option<Arc<OriginalsClient>>,
 }
 
 impl PostgresPdfStorage {
-    /// Create a new PostgreSQL PDF storage instance.
+    /// Create a new PostgreSQL PDF storage instance. Database mode: no bucket.
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            objects: None,
+        }
+    }
+
+    /// Object mode. `None` keeps the BYTEA path.
+    pub fn with_objects(mut self, objects: Option<Arc<OriginalsClient>>) -> Self {
+        self.objects = objects;
+        self
+    }
+
+    /// Key for this PDF only when the pointer's tenant, workspace, and key
+    /// all name the workspace that owns the row.
+    async fn tenant_pdf_key(
+        &self,
+        _pdf_id: Uuid,
+        workspace_id: Uuid,
+        pointer: &ObjectPointer,
+    ) -> Result<Option<String>> {
+        let Some(client) = &self.objects else {
+            return Ok(None);
+        };
+        let tenant = workspace_tenant(&self.pool, workspace_id)
+            .await
+            .map_err(|err| StorageError::Database(format!("PDF tenant: {err}")))?;
+        Ok(scoped_object_key(
+            &client.prefix,
+            OwnerKind::Pdf,
+            tenant,
+            workspace_id,
+            pointer.tenant_id,
+            pointer.workspace_id,
+            &pointer.key,
+        ))
+    }
+
+    /// Column text in database mode. Object mode fills from the bucket when the
+    /// ref is verified and the key names this workspace. A mismatch returns no
+    /// text and does not call the bucket.
+    async fn markdown_text(
+        &self,
+        workspace_id: Uuid,
+        owner: Uuid,
+        location: String,
+        column: Option<String>,
+    ) -> Result<Option<String>> {
+        let Some(client) = &self.objects else {
+            return Ok(column);
+        };
+        let pointer = markdown_pointer(&self.pool, owner)
+            .await
+            .map_err(|err| StorageError::Database(format!("Failed to read markdown ref: {err}")))?;
+        let tenant = workspace_tenant(&self.pool, workspace_id)
+            .await
+            .map_err(|err| StorageError::Database(format!("markdown tenant: {err}")))?;
+        let scoped = pointer.as_ref().and_then(|pointer| {
+            scoped_object_key(
+                &client.prefix,
+                OwnerKind::Markdown,
+                tenant,
+                workspace_id,
+                pointer.tenant_id,
+                pointer.workspace_id,
+                &pointer.key,
+            )
+        });
+        let verified = scoped.is_some() && pointer.as_ref().is_some_and(|p| p.verified);
+        if location == "object" && scoped.is_none() {
+            return Ok(None);
+        }
+        if !prefer_object(true, &location, verified) {
+            return Ok(column);
+        }
+        let Some(key) = scoped else {
+            return Ok(None);
+        };
+        let Some(pointer) = pointer else {
+            return Ok(None);
+        };
+        if location != "object" {
+            if let Some(text) = &column {
+                if !column_matches_ref(text.as_bytes(), &pointer.sha256, pointer.byte_length) {
+                    warn!("markdown column differs from the verified ref; serving database text");
+                    return Ok(column);
+                }
+            }
+        }
+        let bytes = match read_verified(
+            client.blobs.as_ref(),
+            &key,
+            &pointer.sha256,
+            pointer.byte_length,
+        )
+        .await
+        {
+            Ok(bytes) => bytes,
+            Err(err) => {
+                return match after_object_checksum(&location, column.is_some(), false) {
+                    ObjectServe::Column => {
+                        warn!(error = %err, "markdown object read failed; serving database text");
+                        Ok(column)
+                    }
+                    ObjectServe::Refuse | ObjectServe::Object => {
+                        let message = if matches!(err, OriginalsError::Checksum(_)) {
+                            "markdown object bytes do not match the verified ref".to_string()
+                        } else {
+                            format!("markdown object read failed: {err}")
+                        };
+                        Err(StorageError::Unavailable(message))
+                    }
+                };
+            }
+        };
+        String::from_utf8(bytes)
+            .map(Some)
+            .map_err(|err| StorageError::Database(format!("markdown object is not utf-8: {err}")))
+    }
+
+    async fn pdf_column(&self, pdf_id: Uuid) -> Result<Vec<u8>> {
+        sqlx::query_scalar("SELECT pdf_data FROM pdf_document_blobs WHERE pdf_id = $1")
+            .bind(pdf_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| StorageError::Database(format!("Failed to fetch PDF bytes: {e}")))
+    }
+
+    async fn pdf_chunk_pack(&self, pdf_id: Uuid) -> Result<Option<Vec<u8>>> {
+        let value: Option<Option<Vec<u8>>> =
+            sqlx::query_scalar("SELECT chunk_sha256 FROM original_object_refs WHERE pdf_id = $1")
+                .bind(pdf_id)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|e| {
+                    StorageError::Database(format!("Failed to read PDF chunk digests: {e}"))
+                })?;
+        Ok(value.flatten())
+    }
+
+    async fn verified_pdf_window(
+        &self,
+        blob: &dyn BlobStore,
+        key: &str,
+        total: u64,
+        pack: &[u8],
+        start: u64,
+        end: u64,
+    ) -> Result<Option<Vec<u8>>> {
+        let covers = chunks_covering(start, end, total, PDF_CHUNK_BYTES)
+            .ok_or_else(|| StorageError::Unavailable("PDF range is outside the object".into()))?;
+        let mut assembled = Vec::new();
+        let mut base = start;
+        for (nth, cover) in covers.iter().enumerate() {
+            let digest = digest_at(pack, cover.index)
+                .ok_or_else(|| StorageError::Unavailable("PDF chunk digest is missing".into()))?;
+            let chunk = get_inclusive(blob, key, cover.start, cover.end)
+                .await
+                .map_err(|err| {
+                    StorageError::Unavailable(format!("PDF range read failed: {err}"))
+                })?;
+            if !chunk_matches(&chunk, digest) {
+                return Err(StorageError::Unavailable(
+                    "PDF chunk bytes do not match the stored digest".into(),
+                ));
+            }
+            if nth == 0 {
+                base = cover.start;
+            }
+            assembled.extend(chunk);
+        }
+        let from = (start - base) as usize;
+        let to = (end - base) as usize;
+        if to >= assembled.len() || from > to {
+            return Err(StorageError::Unavailable(
+                "PDF range is outside the checked window".into(),
+            ));
+        }
+        Ok(Some(assembled[from..=to].to_vec()))
     }
 }
 
@@ -177,15 +365,17 @@ impl PostgresPdfStorage {
                 d.file_size_bytes,
                 d.sha256_checksum,
                 d.page_count,
-                b.pdf_data AS pdf_data,
                 d.processing_status,
                 d.extraction_method,
                 d.vision_model,
                 d.markdown_content,
-                d.extraction_errors,
-                d.created_at,
-                d.processed_at,
-                d.updated_at
+                d.markdown_object_id,
+                d.markdown_location,
+            d.extraction_errors,
+            d.created_at,
+            d.processed_at,
+            d.updated_at,
+            b.byte_location AS byte_location
             FROM pdf_documents d
             INNER JOIN pdf_document_blobs b ON b.pdf_id = d.pdf_id
             {where_sql}
@@ -206,8 +396,79 @@ impl PostgresPdfStorage {
             .fetch_optional(&self.pool)
             .await
             .map_err(|e| StorageError::Database(format!("Failed to fetch PDF: {e}")))?;
-        Ok(row.map(|r| PdfDocument {
-            pdf_id: r.get("pdf_id"),
+        let Some(r) = row else {
+            return Ok(None);
+        };
+        let pdf_id: Uuid = r.get("pdf_id");
+        let workspace_id: Uuid = r.get("workspace_id");
+        let byte_location: String = r.get("byte_location");
+        let pointer = if self.objects.is_some() {
+            pdf_pointer(&self.pool, pdf_id).await.map_err(|err| {
+                StorageError::Database(format!("Failed to read original object ref: {err}"))
+            })?
+        } else {
+            None
+        };
+        let scoped_key = if let Some(pointer) = &pointer {
+            self.tenant_pdf_key(pdf_id, workspace_id, pointer).await?
+        } else {
+            None
+        };
+        let verified = scoped_key.is_some() && pointer.as_ref().is_some_and(|p| p.verified);
+        let pdf_data = if prefer_object(self.objects.is_some(), &byte_location, verified) {
+            let Some(key) = scoped_key else {
+                return Ok(None);
+            };
+            let Some(pointer) = pointer else {
+                return Ok(None);
+            };
+            let client = self.objects.as_ref().expect("object client");
+            if byte_location != "object" {
+                let column = self.pdf_column(pdf_id).await?;
+                if !column_matches_ref(&column, &pointer.sha256, pointer.byte_length) {
+                    warn!("PDF column differs from the verified ref; serving database bytes");
+                    column
+                } else {
+                    match read_verified(
+                        client.blobs.as_ref(),
+                        &key,
+                        &pointer.sha256,
+                        pointer.byte_length,
+                    )
+                    .await
+                    {
+                        Ok(bytes) => bytes,
+                        Err(err) => {
+                            warn!(error = %err, "PDF object read failed; serving database bytes");
+                            column
+                        }
+                    }
+                }
+            } else {
+                match read_verified(
+                    client.blobs.as_ref(),
+                    &key,
+                    &pointer.sha256,
+                    pointer.byte_length,
+                )
+                .await
+                {
+                    Ok(bytes) => bytes,
+                    Err(err) => {
+                        let message = if matches!(err, OriginalsError::Checksum(_)) {
+                            "PDF object bytes do not match the verified ref".to_string()
+                        } else {
+                            format!("PDF object read failed: {err}")
+                        };
+                        return Err(StorageError::Unavailable(message));
+                    }
+                }
+            }
+        } else {
+            self.pdf_column(pdf_id).await?
+        };
+        Ok(Some(PdfDocument {
+            pdf_id,
             workspace_id: r.get("workspace_id"),
             document_id: r.get("document_id"),
             filename: r.get("filename"),
@@ -215,7 +476,7 @@ impl PostgresPdfStorage {
             file_size_bytes: r.get("file_size_bytes"),
             sha256_checksum: r.get("sha256_checksum"),
             page_count: r.get("page_count"),
-            pdf_data: r.get("pdf_data"),
+            pdf_data,
             processing_status: r
                 .get::<String, _>("processing_status")
                 .parse()
@@ -225,7 +486,14 @@ impl PostgresPdfStorage {
                 .as_ref()
                 .and_then(|m| m.parse().ok()),
             vision_model: r.get("vision_model"),
-            markdown_content: r.get("markdown_content"),
+            markdown_content: self
+                .markdown_text(
+                    workspace_id,
+                    r.get("markdown_object_id"),
+                    r.get::<String, _>("markdown_location"),
+                    r.get("markdown_content"),
+                )
+                .await?,
             extraction_errors: r.get("extraction_errors"),
             created_at: r.get::<DateTime<Utc>, _>("created_at"),
             processed_at: r.get("processed_at"),
@@ -253,6 +521,10 @@ impl PdfDocumentStorage for PostgresPdfStorage {
                 "PDF already exists with ID: {}",
                 existing.pdf_id
             )));
+        }
+
+        if let Some(client) = &self.objects {
+            return create_object_pdf(&self.pool, client, request).await;
         }
 
         // SPEC-090 F-090-16: metadata row + blob side-table (SSOT for bytes) in one TX.
@@ -306,11 +578,22 @@ impl PdfDocumentStorage for PostgresPdfStorage {
 
         sqlx::query(
             r#"
-            INSERT INTO pdf_document_blobs (pdf_id, pdf_data)
-            VALUES ($1, $2)
-            ON CONFLICT (pdf_id) DO UPDATE SET
-                pdf_data = EXCLUDED.pdf_data,
-                updated_at = NOW()
+            WITH written AS (
+                INSERT INTO pdf_document_blobs (pdf_id, pdf_data, byte_location)
+                VALUES ($1, $2, 'database')
+                ON CONFLICT (pdf_id) DO UPDATE SET
+                    pdf_data = EXCLUDED.pdf_data,
+                    byte_location = 'database',
+                    updated_at = NOW()
+                RETURNING pdf_id
+            ),
+            dropped AS (
+                DELETE FROM original_object_refs r
+                USING written w
+                WHERE r.pdf_id = w.pdf_id
+                RETURNING r.pdf_id
+            )
+            SELECT pdf_id FROM written
             "#,
         )
         .bind(pdf_id)
@@ -340,10 +623,45 @@ impl PdfDocumentStorage for PostgresPdfStorage {
             .await
     }
 
+    async fn get_pdf_content_view(&self, pdf_id: &Uuid) -> Result<Option<PdfContentView>> {
+        let row = sqlx::query(PDF_CONTENT_VIEW_SQL)
+            .bind(pdf_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| StorageError::Database(format!("Failed to fetch PDF content: {e}")))?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let workspace_id: Uuid = row.get("workspace_id");
+        let location: String = row.get("markdown_location");
+        let column: Option<String> = row.get("markdown_content");
+        let markdown = if self.objects.is_some() {
+            self.markdown_text(*pdf_id, workspace_id, location, column)
+                .await?
+        } else {
+            column
+        };
+        let status = PdfProcessingStatus::from_str(row.get("processing_status"))?;
+        Ok(Some(PdfContentView {
+            pdf_id: row.get("pdf_id"),
+            workspace_id,
+            document_id: row.get("document_id"),
+            filename: row.get("filename"),
+            content_type: row.get("content_type"),
+            file_size_bytes: row.get("file_size_bytes"),
+            markdown_content: markdown,
+            processing_status: status,
+        }))
+    }
+
     async fn get_pdf_blob_info(&self, pdf_id: &Uuid) -> Result<Option<PdfBlobInfo>> {
         let row = sqlx::query(
             r#"
-            SELECT d.workspace_id, d.filename, octet_length(b.pdf_data)::bigint AS total_bytes
+            SELECT d.workspace_id, d.filename, d.content_type, b.byte_location, d.file_size_bytes,
+                   CASE WHEN b.byte_location = 'database'
+                        THEN octet_length(b.pdf_data)::bigint
+                        ELSE d.file_size_bytes
+                   END AS bytea_len
             FROM pdf_documents d
             INNER JOIN pdf_document_blobs b ON b.pdf_id = d.pdf_id
             WHERE d.pdf_id = $1
@@ -354,10 +672,39 @@ impl PdfDocumentStorage for PostgresPdfStorage {
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| StorageError::Database(format!("Failed to fetch PDF info: {e}")))?;
-        Ok(row.map(|r| PdfBlobInfo {
-            workspace_id: r.get("workspace_id"),
+        let Some(r) = row else {
+            return Ok(None);
+        };
+        let location: String = r.get("byte_location");
+        let workspace_id: Uuid = r.get("workspace_id");
+        let pointer = if self.objects.is_some() {
+            pdf_pointer(&self.pool, *pdf_id).await.map_err(|err| {
+                StorageError::Database(format!("Failed to read original object ref: {err}"))
+            })?
+        } else {
+            None
+        };
+        let scoped = if let Some(pointer) = &pointer {
+            self.tenant_pdf_key(*pdf_id, workspace_id, pointer).await?
+        } else {
+            None
+        };
+        if location == "object" && scoped.is_none() {
+            return Ok(None);
+        }
+        let verified = scoped.is_some() && pointer.as_ref().is_some_and(|p| p.verified);
+        let total = if prefer_object(self.objects.is_some(), &location, verified) {
+            pointer
+                .map(|p| p.byte_length.max(0) as u64)
+                .unwrap_or_else(|| r.get::<i64, _>("file_size_bytes").max(0) as u64)
+        } else {
+            r.get::<i64, _>("bytea_len").max(0) as u64
+        };
+        Ok(Some(PdfBlobInfo {
+            workspace_id,
             filename: r.get("filename"),
-            total_bytes: r.get::<i64, _>("total_bytes").max(0) as u64,
+            content_type: r.get("content_type"),
+            total_bytes: total,
         }))
     }
 
@@ -367,6 +714,81 @@ impl PdfDocumentStorage for PostgresPdfStorage {
         start: u64,
         end: u64,
     ) -> Result<Option<Vec<u8>>> {
+        if let Some(client) = &self.objects {
+            let row = sqlx::query(
+                "SELECT b.byte_location, d.workspace_id \
+                 FROM pdf_document_blobs b \
+                 JOIN pdf_documents d ON d.pdf_id = b.pdf_id \
+                 WHERE b.pdf_id = $1",
+            )
+            .bind(pdf_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| StorageError::Database(format!("Failed to read PDF location: {e}")))?;
+            let Some(row) = row else {
+                return Ok(None);
+            };
+            let location: String = row.get("byte_location");
+            let workspace_id: Uuid = row.get("workspace_id");
+            let pointer = pdf_pointer(&self.pool, *pdf_id).await.map_err(|err| {
+                StorageError::Database(format!("Failed to read original object ref: {err}"))
+            })?;
+            let scoped = if let Some(pointer) = &pointer {
+                self.tenant_pdf_key(*pdf_id, workspace_id, pointer).await?
+            } else {
+                None
+            };
+            let verified = scoped.is_some() && pointer.as_ref().is_some_and(|p| p.verified);
+            // Dual-copy rows keep the column. A range cannot prove the object
+            // hash, so only `byte_location = object` reads a slice from the bucket.
+            if location == "object" {
+                if !verified {
+                    return Ok(None);
+                }
+                let Some(key) = scoped else {
+                    return Ok(None);
+                };
+                let Some(pointer) = pointer else {
+                    return Ok(None);
+                };
+                let whole = pointer.byte_length > 0
+                    && start == 0
+                    && u64::try_from(pointer.byte_length).ok() == Some(end.saturating_add(1));
+                if whole {
+                    let bytes = read_verified(
+                        client.blobs.as_ref(),
+                        &key,
+                        &pointer.sha256,
+                        pointer.byte_length,
+                    )
+                    .await
+                    .map_err(|err| {
+                        StorageError::Unavailable(format!("PDF object read failed: {err}"))
+                    })?;
+                    return Ok(Some(bytes));
+                }
+                if let Some(pack) = self.pdf_chunk_pack(*pdf_id).await? {
+                    if !pack.is_empty() {
+                        return self
+                            .verified_pdf_window(
+                                client.blobs.as_ref(),
+                                &key,
+                                pointer.byte_length.max(0) as u64,
+                                &pack,
+                                start,
+                                end,
+                            )
+                            .await;
+                    }
+                }
+                let bytes = get_inclusive(client.blobs.as_ref(), &key, start, end)
+                    .await
+                    .map_err(|err| {
+                        StorageError::Unavailable(format!("PDF range read failed: {err}"))
+                    })?;
+                return Ok(Some(bytes));
+            }
+        }
         // `substring(bytea FROM n FOR len)` is 1-based and runs inside Postgres,
         // so only the requested window crosses the wire.
         let from = i32::try_from(start + 1)
@@ -462,34 +884,68 @@ impl PdfDocumentStorage for PostgresPdfStorage {
             None
         };
 
-        // FIX-REBUILD: Include vision_model in the UPDATE statement.
-        // WHY: When reprocessing with a different vision LLM (e.g. gpt-4o-mini → gemma3:12b),
-        // the vision_model column must be updated to reflect the model actually used.
-        // Previously this field was never written, leaving stale model info in the DB.
-        sqlx::query!(
+        if let Some(markdown) = request
+            .markdown_content
+            .as_deref()
+            .filter(|text| !text.is_empty())
+        {
+            if let Some(client) = &self.objects {
+                return super::pdf_markdown_object::store_markdown(
+                    &self.pool, client, &request, markdown,
+                )
+                .await;
+            }
+        }
+
+        let wrote_markdown = request
+            .markdown_content
+            .as_deref()
+            .is_some_and(|text| !text.is_empty());
+        let mut tx = self.pool.begin().await.map_err(|e| {
+            StorageError::Database(format!("Failed to begin PDF processing update: {e}"))
+        })?;
+        sqlx::query(
             r#"
             UPDATE pdf_documents
             SET processing_status = $1,
                 extraction_method = COALESCE($2, extraction_method),
                 markdown_content = COALESCE($3, markdown_content),
+                markdown_location = CASE
+                    WHEN $3 IS NOT NULL AND $3 <> '' THEN 'database'
+                    ELSE markdown_location
+                END,
                 extraction_errors = COALESCE($4, extraction_errors),
                 document_id = COALESCE($5, document_id),
                 processed_at = COALESCE($6, processed_at),
                 vision_model = COALESCE($8, vision_model)
             WHERE pdf_id = $7
             "#,
-            status_str,
-            method_str,
-            request.markdown_content,
-            request.extraction_errors,
-            request.document_id,
-            processed_at,
-            request.pdf_id,
-            request.vision_model
         )
-        .execute(&self.pool)
+        .bind(status_str)
+        .bind(&method_str)
+        .bind(&request.markdown_content)
+        .bind(&request.extraction_errors)
+        .bind(request.document_id)
+        .bind(processed_at)
+        .bind(request.pdf_id)
+        .bind(&request.vision_model)
+        .execute(&mut *tx)
         .await
-        .map_err(|e| StorageError::Database(format!("Failed to update PDF processing: {}", e)))?;
+        .map_err(|e| StorageError::Database(format!("Failed to update PDF processing: {e}")))?;
+        if wrote_markdown {
+            sqlx::query(
+                "DELETE FROM original_object_refs r
+                 USING pdf_documents d
+                 WHERE d.pdf_id = $1 AND r.markdown_object_id = d.markdown_object_id",
+            )
+            .bind(request.pdf_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| StorageError::Database(format!("Failed to drop markdown ref: {e}")))?;
+        }
+        tx.commit().await.map_err(|e| {
+            StorageError::Database(format!("Failed to commit PDF processing update: {e}"))
+        })?;
 
         debug!(
             "Updated PDF processing: id={}, status={}, method={:?}, vision_model={:?}",
@@ -611,6 +1067,30 @@ impl PdfDocumentStorage for PostgresPdfStorage {
     }
 
     async fn delete_pdf(&self, pdf_id: &Uuid) -> Result<()> {
+        let located = if self.objects.is_some() {
+            let row = sqlx::query("SELECT d.workspace_id FROM pdf_documents d WHERE d.pdf_id = $1")
+                .bind(pdf_id)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|e| {
+                    StorageError::Database(format!("Failed to read PDF workspace: {e}"))
+                })?;
+            if let Some(row) = row {
+                let workspace_id: Uuid = row.get("workspace_id");
+                let pointer = pdf_pointer(&self.pool, *pdf_id).await.map_err(|err| {
+                    StorageError::Database(format!("Failed to read original object ref: {err}"))
+                })?;
+                if let Some(pointer) = pointer {
+                    self.tenant_pdf_key(*pdf_id, workspace_id, &pointer).await?
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         sqlx::query!(
             r#"
             DELETE FROM pdf_documents
@@ -622,6 +1102,21 @@ impl PdfDocumentStorage for PostgresPdfStorage {
         .await
         .map_err(|e| StorageError::Database(format!("Failed to delete PDF: {}", e)))?;
 
+        if let (Some(client), Some(key)) = (&self.objects, located) {
+            match client.blobs.delete_key(&key).await {
+                Ok(()) => {
+                    let _ = remove_delete_queue(&self.pool, &key).await;
+                }
+                Err(err) => {
+                    warn!(
+                        pdf_id = %pdf_id,
+                        error = %err,
+                        "object delete failed; original_object_deletes keeps the key for the reaper"
+                    );
+                }
+            }
+        }
+
         debug!("Deleted PDF: id={}", pdf_id);
 
         Ok(())
@@ -632,16 +1127,28 @@ impl PdfDocumentStorage for PostgresPdfStorage {
         // pdf_processing resume shortcut cannot reuse a stale conversion. This is
         // the only way to force a true PDF -> markdown re-conversion, because
         // `update_pdf_processing` uses COALESCE and never clears these columns.
-        sqlx::query!(
+        // The ref is removed first. The bucket is called only for a key that
+        // names this workspace, and only when the originals client exists.
+        let key = super::pdf_markdown_object::take_markdown_key(
+            &self.pool,
+            self.objects.as_deref(),
+            *pdf_id,
+        )
+        .await?;
+        if let (Some(client), Some(key)) = (&self.objects, key) {
+            super::pdf_markdown_object::delete_markdown_key(&self.pool, client, &key).await;
+        }
+        sqlx::query(
             r#"
             UPDATE pdf_documents
             SET markdown_content = NULL,
+                markdown_location = 'database',
                 extraction_method = NULL,
                 extraction_errors = NULL
             WHERE pdf_id = $1
             "#,
-            pdf_id
         )
+        .bind(pdf_id)
         .execute(&self.pool)
         .await
         .map_err(|e| StorageError::Database(format!("Failed to clear PDF markdown: {}", e)))?;

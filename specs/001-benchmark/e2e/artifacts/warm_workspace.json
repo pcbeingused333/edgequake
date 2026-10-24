@@ -1,8 +1,8 @@
 {
-  "workspace_id": "97f871ff-4ca3-41ea-a524-74b981181b98",
+  "workspace_id": "453b666d-1d69-41bd-bd9e-f365aac18383",
   "full_corpus": true,
-  "updated_at_utc": "2026-10-15T03:46:30Z",
+  "updated_at_utc": "2026-10-24T03:17:25Z",
   "eq_workspace_name": "bench001-smoke",
   "stage": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/001-benchmark/e2e/artifacts/medical-mid",
-  "archive": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/001-benchmark/e2e/artifacts/history/medical-mid-20261015T034630Z"
+  "archive": "/Users/raphaelmansuy/Github/03-working/edgequake/specs/001-benchmark/e2e/artifacts/history/medical-mid-20261024T031725Z"
 }

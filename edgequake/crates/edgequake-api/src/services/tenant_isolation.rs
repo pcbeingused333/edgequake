@@ -151,6 +151,23 @@ where
         .map_err(|e| crate::error::ApiError::Internal(format!("PG operation failed: {e}")))
 }
 
+/// The workspace row's tenant must be the caller's tenant. Object keys are
+/// not an access check; this is (SPEC-172, SPEC-154).
+#[cfg(feature = "postgres")]
+pub async fn ensure_caller_tenant(
+    pool: &sqlx::PgPool,
+    tenant_id: Uuid,
+    workspace_id: Uuid,
+) -> Result<(), crate::error::ApiError> {
+    let owner = edgequake_storage::originals::workspace_tenant(pool, workspace_id)
+        .await
+        .map_err(|_| crate::error::ApiError::forbidden())?;
+    if owner != tenant_id {
+        return Err(crate::error::ApiError::forbidden());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
