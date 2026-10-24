@@ -3,7 +3,7 @@ title: "What's new"
 description: "Per-release highlights moved out of the README."
 ---
 
-This page lists the highlights of each release from v0.37.0 back to v0.24.0, newest first. Most entries name the schema number, so you can plan a database migration before you upgrade. For the full change list, see the [CHANGELOG](CHANGELOG.md), and for the upgrade steps, see the linked upgrade guide. A plain-English [picture tour](https://edgequake.com/tutorial/) of the UI is on the marketing site.
+This page lists the highlights of each release from v0.38.0 back to v0.24.0, newest first. Most entries name the schema number, so you can plan a database migration before you upgrade. For the full change list, see the [CHANGELOG](CHANGELOG.md), and for the upgrade steps, see the linked upgrade guide. A plain-English [picture tour](https://edgequake.com/tutorial/) of the UI is on the marketing site.
 
 ## Schema train at a glance
 
@@ -29,11 +29,22 @@ timeline
     v0.35.1 : 207
     v0.36.0 : 214
     v0.37.0 : 218
+    v0.38.0 : 219
 ```
 
-The timeline shows the schema number each release leaves the database at, from v0.23.0 through v0.37.0.
+The timeline shows the schema number each release leaves the database at, from v0.23.0 through v0.38.0.
 
 Run `edgequake migrate` when you move to a release with a higher number. The [upgrading guide](operations/upgrading.md) covers the steps.
+
+### What's new in 0.38.0
+
+Agents can upload a PDF through a checksum-bound PUT URL (SPEC-173). Schema moves **218 → 219**. Upgrade from 0.37.0 runs migration **219** only. It does not move original bytes. Restart replicas after migrate.
+
+- S3 and GCS return a presigned PUT. Other modes return a same-origin HMAC PUT.
+- The URL lasts at most 900 seconds. A default JWT secret cannot mint the relay URL.
+- SPEC-001 Acc was not re-scored. The v0.37.0 pack [`medical-mid-20261024T031725Z`](../specs/001-benchmark/e2e/artifacts/history/medical-mid-20261024T031725Z/) stays the valid score: EdgeQuake **0.8084** vs LightRAG **0.7681**, a statistical tie. EdgeQuake does not claim a win.
+
+Upgrade: **[upgrade-to-0.38.0.md](operations/upgrade-to-0.38.0.md)** · changelog: [CHANGELOG.md](CHANGELOG.md).
 
 ### What's new in 0.37.0
 

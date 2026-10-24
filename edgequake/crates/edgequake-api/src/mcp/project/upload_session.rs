@@ -129,18 +129,20 @@ pub async fn eq_upload_begin(
             } => {
                 return finish_begin(
                     state,
-                    scope,
-                    upload_id,
-                    filename,
-                    media_type,
-                    byte_length,
-                    Some(sha),
-                    transfer,
-                    Some(url),
-                    headers,
-                    staging_key,
-                    expires,
-                    bearer_bind(),
+                    BeginFinish {
+                        scope,
+                        upload_id,
+                        filename,
+                        media_type,
+                        byte_length,
+                        sha256: Some(sha),
+                        transfer,
+                        url: Some(url),
+                        headers,
+                        staging_key,
+                        expires,
+                        bind_bearer: bearer_bind(),
+                    },
                 )
                 .await;
             }
@@ -149,20 +151,37 @@ pub async fn eq_upload_begin(
 
     finish_begin(
         state,
-        scope,
-        upload_id,
-        filename,
-        media_type,
-        byte_length,
-        sha256,
-        transfer,
-        url,
-        headers,
-        staging_key,
-        expires,
-        false,
+        BeginFinish {
+            scope,
+            upload_id,
+            filename,
+            media_type,
+            byte_length,
+            sha256,
+            transfer,
+            url,
+            headers,
+            staging_key,
+            expires,
+            bind_bearer: false,
+        },
     )
     .await
+}
+
+struct BeginFinish {
+    scope: UploadScope,
+    upload_id: String,
+    filename: String,
+    media_type: String,
+    byte_length: Option<u64>,
+    sha256: Option<String>,
+    transfer: UploadTransfer,
+    url: Option<String>,
+    headers: Vec<(String, String)>,
+    staging_key: Option<String>,
+    expires: i64,
+    bind_bearer: bool,
 }
 
 enum SignedOpen {
@@ -200,7 +219,7 @@ async fn open_signed(
         )));
     };
     let bind_bearer = bearer_bind();
-    if let Some(presign) = try_presign(state, scope, media_type, &sha, bind_bearer).await? {
+    if let Some(presign) = try_presign(state, scope, media_type, sha, bind_bearer).await? {
         return Ok(SignedOpen::Ready {
             transfer: UploadTransfer::Presign,
             url: presign.url,
@@ -310,21 +329,21 @@ async fn try_presign(
     }
 }
 
-async fn finish_begin(
-    state: &AppState,
-    scope: UploadScope,
-    upload_id: String,
-    filename: String,
-    media_type: String,
-    byte_length: Option<u64>,
-    sha256: Option<String>,
-    transfer: UploadTransfer,
-    url: Option<String>,
-    headers: Vec<(String, String)>,
-    staging_key: Option<String>,
-    expires: i64,
-    bind_bearer: bool,
-) -> ApiResult<Value> {
+async fn finish_begin(state: &AppState, begun: BeginFinish) -> ApiResult<Value> {
+    let BeginFinish {
+        scope,
+        upload_id,
+        filename,
+        media_type,
+        byte_length,
+        sha256,
+        transfer,
+        url,
+        headers,
+        staging_key,
+        expires,
+        bind_bearer,
+    } = begun;
     let meta = UploadMeta {
         upload_id: upload_id.clone(),
         scope: scope.clone(),

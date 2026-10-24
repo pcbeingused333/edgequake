@@ -95,7 +95,12 @@ where
     while cursor < prefixes.len() {
         if started.elapsed() >= budget {
             out.skipped += prefixes.len() - cursor;
-            last_error.get_or_insert_with(|| format!("INV-C count budget {budget:?} exhausted"));
+            let mut message = format!("INV-C count budget {budget:?} exhausted");
+            if let Some(prior) = last_error.take() {
+                message.push_str(" after ");
+                message.push_str(&prior);
+            }
+            last_error = Some(message);
             break;
         }
         let batch = &prefixes[cursor..(cursor + limit).min(prefixes.len())];

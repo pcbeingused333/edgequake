@@ -2496,6 +2496,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mcp/uploads/{upload_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** OpenAPI anchor for the SPEC-173 relay PUT. The handler reads raw bytes. */
+        put: operations["mcp_upload_put_openapi"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messages/{message_id}": {
         parameters: {
             query?: never;
@@ -20099,6 +20116,55 @@ export interface operations {
             };
             /** @description JSON-RPC notification accepted */
             202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mcp_upload_put_openapi: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Upload handle from eq_upload_begin */
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bytes stored */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Signature, type, or hash rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown or expired upload */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Upload is not open for a relay PUT */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Body longer than the declared length */
+            413: {
                 headers: {
                     [name: string]: unknown;
                 };

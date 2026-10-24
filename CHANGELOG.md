@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.38.0] — 2026-10-24
+
+Agents can upload a file, including a PDF, through a checksum-bound PUT URL. Schema moves from **218** to **219**. An upgrade from 0.37.0 runs migration **219** only:
+[`docs/operations/upgrade-to-0.38.0.md`](docs/operations/upgrade-to-0.38.0.md).
+
+**CD:** GHCR `edgequake`, `edgequake-frontend`, `edgequake-postgres` (`0.38.0`, `-pg16`, `-pg17`, `-pg18`), and `edgequake-keycloak` on tag `v0.38.0`.
+
+**SPEC-001 Acc:** not re-scored on this cut. SPEC-173 does not change mix retrieval. The latest valid medical-mid n=200 pack remains
+[`medical-mid-20261024T031725Z`](specs/001-benchmark/e2e/artifacts/history/medical-mid-20261024T031725Z/)
+(`valid: true`). EdgeQuake **0.8084**, LightRAG **0.7681**, delta **+0.0403**
+(95% bootstrap CI [-0.0241, +0.1036], n_paired 72). The interval includes 0,
+so this is a statistical tie. EdgeQuake does not claim a win.
+
+### Added (SPEC-173 — signed MCP upload)
+
+- `eq_upload_begin` returns a PUT URL bound to the SHA-256 and the byte length. S3 and GCS use a presigned PUT. Database mode, Azure, and bearer bind use a same-origin HMAC PUT at `/api/v1/mcp/uploads/{upload_id}`. The model does not send the file bytes in the tool call.
+- The URL lives at most 900 seconds. `EDGEQUAKE_MCP_UPLOAD_TTL_SECS` cannot raise that cap. `EDGEQUAKE_MCP_UPLOAD_BIND` is `capability` (default) or `bearer`. `EDGEQUAKE_MCP_UPLOAD_HMAC_KEY` signs the relay URL. When it is unset, the JWT secret is the key. The default JWT secret cannot mint a relay URL.
+- Commit checks the stored bytes, then uses the existing document admission path. A second commit returns the same document. Abort drops the staging bytes.
+
 ## [0.37.0] — 2026-10-24
 
 Original document bytes can live in a private bucket. Schema moves from **214** to **218**. An upgrade from 0.36.0 runs migrations **215** through **218**:

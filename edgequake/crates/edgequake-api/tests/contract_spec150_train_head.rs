@@ -846,8 +846,12 @@ fn progress_module_release_map_covers_head() {
         "release_for_schema must map 208–214 to v0.36.0"
     );
     assert!(
-        src.contains("215..=219 => \"v0.37.0\""),
-        "release_for_schema must map 215–219 to v0.37.0"
+        src.contains("215..=218 => \"v0.37.0\""),
+        "release_for_schema must map 215–218 to v0.37.0"
+    );
+    assert!(
+        src.contains("219 => \"v0.38.0\""),
+        "release_for_schema must map 219 to v0.38.0"
     );
     assert!(
         src.contains("149 => \"v0.26.0–v0.26.10\""),

@@ -2,12 +2,13 @@
 #
 # v0.35.1 owns schema 207. v0.35.2 through v0.35.7 serve that migration set.
 # v0.36.0 owns schema 214.
-# v0.37.0 will own schema 218 when the tag exists. Until then the pin below is the working set.
+# v0.37.0 owns schema 218.
+# v0.38.0 owns schema 219.
 
 [unreleased]
-hash = "9756b28fc8cc9c87"
-max = 218
-files = 216
+hash = "708f2a8ae446c71a"
+max = 219
+files = 217
 
 [[epoch]]
 tag = "v0.2.0"
@@ -334,3 +335,21 @@ key = true
 replay = true
 # max mig 214 (SPEC-169 invitations and access links; query migrations 208–212)
 # hash b8260fba4d6bc653 (212 numbered migration files)
+
+[[epoch]]
+tag = "v0.37.0"
+mode = "image"
+pg_majors = [16,17,18]
+key = true
+replay = true
+# max mig 218 (SPEC-172 original bytes)
+# hash 9756b28fc8cc9c87 (216 numbered migration files)
+
+[[epoch]]
+tag = "v0.38.0"
+mode = "image"
+pg_majors = [16,17,18]
+key = true
+replay = true
+# max mig 219 (SPEC-173 MCP upload sessions)
+# hash 708f2a8ae446c71a (217 numbered migration files)
