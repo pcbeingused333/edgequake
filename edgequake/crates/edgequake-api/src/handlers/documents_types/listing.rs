@@ -263,6 +263,22 @@ pub struct DocumentSummary {
     /// SPEC-160: extraction mode, who chose it, and decision-run counts.
     #[serde(flatten)]
     pub extraction: super::DocumentExtractionView,
+
+    /// SPEC-174. Absent while clearance enforcement is off.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub classification: Option<String>,
+
+    /// SPEC-174. Compartments the caller is allowed to know. Absent while enforcement is off.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compartments: Option<Vec<CompartmentView>>,
+}
+
+/// One compartment on a document the caller is allowed to see.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CompartmentView {
+    pub id: String,
+    pub key: String,
+    pub value: String,
 }
 
 // ── SPEC-031: Lightweight document search for the scope picker ───────────────

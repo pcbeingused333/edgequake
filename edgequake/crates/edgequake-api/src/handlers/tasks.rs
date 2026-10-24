@@ -62,6 +62,25 @@ pub async fn get_task(
     let pending_created_at =
         (task.status == edgequake_tasks::TaskStatus::Pending).then_some(task.created_at);
     let mut response = TaskResponse::from(task);
+    if let Some(document_id) = response
+        .metadata
+        .as_ref()
+        .and_then(|meta| meta.get("document_id"))
+        .and_then(|value| value.as_str())
+    {
+        if crate::services::clearance::must_hide(document_id).await? {
+            return Err(ApiError::NotFound(format!("Task {track_id} not found")));
+        }
+    }
+    if edgequake_storage::clearance_session::ClearanceSession::current()
+        .is_some_and(|session| session.enforced)
+        && response
+            .error_message
+            .as_ref()
+            .is_some_and(|message| message.contains('"'))
+    {
+        response.error_message = Some("Processing failed.".to_string());
+    }
 
     // SPEC-091 QW2 (LAW-Q4): live queue projection for pending tasks (best-effort).
     if let Some(created_at) = pending_created_at {

@@ -78,17 +78,18 @@ async fn relational_workspace_doc_ids(
         // SPEC-091 RM1: relational is SSOT. Explicit `EDGEQUAKE_KV_FAMILY_WSDOC=kv`
         // remains soak rollback only — otherwise never fall back to KV.
         let force_kv = kv_family_mode_from_env(KV_FAMILY_WSDOC) == KvFamilyMode::Kv;
-        if force_kv {
+        let enforced = !edgequake_storage::clearance_session::current_predicate_sql().is_empty();
+        if force_kv && !enforced {
             return None;
         }
         let pool = pool?;
         let ws = uuid::Uuid::parse_str(workspace_id).ok()?;
-        let sql = if limit.is_some() {
+        let sql = with_clearance(if limit.is_some() {
             MEMBERSHIP_PAGE_SQL
         } else {
             MEMBERSHIP_SQL
-        };
-        match membership_ids(pool, sql, ws, workspace_id, limit).await {
+        });
+        match membership_ids(pool, &sql, ws, workspace_id, limit).await {
             Ok(rows) => Some(rows.into_iter().map(|id| id.to_string()).collect()),
             Err(e) => {
                 tracing::warn!(
@@ -122,6 +123,13 @@ async fn membership_ids(
     sqlx::query("SET LOCAL plan_cache_mode = force_custom_plan")
         .execute(&mut *tx)
         .await?;
+    if let Some(session) = edgequake_storage::clearance_session::ClearanceSession::current() {
+        if !session.predicate_sql().is_empty() {
+            edgequake_storage::adapters::postgres::rls::apply_clearance_session(&mut tx, &session)
+                .await
+                .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
+        }
+    }
     let mut query = sqlx::query_scalar::<_, uuid::Uuid>(sql)
         .bind(ws)
         .bind(workspace_id);
@@ -131,6 +139,21 @@ async fn membership_ids(
     let rows = query.fetch_all(&mut *tx).await?;
     tx.commit().await?;
     Ok(rows)
+}
+
+fn with_clearance(sql: &str) -> String {
+    let predicate = edgequake_storage::clearance_session::current_predicate_sql();
+    if predicate.is_empty() {
+        return sql.to_string();
+    }
+    sql.replace(
+        "WHERE workspace_id = $1",
+        &format!("WHERE workspace_id = $1{predicate}"),
+    )
+    .replace(
+        "WHERE metadata->>'workspace_id' = $2",
+        &format!("WHERE metadata->>'workspace_id' = $2{predicate}"),
+    )
 }
 
 /// Sync workspace index entry from a document metadata KV write.

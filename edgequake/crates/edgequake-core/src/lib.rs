@@ -37,6 +37,7 @@
 
 pub mod cache;
 pub mod chunking_metadata;
+pub mod clearance;
 pub mod config;
 pub mod conversation_service;
 pub mod decision_metadata;

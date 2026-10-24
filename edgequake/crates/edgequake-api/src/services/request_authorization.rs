@@ -185,9 +185,11 @@ pub async fn bind_request(state: &AppState, request: &mut Request) -> Result<(),
     request.extensions_mut().insert(ctx.clone());
     if auth.user_id == "master-api-key" {
         crate::middleware::audit_master_api_key_membership_bypass(state);
+        crate::services::clearance::attach_clearance(state, request, &auth, &ctx).await?;
         return Ok(());
     }
     if !binding_required(state) || global_resource(request_path(request)) {
+        crate::services::clearance::attach_clearance(state, request, &auth, &ctx).await?;
         return Ok(());
     }
     // Platform admin has no per-tenant membership row for sentinel orgs
@@ -236,7 +238,8 @@ pub async fn bind_request(state: &AppState, request: &mut Request) -> Result<(),
             "Workspace administration requires owner/admin membership",
         ));
     }
-    request.extensions_mut().insert(auth);
+    request.extensions_mut().insert(auth.clone());
+    crate::services::clearance::attach_clearance(state, request, &auth, &ctx).await?;
     Ok(())
 }
 

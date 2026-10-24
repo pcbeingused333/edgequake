@@ -107,7 +107,11 @@ pub async fn execute_query(
     let _langfuse_identity = stamp_query_langfuse_identity(langfuse_id);
 
     let mut allowed_document_ids = None;
-    if let Some(ref filter) = request.document_filter {
+    if request.document_filter.is_some()
+        || super::document_filter_resolver::clearance_restricts_query()
+    {
+        let filter = request.document_filter.clone().unwrap_or_default();
+        let filter = &filter;
         if let Some(allowed_ids) = super::document_filter_resolver::resolve_document_filter(
             state.storage.kv_storage.as_ref(),
             state.optional_pg_pool(),

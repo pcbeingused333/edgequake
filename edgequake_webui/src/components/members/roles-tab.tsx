@@ -155,6 +155,12 @@ export function RolesTab() {
       </p>
       <RoleCards catalog={q.data} />
       <CapabilityMatrix catalog={q.data} />
+      <p className="text-sm text-muted-foreground">
+        {t(
+          'members.roles.clearanceHint',
+          'Who can open which documents is set on each person and under Settings → Access.',
+        )}
+      </p>
       <InstanceRoles catalog={q.data} />
     </div>
   );

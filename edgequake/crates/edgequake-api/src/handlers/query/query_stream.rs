@@ -135,8 +135,12 @@ pub async fn stream_query(
     let _langfuse_identity = stamp_query_langfuse_identity(langfuse_id.clone());
 
     let mut allowed_document_ids = None;
-    // SPEC-005 + SPEC-006: Resolve document filter
-    if let Some(ref filter) = request.document_filter {
+    // SPEC-005 + SPEC-006: Resolve document filter. SPEC-174 intersects the visible set.
+    if request.document_filter.is_some()
+        || super::document_filter_resolver::clearance_restricts_query()
+    {
+        let filter = request.document_filter.clone().unwrap_or_default();
+        let filter = &filter;
         let ws_id_str = tenant_ctx.workspace_id.clone();
         let tenant_filter = data_tenant_id.clone();
         match crate::handlers::query::document_filter_resolver::resolve_document_filter(

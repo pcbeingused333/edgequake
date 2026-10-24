@@ -188,6 +188,11 @@ pub async fn download_document_original(
     context: TenantContext,
     Path(document_id): Path<String>,
 ) -> ApiResult<axum::response::Response<axum::body::Body>> {
+    if crate::services::clearance::must_hide(&document_id).await? {
+        return Err(ApiError::NotFound(format!(
+            "Document {document_id} not found"
+        )));
+    }
     let workspace_id = Uuid::parse_str(&context.workspace_id_or_default())
         .map_err(|_| ApiError::BadRequest("Invalid workspace id".into()))?;
     #[cfg(feature = "postgres")]

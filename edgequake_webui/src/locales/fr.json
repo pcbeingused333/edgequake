@@ -1857,7 +1857,8 @@
       "done": "Terminé"
     },
     "detail": {
-      "scope": "Accès",
+      "scope": "Portée",
+      "clearance": "Accès",
       "workspaceOnly": "Un espace de travail",
       "wholeOrg": "Toute l'organisation",
       "instanceRole": "Rôle d'instance",

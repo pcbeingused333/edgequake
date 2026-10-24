@@ -83,6 +83,9 @@ pub async fn provision_relational_document_shell(
                 "failed to provision relational document shell: {e}"
             ))
         })?;
+        let uploaded_by = edgequake_storage::clearance_session::ClearanceSession::current()
+            .and_then(|session| session.user_id);
+        crate::services::clearance::stamp_unverified(pool, document_id, uploaded_by).await?;
     }
 
     #[cfg(not(feature = "postgres"))]

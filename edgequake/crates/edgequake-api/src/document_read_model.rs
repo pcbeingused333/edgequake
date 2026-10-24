@@ -977,6 +977,9 @@ pub async fn list_relational_document_summaries_limited(
                 query_ready: None,
                 cancelled_from_stage: None,
                 extraction: Default::default(),
+
+                classification: None,
+                compartments: None,
             }
         })
         .collect();
@@ -2175,6 +2178,9 @@ mod tests {
             query_ready: None,
             cancelled_from_stage: None,
             extraction: Default::default(),
+
+            classification: None,
+            compartments: None,
         }];
 
         let pg = vec![DocumentSummary {
@@ -2212,6 +2218,9 @@ mod tests {
             query_ready: None,
             cancelled_from_stage: None,
             extraction: Default::default(),
+
+            classification: None,
+            compartments: None,
         }];
 
         let merged = merge_document_summaries(kv, pg);
@@ -2258,6 +2267,9 @@ mod tests {
             query_ready: None,
             cancelled_from_stage: None,
             extraction: Default::default(),
+
+            classification: None,
+            compartments: None,
         }];
 
         let pg = vec![DocumentSummary {
@@ -2295,6 +2307,9 @@ mod tests {
             query_ready: None,
             cancelled_from_stage: None,
             extraction: Default::default(),
+
+            classification: None,
+            compartments: None,
         }];
 
         let merged = merge_document_summaries(kv, pg);
@@ -2339,6 +2354,8 @@ mod tests {
             query_ready: None,
             cancelled_from_stage: None,
             extraction: Default::default(),
+            classification: None,
+            compartments: None,
         }
     }
 

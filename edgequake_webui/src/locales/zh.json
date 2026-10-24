@@ -1857,7 +1857,8 @@
       "done": "完成"
     },
     "detail": {
-      "scope": "访问范围",
+      "scope": "范围",
+      "clearance": "访问权限",
       "workspaceOnly": "单个工作区",
       "wholeOrg": "整个组织",
       "instanceRole": "实例角色",

@@ -274,6 +274,8 @@ async fn contract_dual_ssot_merge_cancelled_over_kv_embedding() {
         query_ready: None,
         cancelled_from_stage: None,
         extraction: Default::default(),
+        classification: None,
+        compartments: None,
     };
     let rel = DocumentSummary {
         status: Some("cancelled".into()),

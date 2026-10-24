@@ -1857,7 +1857,8 @@
       "done": "Done"
     },
     "detail": {
-      "scope": "Access",
+      "scope": "Scope",
+      "clearance": "Access",
       "workspaceOnly": "One workspace",
       "wholeOrg": "Whole organization",
       "instanceRole": "Instance role",

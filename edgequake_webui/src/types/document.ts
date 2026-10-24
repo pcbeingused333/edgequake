@@ -36,6 +36,9 @@ export interface Document {
   relationship_count?: number;
   /** First 200 characters of document content (preview). */
   content_summary?: string;
+  /** SPEC-174. Present only while document labels are on. */
+  classification?: string | null;
+  compartments?: Array<{ id: string; key: string; value: string }> | null;
   /** Total length of document content in characters. */
   content_length?: number;
   /** Content hash for deduplication (SHA-256). */

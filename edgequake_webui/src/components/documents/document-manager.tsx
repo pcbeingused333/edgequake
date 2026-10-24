@@ -105,6 +105,7 @@ import { DocumentsActionsProvider } from './documents-actions-context';
 import { DocumentTableSection } from './document-table-section';
 import { PaginationControls } from './pagination-controls';
 import { DocumentToolbarSection } from './document-toolbar-section';
+import { useClearanceSettings } from '@/lib/clearance/use-clearance';
 import { DuplicateUploadDialog } from './duplicate-upload-dialog';
 import { FeedbackZoneLiveRegion } from './feedback-zone-live-region';
 import { FeedbackZoneSkeleton } from './feedback-zone-skeleton';
@@ -214,6 +215,8 @@ export function DocumentManager() {
     sortDirection, setSortDirection,
     showCostColumn, setShowCostColumn,
   } = useDocumentPreferences();
+  const [classificationFilter, setClassificationFilter] = useState("all");
+  const clearance = useClearanceSettings(selectedWorkspaceId);
 
   const handleColumnSort = useCallback(
     (field: typeof sortField) => {
@@ -977,6 +980,10 @@ export function DocumentManager() {
           sortDirection={sortDirection}
           onSortDirectionChange={setSortDirection}
           statusCounts={statusCounts}
+          classificationFilter={classificationFilter}
+          onClassificationFilterChange={
+            clearance.data?.enforcement ? setClassificationFilter : undefined
+          }
           pipelineStatus={pipelineStatus}
           pipelineUi={pipelineUi}
           documents={documents}
@@ -1017,7 +1024,11 @@ export function DocumentManager() {
         />
       </div>
       <DocumentTableSection
-        documents={documents}
+        documents={
+          classificationFilter === "all"
+            ? documents
+            : documents.filter((doc) => doc.classification === classificationFilter)
+        }
         totalCount={totalCount}
         isLoading={isInitialLoading}
         isBusyUpdating={isBusyUpdating}

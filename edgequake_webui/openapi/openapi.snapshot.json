@@ -3975,8 +3975,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "recover_stuck"
+        "x-edgequake-v2-job-type": "recover_stuck",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/documents/reprocess": {
@@ -4033,8 +4033,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reprocess_failed",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reprocess_failed"
       }
     },
     "/api/v1/documents/scan": {
@@ -4794,6 +4794,56 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "Document not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/documents/{document_id}/labels": {
+      "patch": {
+        "tags": [
+          "Clearance"
+        ],
+        "operationId": "patch_document_labels",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "description": "Document id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchLabelsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Label saved"
           },
           "404": {
             "description": "Document not found"
@@ -10398,6 +10448,454 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/clearance": {
+      "get": {
+        "tags": [
+          "Clearance"
+        ],
+        "operationId": "get_clearance_settings",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Clearance settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClearanceSettingsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Clearance"
+        ],
+        "operationId": "enable_clearance",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnableClearanceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Enforcement is on"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/clearance/roles": {
+      "get": {
+        "tags": [
+          "Clearance"
+        ],
+        "operationId": "list_security_roles",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Access profiles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SecurityRoleView"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Clearance"
+        ],
+        "operationId": "create_security_role",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRoleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Profile created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecurityRoleView"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/clearance/roles/{role_id}/rules": {
+      "put": {
+        "tags": [
+          "Clearance"
+        ],
+        "operationId": "put_security_role_rules",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "role_id",
+            "in": "path",
+            "description": "Role id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutRulesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Rules replaced"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/clearance/simulate": {
+      "post": {
+        "tags": [
+          "Clearance"
+        ],
+        "operationId": "simulate_clearance",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Titles this profile can open",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulateResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/clearance/tags": {
+      "get": {
+        "tags": [
+          "Clearance"
+        ],
+        "operationId": "list_clearance_tags",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vocabulary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClearanceTag"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Clearance"
+        ],
+        "operationId": "create_clearance_tag",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTagRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Department created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClearanceTag"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/clearance/tags/{tag_id}": {
+      "delete": {
+        "tags": [
+          "Clearance"
+        ],
+        "operationId": "delete_clearance_tag",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "tag_id",
+            "in": "path",
+            "description": "Tag id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "409": {
+            "description": "Tag is still in use"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/injection": {
       "put": {
         "tags": [
@@ -10677,6 +11175,121 @@
           },
           "404": {
             "description": "Injection not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/members/{user_id}/clearance-roles": {
+      "get": {
+        "tags": [
+          "Clearance"
+        ],
+        "operationId": "get_member_clearance_roles",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "path",
+            "description": "Member user id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profiles the member holds",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberRolesResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Member not found in this workspace"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Clearance"
+        ],
+        "operationId": "put_member_clearance_roles",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "path",
+            "description": "Member user id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignRolesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Profiles saved"
+          },
+          "404": {
+            "description": "Member not found in this workspace"
           }
         },
         "security": [
@@ -11029,8 +11642,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "reprocess_all"
+        "x-edgequake-v2-job-type": "reprocess_all",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/stats": {
@@ -11630,8 +12243,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-transport": "websocket",
-        "x-edgequake-upgrade": "RFC6455"
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
       }
     },
     "/ws/progress/{track_id}": {
@@ -12143,6 +12756,24 @@
           "name": {},
           "prefix": {},
           "scopes": []
+        }
+      },
+      "AssignRolesRequest": {
+        "type": "object",
+        "required": [
+          "role_ids"
+        ],
+        "properties": {
+          "role_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "example": {
+          "role_ids": []
         }
       },
       "AttributionSettingsResponse": {
@@ -13640,6 +14271,79 @@
           "start_line": {}
         }
       },
+      "ClearanceSettingsResponse": {
+        "type": "object",
+        "required": [
+          "enforcement",
+          "policy_epoch",
+          "steward",
+          "rank",
+          "can_manage"
+        ],
+        "properties": {
+          "can_manage": {
+            "type": "boolean",
+            "description": "Owner or admin. Other members do not see the Access editor."
+          },
+          "enforcement": {
+            "type": "boolean"
+          },
+          "policy_epoch": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "rank": {
+            "type": "string"
+          },
+          "steward": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "can_manage": {},
+          "enforcement": {},
+          "policy_epoch": {},
+          "rank": {},
+          "steward": {}
+        }
+      },
+      "ClearanceTag": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "key",
+          "value"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "rank": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "id": {},
+          "key": {},
+          "kind": {},
+          "rank": {},
+          "value": {}
+        }
+      },
       "CommunitySummary": {
         "type": "object",
         "description": "Community summary for Graph Studio legend / hulls.",
@@ -13674,6 +14378,31 @@
           "label": {},
           "modularity": {},
           "size": {}
+        }
+      },
+      "CompartmentView": {
+        "type": "object",
+        "description": "One compartment on a document the caller is allowed to see.",
+        "required": [
+          "id",
+          "key",
+          "value"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "id": {},
+          "key": {},
+          "value": {}
         }
       },
       "ComponentHealth": {
@@ -15654,6 +16383,44 @@
           "status": {}
         }
       },
+      "CreateRoleRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "steward"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "steward": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "name": {},
+          "steward": {}
+        }
+      },
+      "CreateTagRequest": {
+        "type": "object",
+        "required": [
+          "key",
+          "value"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "key": {},
+          "value": {}
+        }
+      },
       "CreateTenantRequest": {
         "type": "object",
         "description": "Request to create a new tenant.\n\n## Model Configuration (SPEC-032)\n\nWhen creating a tenant, you can specify default LLM and embedding models\nthat will be inherited by all new workspaces within this tenant.\n\n**LLM Examples (for knowledge graph generation, summarization):**\n- OpenAI: `\"gpt-4o-mini\"`, `\"gpt-4o\"`\n- Ollama: `\"gemma3:12b\"`, `\"llama3.2\"`\n- LM Studio: `\"gemma-3n-e4b-it-mlxmodel\"`\n\n**Embedding Examples:**\n- OpenAI: `\"text-embedding-3-small\"` (1536 dims), `\"text-embedding-3-large\"` (3072 dims)\n- Ollama: `\"embeddinggemma:latest\"` (768 dims), `\"nomic-embed-text\"` (768 dims)\n- LM Studio: `\"nomic-ai/nomic-embed-text-v1.5\"` (768 dims)\n\n**Model ID Format:**\nModels can be specified as `model_name` or `provider/model_name`:\n- `\"gemma3:12b\"` - auto-detects provider as \"ollama\"\n- `\"ollama/gemma3:12b\"` - explicit provider",
@@ -16605,6 +17372,23 @@
                 "description": "Number of chunks.",
                 "minimum": 0
               },
+              "classification": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "SPEC-174. Absent while clearance enforcement is off."
+              },
+              "compartments": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/CompartmentView"
+                },
+                "description": "SPEC-174. Absent while clearance enforcement is off."
+              },
               "content": {
                 "type": [
                   "string",
@@ -17250,6 +18034,23 @@
                 "description": "Number of chunks.",
                 "minimum": 0
               },
+              "classification": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "SPEC-174. Absent while clearance enforcement is off."
+              },
+              "compartments": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/CompartmentView"
+                },
+                "description": "SPEC-174. Compartments the caller is allowed to know. Absent while enforcement is off."
+              },
               "content_length": {
                 "type": [
                   "integer",
@@ -17796,6 +18597,17 @@
           "name": {},
           "status": {},
           "type": {}
+        }
+      },
+      "EnableClearanceRequest": {
+        "type": "object",
+        "properties": {
+          "strict_start": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "strict_start": {}
         }
       },
       "EnhancedPipelineStatusResponse": {
@@ -22169,6 +22981,23 @@
           "viewer": {}
         }
       },
+      "MemberRolesResponse": {
+        "type": "object",
+        "required": [
+          "role_ids"
+        ],
+        "properties": {
+          "role_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "example": {
+          "role_ids": []
+        }
+      },
       "MemberStatus": {
         "type": "string",
         "description": "Lifecycle status shown as a badge.",
@@ -25368,6 +26197,29 @@
           "warnings": []
         }
       },
+      "PatchLabelsRequest": {
+        "type": "object",
+        "required": [
+          "classification",
+          "compartment_ids"
+        ],
+        "properties": {
+          "classification": {
+            "type": "string"
+          },
+          "compartment_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "example": {
+          "classification": {},
+          "compartment_ids": []
+        }
+      },
       "PdfBatchFileResult": {
         "type": "object",
         "description": "Result for a single file in batch PDF upload.",
@@ -27104,6 +27956,23 @@
           "status": {},
           "version": {},
           "workspace_id": {}
+        }
+      },
+      "PutRulesRequest": {
+        "type": "object",
+        "required": [
+          "rules"
+        ],
+        "properties": {
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuleBody"
+            }
+          }
+        },
+        "example": {
+          "rules": []
         }
       },
       "QueryEngineHealthSnapshot": {
@@ -29819,6 +30688,80 @@
           "organization_roles": []
         }
       },
+      "RuleBody": {
+        "type": "object",
+        "required": [
+          "effect",
+          "match_kind"
+        ],
+        "properties": {
+          "effect": {
+            "type": "string"
+          },
+          "match_kind": {
+            "type": "string"
+          },
+          "rank": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "tag_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "example": {
+          "effect": {},
+          "match_kind": {},
+          "rank": {},
+          "tag_ids": []
+        }
+      },
+      "RuleView": {
+        "type": "object",
+        "required": [
+          "effect",
+          "match_kind",
+          "tag_ids"
+        ],
+        "properties": {
+          "effect": {
+            "type": "string"
+          },
+          "match_kind": {
+            "type": "string"
+          },
+          "rank": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "tag_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "example": {
+          "effect": {},
+          "match_kind": {},
+          "rank": {},
+          "tag_ids": []
+        }
+      },
       "RunPhaseId": {
         "type": "string",
         "description": "Phase strip ids (Admit is queue-only and has no work tasks).",
@@ -30473,6 +31416,39 @@
           "swagger_enabled": {}
         }
       },
+      "SecurityRoleView": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "steward",
+          "rules"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuleView"
+            },
+            "description": "Ordered rules, so the editor can show the saved profile."
+          },
+          "steward": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "id": {},
+          "name": {},
+          "rules": [],
+          "steward": {}
+        }
+      },
       "ServerDefaultsResponse": {
         "type": "object",
         "description": "Response for server-wide defaults.",
@@ -30956,6 +31932,49 @@
           "provider_kind": {},
           "provider_name": {},
           "provider_slug": {}
+        }
+      },
+      "SimulateRequest": {
+        "type": "object",
+        "required": [
+          "role_ids"
+        ],
+        "properties": {
+          "role_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "example": {
+          "role_ids": []
+        }
+      },
+      "SimulateResponse": {
+        "type": "object",
+        "required": [
+          "titles"
+        ],
+        "properties": {
+          "count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "titles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "example": {
+          "count": {},
+          "titles": []
         }
       },
       "SkippedFile": {

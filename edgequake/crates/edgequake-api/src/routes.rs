@@ -431,6 +431,38 @@ fn api_v1_routes(state: AppState) -> Router<AppState> {
             "/workspaces/{workspace_id}/stats",
             get(handlers::get_workspace_stats),
         )
+        .route(
+            "/workspaces/{workspace_id}/clearance",
+            get(handlers::get_clearance_settings).post(handlers::enable_clearance),
+        )
+        .route(
+            "/workspaces/{workspace_id}/clearance/tags",
+            get(handlers::list_clearance_tags).post(handlers::create_clearance_tag),
+        )
+        .route(
+            "/workspaces/{workspace_id}/clearance/tags/{tag_id}",
+            delete(handlers::delete_clearance_tag),
+        )
+        .route(
+            "/workspaces/{workspace_id}/clearance/roles",
+            get(handlers::list_security_roles).post(handlers::create_security_role),
+        )
+        .route(
+            "/workspaces/{workspace_id}/clearance/roles/{role_id}/rules",
+            put(handlers::put_security_role_rules),
+        )
+        .route(
+            "/workspaces/{workspace_id}/members/{user_id}/clearance-roles",
+            get(handlers::get_member_clearance_roles).put(handlers::put_member_clearance_roles),
+        )
+        .route(
+            "/workspaces/{workspace_id}/clearance/simulate",
+            post(handlers::simulate_clearance),
+        )
+        .route(
+            "/documents/{document_id}/labels",
+            patch(handlers::patch_document_labels),
+        )
         // OODA-22: Metrics history for workspace
         .route(
             "/workspaces/{workspace_id}/metrics-history",

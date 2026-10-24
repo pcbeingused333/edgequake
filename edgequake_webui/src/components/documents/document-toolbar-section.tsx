@@ -31,6 +31,8 @@ export interface DocumentToolbarSectionProps {
   sortDirection: 'asc' | 'desc';
   onSortDirectionChange: (value: 'asc' | 'desc') => void;
   statusCounts: StatusCounts;
+  classificationFilter?: string;
+  onClassificationFilterChange?: (value: string) => void;
   
   // Pipeline status
   pipelineStatus: PipelineStatus | undefined;
@@ -74,6 +76,8 @@ export function DocumentToolbarSection({
   sortDirection,
   onSortDirectionChange,
   statusCounts,
+  classificationFilter,
+  onClassificationFilterChange,
   pipelineStatus,
   pipelineUi: pipelineUiProp,
   documents,
@@ -161,6 +165,8 @@ export function DocumentToolbarSection({
               sortDirection={sortDirection}
               onSortDirectionChange={onSortDirectionChange}
               statusCounts={statusCounts}
+              classification={classificationFilter}
+              onClassificationChange={onClassificationFilterChange}
             />
           </div>
         </div>

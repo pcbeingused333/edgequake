@@ -265,6 +265,12 @@ impl LLMSummarizer {
         if descriptions.is_empty() {
             return Ok(String::new());
         }
+        // SPEC-174: an enforcing workspace keeps each source fragment.
+        if edgequake_storage::clearance_session::ClearanceSession::current()
+            .is_some_and(|session| session.enforced)
+        {
+            return Ok(self.simple_merge(descriptions));
+        }
 
         if descriptions.len() == 1 {
             return Ok(descriptions[0].clone());

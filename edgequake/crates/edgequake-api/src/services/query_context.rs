@@ -131,7 +131,11 @@ async fn run_context_retrieval(
         .and_then(|f| serde_json::to_string(f).ok());
 
     let mut allowed_document_ids = None;
-    if let Some(ref filter) = document_filter {
+    if document_filter.is_some()
+        || crate::handlers::query::document_filter_resolver::clearance_restricts_query()
+    {
+        let filter = document_filter.clone().unwrap_or_default();
+        let filter = &filter;
         if let Some(allowed_ids) =
             crate::handlers::query::document_filter_resolver::resolve_document_filter(
                 state.storage.kv_storage.as_ref(),

@@ -175,6 +175,8 @@ pub async fn get_track_status(
                     extraction: crate::handlers::documents_types::DocumentExtractionView::from_metadata(
                         obj,
                     ),
+                    classification: None,
+                    compartments: None,
                 });
             }
         }

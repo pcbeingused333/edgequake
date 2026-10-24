@@ -36,6 +36,8 @@ export interface DocumentTableStatesProps {
    * "Updating…" empty state instead of "No documents yet".
    */
   isBusyUpdating?: boolean;
+  /** Member has no access profile while document labels are on. */
+  clearanceEmpty?: boolean;
 }
 
 /**
@@ -101,6 +103,20 @@ function FilteredEmptyState({ onClearFilter }: { onClearFilter?: () => void }) {
 /**
  * Empty state with upload CTA — shown only when no documents exist at all.
  */
+function ClearanceEmptyState() {
+  const { t } = useTranslation();
+  return (
+    <div className="text-center py-16 text-muted-foreground border rounded-lg bg-muted/5" data-testid="clearance-empty">
+      <p className="font-medium text-lg text-foreground">
+        {t('documents.clearanceEmptyTitle', 'Nothing to show here')}
+      </p>
+      <p className="text-sm mt-2 max-w-sm mx-auto">
+        {t('documents.clearanceEmptyLine', 'An owner can give you an access profile.')}
+      </p>
+    </div>
+  );
+}
+
 function EmptyState({ onUploadClick }: { onUploadClick: () => void }) {
   const { t } = useTranslation();
   return (
@@ -165,6 +181,7 @@ export function DocumentTableStates({
   searchQuery,
   onClearFilter,
   isBusyUpdating = false,
+  clearanceEmpty = false,
 }: DocumentTableStatesProps) {
   if (isLoading) {
     return <LoadingSkeleton rowCount={rowCount} />;
@@ -175,6 +192,9 @@ export function DocumentTableStates({
     const hasActiveFilter = (statusFilter && statusFilter !== 'all') || !!searchQuery;
     if (hasActiveFilter) {
       return <FilteredEmptyState onClearFilter={onClearFilter} />;
+    }
+    if (clearanceEmpty) {
+      return <ClearanceEmptyState />;
     }
     if (isBusyUpdating) {
       return <BusyUpdatingState />;

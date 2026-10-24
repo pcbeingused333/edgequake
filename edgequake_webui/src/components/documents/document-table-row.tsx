@@ -126,6 +126,16 @@ function highlightMatches(text: string, query: string): React.ReactNode {
   );
 }
 
+function accessToken(doc: { classification?: string | null; compartments?: Array<{ value: string }> | null }) {
+  const word = doc.classification
+    ? doc.classification.charAt(0).toUpperCase() + doc.classification.slice(1)
+    : "";
+  const names = (doc.compartments ?? []).map((item) => item.value);
+  const shown = names.slice(0, 2).join(", ");
+  const extra = names.length > 2 ? ` +${names.length - 2}` : "";
+  return [word, shown].filter(Boolean).join(" ") + extra;
+}
+
 /**
  * Props for DocumentTableRow component.
  */
@@ -267,6 +277,14 @@ export const DocumentTableRow = memo(function DocumentTableRow({
             <span className="truncate" title={displayTitle}>
               {highlightMatches(displayTitle, searchQuery)}
             </span>
+            {doc.classification ? (
+              <span
+                className="shrink-0 text-xs text-muted-foreground"
+                data-testid="document-access-token"
+              >
+                {accessToken(doc)}
+              </span>
+            ) : null}
             <ExtractionModeBadge mode={doc.extraction_mode} className="ml-auto" />
           </div>
           {/* Error message for failed/cancelled documents */}

@@ -257,6 +257,39 @@ async fn install_rls_context(
             "Tenant RLS role must not bypass row security".into(),
         ));
     }
+    if let Some(session) = crate::clearance_session::ClearanceSession::current() {
+        apply_clearance_session(&mut *conn, &session).await?;
+    }
+    Ok(())
+}
+
+/// Write the clearance GUCs for this transaction. `is_local` so the pool
+/// cannot keep the previous request's rank.
+pub async fn apply_clearance_session(
+    conn: &mut sqlx::PgConnection,
+    session: &crate::clearance_session::ClearanceSession,
+) -> Result<()> {
+    sqlx::query("SELECT public.set_clearance_context($1, $2, $3, $4, $5, $6)")
+        .bind(if session.enforced { "on" } else { "off" })
+        .bind(session.rank.to_string())
+        .bind(session.compartments_literal())
+        .bind(if session.allow_empty { "on" } else { "off" })
+        .bind(if session.steward { "on" } else { "off" })
+        .bind(if session.break_glass || session.system {
+            "on"
+        } else {
+            "off"
+        })
+        .execute(&mut *conn)
+        .await
+        .map_err(|e| StorageError::Database(format!("Failed to set clearance context: {e}")))?;
+    if let Some(user_id) = session.user_id {
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
+            .bind(user_id.to_string())
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("Failed to set clearance user: {e}")))?;
+    }
     Ok(())
 }
 

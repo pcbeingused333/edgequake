@@ -116,9 +116,23 @@ pub struct DocumentStatusCounts {
     pub cancelled: usize,
 }
 
+/// A department or project label on a document (SPEC-174). Only visible when enforcement is on.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DocumentCompartment {
+    pub id: String,
+    pub key: String,
+    pub value: String,
+}
+
 /// Document summary in list responses.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DocumentSummary {
+    /// SPEC-174 classification word (`public` … `unverified`). Absent when enforcement is off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub classification: Option<String>,
+    /// SPEC-174 departments and projects. Absent when enforcement is off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compartments: Option<Vec<DocumentCompartment>>,
     pub id: String,
     #[serde(default)]
     pub file_name: Option<String>,

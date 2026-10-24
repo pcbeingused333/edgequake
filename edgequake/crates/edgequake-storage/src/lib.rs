@@ -61,6 +61,7 @@ pub use edgequake_storage_contracts as contracts;
 pub mod adapters;
 pub mod chunk_content;
 pub mod chunk_text_authority;
+pub mod clearance_session;
 pub mod community;
 pub mod community_index_service;
 pub mod community_persist;

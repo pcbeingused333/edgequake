@@ -27,6 +27,8 @@ interface DocumentFiltersProps {
   onSortFieldChange: (field: SortField) => void;
   onSortDirectionChange: (direction: SortDirection) => void;
   statusCounts?: Record<DocStatus, number>;
+  classification?: string;
+  onClassificationChange?: (value: string) => void;
 }
 
 export function DocumentFilters({
@@ -37,6 +39,8 @@ export function DocumentFilters({
   onSortFieldChange,
   onSortDirectionChange,
   statusCounts,
+  classification = "all",
+  onClassificationChange,
 }: DocumentFiltersProps) {
   const { t } = useTranslation();
 
@@ -76,6 +80,24 @@ export function DocumentFilters({
           <SelectItem value="cancelled">{getStatusLabel('cancelled')}</SelectItem>
         </SelectContent>
       </Select>
+      {onClassificationChange ? (
+        <Select value={classification} onValueChange={onClassificationChange}>
+          <SelectTrigger
+            className="h-9 w-auto min-w-[8.5rem] shrink-0"
+            aria-label="Filter by classification"
+            data-testid="classification-filter"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {["all", "public", "internal", "confidential", "restricted"].map((item) => (
+              <SelectItem key={item} value={item}>
+                {item === "all" ? "All" : item.charAt(0).toUpperCase() + item.slice(1)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : null}
 
       {/* Date shortcuts — column sort lives in table headers. */}
       <div

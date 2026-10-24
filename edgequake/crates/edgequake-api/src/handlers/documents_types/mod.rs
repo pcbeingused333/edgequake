@@ -158,6 +158,9 @@ mod tests {
             query_ready: None,
             cancelled_from_stage: None,
             extraction: Default::default(),
+
+            classification: None,
+            compartments: None,
         };
 
         let json = serde_json::to_string(&summary).unwrap();
@@ -203,6 +206,9 @@ mod tests {
                 query_ready: None,
                 cancelled_from_stage: None,
                 extraction: Default::default(),
+
+                classification: None,
+                compartments: None,
             }],
             total: 1,
             page: 1,
@@ -261,6 +267,9 @@ mod tests {
             extraction: Default::default(),
             display_status: Some("completed".to_string()),
             ui_phase: Some("terminal".to_string()),
+
+            classification: None,
+            compartments: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -341,6 +350,9 @@ mod tests {
                 query_ready: None,
                 cancelled_from_stage: None,
                 extraction: Default::default(),
+
+                classification: None,
+                compartments: None,
             }],
             total_count: 1,
             status_summary: StatusCounts {

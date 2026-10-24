@@ -36,6 +36,8 @@ import {
 } from '@/lib/documents/document-table-columns';
 import { INVENTORY_MIN_PX } from '@/lib/documents/intake-strip-state';
 import type { SortDirection, SortField } from '@/lib/documents/document-sort';
+import { useClearanceSettings } from '@/lib/clearance/use-clearance';
+import { useTenantStore } from '@/stores/use-tenant-store';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { Document } from '@/types';
 import { FileText } from 'lucide-react';
@@ -202,6 +204,12 @@ export const DocumentTableSection = memo(function DocumentTableSection({
   overflowLabel = null,
 }: DocumentTableSectionProps) {
   const { t } = useTranslation();
+  const workspaceId = useTenantStore((state) => state.selectedWorkspaceId);
+  const clearance = useClearanceSettings(workspaceId);
+  const clearanceEmpty =
+    documents.length === 0 &&
+    clearance.data?.enforcement === true &&
+    clearance.data.rank === "none";
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const virtualizer = useVirtualizer({
@@ -277,6 +285,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
           searchQuery={searchQuery}
           onClearFilter={onClearFilter}
           isBusyUpdating={isBusyUpdating}
+          clearanceEmpty={clearanceEmpty}
         />
 
         {showTable && (

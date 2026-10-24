@@ -99,6 +99,12 @@ async fn get_document_inner(
         "Getting document by ID with tenant context"
     );
 
+    if crate::services::clearance::must_hide(&document_id).await? {
+        return Err(ApiError::NotFound(format!(
+            "Document {document_id} not found"
+        )));
+    }
+
     // Fetch document metadata (final, then staging — SPEC-086 list-visible shells).
     let metadata_key =
         crate::services::document_metadata_scan::metadata_key_for_document(&document_id);
@@ -586,5 +592,8 @@ async fn get_document_inner(
         extraction: meta_obj
             .map(crate::handlers::documents_types::DocumentExtractionView::from_metadata)
             .unwrap_or_default(),
+
+        classification: None,
+        compartments: None,
     }))
 }

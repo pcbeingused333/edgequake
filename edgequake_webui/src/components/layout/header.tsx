@@ -133,7 +133,7 @@ export function Header() {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="min-w-[8.5rem] rounded-md px-2 py-1 transition-colors hover:bg-muted/50">
+              <div className="min-w-0 rounded-md px-2 py-1 transition-colors hover:bg-muted/50 sm:min-w-[8.5rem]">
                 <ConnectionIndicator state={connectionState} label={connectionLabel} />
               </div>
             </TooltipTrigger>

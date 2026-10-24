@@ -43,6 +43,12 @@ pub async fn load_document_body(
     document_id: &str,
     metadata: &Value,
 ) -> Option<DocumentBody> {
+    if crate::services::clearance::must_hide(document_id)
+        .await
+        .unwrap_or(true)
+    {
+        return None;
+    }
     let shell = load_kv_document_body(storage, document_id).await;
     // Avoid chunk-prefix scans on healthy full bodies (common path).
     let shell_may_need_heal = match &shell {

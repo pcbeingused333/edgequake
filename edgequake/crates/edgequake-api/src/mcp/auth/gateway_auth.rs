@@ -70,7 +70,7 @@ pub async fn mcp_gateway_auth(
                 .collect();
             }
             request.extensions_mut().insert(scopes);
-            next.run(request).await
+            crate::services::clearance::run_scoped(request, next).await
         }
         Ok(None) => oauth_unauthorized_response(request.headers()),
         Err(e) => e.into_response(),

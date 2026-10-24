@@ -1840,6 +1840,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{document_id}/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patch_document_labels"];
+        trace?: never;
+    };
     "/api/v1/documents/{document_id}/lineage": {
         parameters: {
             query?: never;
@@ -3603,6 +3619,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/clearance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_clearance_settings"];
+        put?: never;
+        post: operations["enable_clearance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/clearance/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_security_roles"];
+        put?: never;
+        post: operations["create_security_role"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/clearance/roles/{role_id}/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["put_security_role_rules"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/clearance/simulate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["simulate_clearance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/clearance/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_clearance_tags"];
+        put?: never;
+        post: operations["create_clearance_tag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/clearance/tags/{tag_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["delete_clearance_tag"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/injection": {
         parameters: {
             query?: never;
@@ -3671,6 +3783,22 @@ export interface paths {
         head?: never;
         /** Update an existing injection entry. Re-processes if content changes. */
         patch: operations["update_injection"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/members/{user_id}/clearance-roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_member_clearance_roles"];
+        put: operations["put_member_clearance_roles"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/workspaces/{workspace_id}/metrics-history": {
@@ -4357,6 +4485,14 @@ export interface components {
             prefix: string;
             /** @description Scopes. */
             scopes: string[];
+        };
+        /**
+         * @example {
+         *       "role_ids": []
+         *     }
+         */
+        AssignRolesRequest: {
+            role_ids: string[];
         };
         /**
          * @example {
@@ -5106,6 +5242,41 @@ export interface components {
             start_line?: number | null;
         };
         /**
+         * @example {
+         *       "can_manage": {},
+         *       "enforcement": {},
+         *       "policy_epoch": {},
+         *       "rank": {},
+         *       "steward": {}
+         *     }
+         */
+        ClearanceSettingsResponse: {
+            /** @description Owner or admin. Other members do not see the Access editor. */
+            can_manage: boolean;
+            enforcement: boolean;
+            /** Format: int64 */
+            policy_epoch: number;
+            rank: string;
+            steward: boolean;
+        };
+        /**
+         * @example {
+         *       "id": {},
+         *       "key": {},
+         *       "kind": {},
+         *       "rank": {},
+         *       "value": {}
+         *     }
+         */
+        ClearanceTag: {
+            id: string;
+            key: string;
+            kind: string;
+            /** Format: int32 */
+            rank?: number | null;
+            value: string;
+        };
+        /**
          * @description Community summary for Graph Studio legend / hulls.
          * @example {
          *       "id": {},
@@ -5120,6 +5291,19 @@ export interface components {
             /** Format: double */
             modularity?: number | null;
             size: number;
+        };
+        /**
+         * @description One compartment on a document the caller is allowed to see.
+         * @example {
+         *       "id": {},
+         *       "key": {},
+         *       "value": {}
+         *     }
+         */
+        CompartmentView: {
+            id: string;
+            key: string;
+            value: string;
         };
         /**
          * @description Component health status.
@@ -6052,6 +6236,26 @@ export interface components {
             status: string;
         };
         /**
+         * @example {
+         *       "name": {},
+         *       "steward": {}
+         *     }
+         */
+        CreateRoleRequest: {
+            name: string;
+            steward: boolean;
+        };
+        /**
+         * @example {
+         *       "key": {},
+         *       "value": {}
+         *     }
+         */
+        CreateTagRequest: {
+            key: string;
+            value: string;
+        };
+        /**
          * @description Request to create a new tenant.
          *
          *     ## Model Configuration (SPEC-032)
@@ -6616,6 +6820,10 @@ export interface components {
         DocumentDetailResponse: components["schemas"]["DocumentExtractionView"] & {
             /** @description Number of chunks. */
             chunk_count: number;
+            /** @description SPEC-174. Absent while clearance enforcement is off. */
+            classification?: string | null;
+            /** @description SPEC-174. Absent while clearance enforcement is off. */
+            compartments?: components["schemas"]["CompartmentView"][] | null;
             /** @description Full document content. */
             content?: string | null;
             /** @description Content hash (SHA-256) for deduplication. */
@@ -6917,6 +7125,10 @@ export interface components {
             cancelled_from_stage?: string | null;
             /** @description Number of chunks. */
             chunk_count: number;
+            /** @description SPEC-174. Absent while clearance enforcement is off. */
+            classification?: string | null;
+            /** @description SPEC-174. Compartments the caller is allowed to know. Absent while enforcement is off. */
+            compartments?: components["schemas"]["CompartmentView"][] | null;
             /** @description Total length of document content in characters. */
             content_length?: number | null;
             /** @description First 200 characters of document content (preview). */
@@ -7167,6 +7379,14 @@ export interface components {
             status: components["schemas"]["ConnectionStatus"];
             /** @description Provider type (always "embedding") */
             type: string;
+        };
+        /**
+         * @example {
+         *       "strict_start": {}
+         *     }
+         */
+        EnableClearanceRequest: {
+            strict_start?: boolean;
         };
         /**
          * @description Enhanced pipeline status response with history messages.
@@ -9360,6 +9580,14 @@ export interface components {
             viewer: components["schemas"]["MemberViewer"];
         };
         /**
+         * @example {
+         *       "role_ids": []
+         *     }
+         */
+        MemberRolesResponse: {
+            role_ids: string[];
+        };
+        /**
          * @description Lifecycle status shown as a badge.
          * @example {}
          * @enum {string}
@@ -10961,6 +11189,16 @@ export interface components {
             warnings: string[];
         };
         /**
+         * @example {
+         *       "classification": {},
+         *       "compartment_ids": []
+         *     }
+         */
+        PatchLabelsRequest: {
+            classification: string;
+            compartment_ids: string[];
+        };
+        /**
          * @description Result for a single file in batch PDF upload.
          * @example {
          *       "duplicate_of": {},
@@ -11884,6 +12122,14 @@ export interface components {
             version: number;
             /** @description Workspace this injection belongs to. */
             workspace_id: string;
+        };
+        /**
+         * @example {
+         *       "rules": []
+         *     }
+         */
+        PutRulesRequest: {
+            rules: components["schemas"]["RuleBody"][];
         };
         /**
          * @example {
@@ -13333,6 +13579,36 @@ export interface components {
             organization_roles: components["schemas"]["OrganizationRoleInfo"][];
         };
         /**
+         * @example {
+         *       "effect": {},
+         *       "match_kind": {},
+         *       "rank": {},
+         *       "tag_ids": []
+         *     }
+         */
+        RuleBody: {
+            effect: string;
+            match_kind: string;
+            /** Format: int32 */
+            rank?: number | null;
+            tag_ids?: string[] | null;
+        };
+        /**
+         * @example {
+         *       "effect": {},
+         *       "match_kind": {},
+         *       "rank": {},
+         *       "tag_ids": []
+         *     }
+         */
+        RuleView: {
+            effect: string;
+            match_kind: string;
+            /** Format: int32 */
+            rank?: number | null;
+            tag_ids: string[];
+        };
+        /**
          * @description Phase strip ids (Admit is queue-only and has no work tasks).
          * @example {}
          * @enum {string}
@@ -13647,6 +13923,21 @@ export interface components {
             swagger_enabled: boolean;
         };
         /**
+         * @example {
+         *       "id": {},
+         *       "name": {},
+         *       "rules": [],
+         *       "steward": {}
+         *     }
+         */
+        SecurityRoleView: {
+            id: string;
+            name: string;
+            /** @description Ordered rules, so the editor can show the saved profile. */
+            rules: components["schemas"]["RuleView"][];
+            steward: boolean;
+        };
+        /**
          * @description Response for server-wide defaults.
          * @example {
          *       "default_max_workspaces": {},
@@ -13827,6 +14118,25 @@ export interface components {
             provider_kind?: string | null;
             provider_name?: string | null;
             provider_slug?: string | null;
+        };
+        /**
+         * @example {
+         *       "role_ids": []
+         *     }
+         */
+        SimulateRequest: {
+            role_ids: string[];
+        };
+        /**
+         * @example {
+         *       "count": {},
+         *       "titles": []
+         *     }
+         */
+        SimulateResponse: {
+            /** Format: int64 */
+            count?: number | null;
+            titles: string[];
         };
         /**
          * @description Information about a skipped file.
@@ -18863,6 +19173,38 @@ export interface operations {
             };
         };
     };
+    patch_document_labels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Document id */
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchLabelsRequest"];
+            };
+        };
+        responses: {
+            /** @description Label saved */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Document not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_document_full_lineage: {
         parameters: {
             query?: never;
@@ -22260,6 +22602,238 @@ export interface operations {
             };
         };
     };
+    get_clearance_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace id */
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Clearance settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClearanceSettingsResponse"];
+                };
+            };
+        };
+    };
+    enable_clearance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace id */
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnableClearanceRequest"];
+            };
+        };
+        responses: {
+            /** @description Enforcement is on */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_security_roles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace id */
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Access profiles */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecurityRoleView"][];
+                };
+            };
+        };
+    };
+    create_security_role: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace id */
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRoleRequest"];
+            };
+        };
+        responses: {
+            /** @description Profile created */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecurityRoleView"];
+                };
+            };
+        };
+    };
+    put_security_role_rules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace id */
+                workspace_id: string;
+                /** @description Role id */
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutRulesRequest"];
+            };
+        };
+        responses: {
+            /** @description Rules replaced */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    simulate_clearance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace id */
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SimulateRequest"];
+            };
+        };
+        responses: {
+            /** @description Titles this profile can open */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulateResponse"];
+                };
+            };
+        };
+    };
+    list_clearance_tags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace id */
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Vocabulary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClearanceTag"][];
+                };
+            };
+        };
+    };
+    create_clearance_tag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace id */
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTagRequest"];
+            };
+        };
+        responses: {
+            /** @description Department created */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClearanceTag"];
+                };
+            };
+        };
+    };
+    delete_clearance_tag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace id */
+                workspace_id: string;
+                /** @description Tag id */
+                tag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Tag is still in use */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     put_injection: {
         parameters: {
             query?: never;
@@ -22443,6 +23017,72 @@ export interface operations {
                 };
             };
             /** @description Injection not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_member_clearance_roles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace id */
+                workspace_id: string;
+                /** @description Member user id */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Profiles the member holds */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberRolesResponse"];
+                };
+            };
+            /** @description Member not found in this workspace */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    put_member_clearance_roles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace id */
+                workspace_id: string;
+                /** @description Member user id */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignRolesRequest"];
+            };
+        };
+        responses: {
+            /** @description Profiles saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Member not found in this workspace */
             404: {
                 headers: {
                     [name: string]: unknown;

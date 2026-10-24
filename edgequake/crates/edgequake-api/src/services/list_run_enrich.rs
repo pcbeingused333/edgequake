@@ -285,6 +285,8 @@ mod tests {
             query_ready: None,
             cancelled_from_stage: None,
             extraction: Default::default(),
+            classification: None,
+            compartments: None,
         }
     }
 

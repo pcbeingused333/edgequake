@@ -340,7 +340,7 @@ export default function DocumentViewPage() {
   // SPEC-051 GAP-051-03: Use short staleTime when document is actively processing
   // so the UI updates quickly after a reprocess is triggered.
   // WHY: 30s staleTime means users see no updates for 30s after a reprocess — too long.
-  const { data: document, isLoading, isError, error, refetch } = useQuery({
+  const { data: document, isLoading, isError, refetch } = useQuery({
     queryKey: ['document', documentId, selectedWorkspaceId],
     queryFn: () => getDocument(documentId),
     enabled: !!documentId && !!selectedWorkspaceId,
@@ -579,7 +579,7 @@ export default function DocumentViewPage() {
       <div className="flex flex-col h-full">
         <ErrorHeader />
         <div className="flex-1 flex items-center justify-center p-8">
-          <ErrorContent error={error as Error} onRetry={refetch} />
+          <ErrorContent onRetry={refetch} />
         </div>
       </div>
     );
@@ -1178,21 +1178,22 @@ function ErrorHeader() {
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
-        <h1 className="text-lg font-semibold">Document Not Found</h1>
+        <h1 className="text-lg font-semibold">Document</h1>
       </div>
     </div>
   );
 }
 
-function ErrorContent({ error, onRetry }: { error: Error; onRetry: () => void }) {
+function ErrorContent({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="text-center max-w-md">
       <div className="rounded-full bg-red-500/10 p-4 w-fit mx-auto mb-4">
         <AlertCircle className="h-8 w-8 text-red-500" />
       </div>
-      <h2 className="text-xl font-semibold mb-2">Document Not Found</h2>
+      {/* Same copy for a missing id and a hidden one (SPEC-174): never reveal which. */}
+      <h2 className="text-xl font-semibold mb-2">Document not found</h2>
       <p className="text-muted-foreground mb-4">
-        {error?.message || 'The document you are looking for could not be found or you may not have access to it.'}
+        It may have been deleted, or the link is wrong.
       </p>
       <div className="flex gap-2 justify-center">
         <Button variant="outline" onClick={onRetry}>

@@ -12,6 +12,15 @@ const MAX_ENTRIES: usize = 500;
 struct CacheEntry {
     response: ContextRetrievalResponse,
     expires_at: Instant,
+    user_id: Option<uuid::Uuid>,
+    fingerprint: String,
+    policy_epoch: i64,
+}
+
+fn clearance_bind() -> (Option<uuid::Uuid>, String, i64) {
+    edgequake_storage::clearance_session::ClearanceSession::current()
+        .map(|session| (session.user_id, session.fingerprint, session.policy_epoch))
+        .unwrap_or_else(|| (None, "off".to_string(), 0))
 }
 
 /// In-memory retrieval handle cache (stateless MCP fetch SSOT).
@@ -38,9 +47,13 @@ impl RetrievalIdCache {
 
     pub fn store(&self, response: ContextRetrievalResponse) {
         let retrieval_id = response.retrieval_id.clone();
+        let (user_id, fingerprint, policy_epoch) = clearance_bind();
         let entry = CacheEntry {
             response,
             expires_at: Instant::now() + self.ttl,
+            user_id,
+            fingerprint,
+            policy_epoch,
         };
 
         let mut guard = self.inner.write().expect("retrieval cache lock");
@@ -58,6 +71,13 @@ impl RetrievalIdCache {
         let guard = self.inner.read().expect("retrieval cache lock");
         let entry = guard.get(retrieval_id)?;
         if entry.expires_at <= Instant::now() {
+            return None;
+        }
+        let (user_id, fingerprint, policy_epoch) = clearance_bind();
+        if entry.user_id != user_id
+            || entry.fingerprint != fingerprint
+            || entry.policy_epoch != policy_epoch
+        {
             return None;
         }
         Some(entry.response.clone())

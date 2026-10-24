@@ -318,6 +318,14 @@ Before you go live:
 
 Regular work: rotate API keys, apply dependency updates, review `audit_logs`, and test your backups.
 
+## Document labels
+
+Document labels are off until an owner turns them on for a workspace. While they are off, lists, query, and graph behave as they do today. Turning them on gives members with no access profile an empty library. The owner who turns them on is granted the steward profile and still sees every document.
+
+`EDGEQUAKE_CLEARANCE_BREAK_GLASS` is read once at process start. Set it only for a recovery window. Each request under that flag is written to the audit log as a warning. It is not a role, and a steward deny still applies to everyone else.
+
+A hidden document id answers 404, the same response as an id that does not exist.
+
 ## Report a problem
 
 Follow the [security policy](https://github.com/raphaelmansuy/edgequake/blob/edgequake-main/SECURITY.md). Report privately through GitHub Security Advisories, and do not disclose before a patch exists.

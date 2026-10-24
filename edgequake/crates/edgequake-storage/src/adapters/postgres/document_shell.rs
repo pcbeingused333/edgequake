@@ -41,24 +41,34 @@ impl ShellKind {
 
 /// Shell projection `(metadata, content, _shell marker)`; `content` is only
 /// materialised (and de-TOASTed) when `with_content` is true.
-const fn shell_single_sql(with_content: bool) -> &'static str {
+fn shell_single_sql(with_content: bool) -> String {
+    let pred = crate::clearance_session::current_predicate_sql();
     if with_content {
-        "SELECT metadata, NULLIF(content, ''), metadata->>'_shell' \
-         FROM public.documents WHERE id = $1"
+        format!(
+            "SELECT metadata, NULLIF(content, ''), metadata->>'_shell' \
+             FROM public.documents WHERE id = $1{pred}"
+        )
     } else {
-        "SELECT metadata, NULL::text, metadata->>'_shell' \
-         FROM public.documents WHERE id = $1"
+        format!(
+            "SELECT metadata, NULL::text, metadata->>'_shell' \
+             FROM public.documents WHERE id = $1{pred}"
+        )
     }
 }
 
 /// Batch variant of [`shell_single_sql`] keyed by `id = ANY($1)`.
-const fn shell_batch_sql(with_content: bool) -> &'static str {
+fn shell_batch_sql(with_content: bool) -> String {
+    let pred = crate::clearance_session::current_predicate_sql();
     if with_content {
-        "SELECT id, metadata, NULLIF(content, ''), metadata->>'_shell' \
-         FROM public.documents WHERE id = ANY($1)"
+        format!(
+            "SELECT id, metadata, NULLIF(content, ''), metadata->>'_shell' \
+             FROM public.documents WHERE id = ANY($1){pred}"
+        )
     } else {
-        "SELECT id, metadata, NULL::text, metadata->>'_shell' \
-         FROM public.documents WHERE id = ANY($1)"
+        format!(
+            "SELECT id, metadata, NULL::text, metadata->>'_shell' \
+             FROM public.documents WHERE id = ANY($1){pred}"
+        )
     }
 }
 
@@ -113,15 +123,55 @@ type ShellRow = (Option<Value>, Option<String>, Option<String>);
 /// Shell row with its document id: `(id, metadata, content, _shell marker)`.
 type ShellIdRow = (Uuid, Option<Value>, Option<String>, Option<String>);
 
+async fn fetch_optional_shell(
+    pool: &PgPool,
+    sql: &str,
+    doc: Uuid,
+) -> Result<Option<(Option<Value>, Option<String>, Option<String>)>, sqlx::Error> {
+    if crate::clearance_session::current_predicate_sql().is_empty() {
+        return sqlx::query_as(sql).bind(doc).fetch_optional(pool).await;
+    }
+    let mut tx = pool.begin().await?;
+    if let Some(session) = crate::clearance_session::ClearanceSession::current() {
+        super::rls::apply_clearance_session(&mut tx, &session)
+            .await
+            .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
+    }
+    let row = sqlx::query_as(sql)
+        .bind(doc)
+        .fetch_optional(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(row)
+}
+
+async fn fetch_all_shell(
+    pool: &PgPool,
+    sql: &str,
+    ids: &[Uuid],
+) -> Result<Vec<ShellIdRow>, sqlx::Error> {
+    if crate::clearance_session::current_predicate_sql().is_empty() {
+        return sqlx::query_as(sql).bind(ids).fetch_all(pool).await;
+    }
+    let mut tx = pool.begin().await?;
+    if let Some(session) = crate::clearance_session::ClearanceSession::current() {
+        super::rls::apply_clearance_session(&mut tx, &session)
+            .await
+            .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
+    }
+    let rows = sqlx::query_as(sql).bind(ids).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(rows)
+}
+
 /// Typed single-key read. Returns `Ok(None)` on miss/empty (→ KV fallback).
 pub async fn shell_value_by_key(pool: &PgPool, key: &str) -> Result<Option<Value>, StorageError> {
     let Some((kind, doc)) = parse_shell_key(key) else {
         return Ok(None);
     };
+    let sql = shell_single_sql(kind.needs_content());
     let row: Option<(Option<Value>, Option<String>, Option<String>)> =
-        sqlx::query_as(shell_single_sql(kind.needs_content()))
-            .bind(doc)
-            .fetch_optional(pool)
+        fetch_optional_shell(pool, &sql, doc)
             .await
             .map_err(|e| StorageError::Database(format!("document shell read failed: {e}")))?;
 
@@ -163,9 +213,8 @@ pub async fn shell_values_ordered(
     let with_content = shell_idx
         .iter()
         .any(|&i| parsed[i].is_some_and(|(kind, _)| kind.needs_content()));
-    let rows: Vec<ShellIdRow> = sqlx::query_as(shell_batch_sql(with_content))
-        .bind(&uuids)
-        .fetch_all(pool)
+    let sql = shell_batch_sql(with_content);
+    let rows: Vec<ShellIdRow> = fetch_all_shell(pool, &sql, &uuids)
         .await
         .map_err(|e| StorageError::Database(format!("document shell batch read failed: {e}")))?;
 

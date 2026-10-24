@@ -123,6 +123,14 @@ pub struct DocumentDetailResponse {
     /// SPEC-160: extraction mode, who chose it, and decision-run counts.
     #[serde(flatten)]
     pub extraction: super::DocumentExtractionView,
+
+    /// SPEC-174. Absent while clearance enforcement is off.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub classification: Option<String>,
+
+    /// SPEC-174. Absent while clearance enforcement is off.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compartments: Option<Vec<super::CompartmentView>>,
 }
 
 /// Get document by ID request.

@@ -308,6 +308,11 @@ pub async fn download_document_asset_by_id(
     tenant: TenantContext,
     AxumPath((document_id, asset_id)): AxumPath<(String, String)>,
 ) -> ApiResult<Response> {
+    if crate::services::clearance::must_hide(&document_id).await? {
+        return Err(ApiError::NotFound(format!(
+            "Document {document_id} not found"
+        )));
+    }
     ensure_document_exists(&state, &tenant, &document_id).await?;
     let (bytes, content_type) =
         read_mm_asset_payload_by_id(&state, &tenant, &document_id, &asset_id).await?;
@@ -338,6 +343,11 @@ pub async fn download_document_mm_asset(
     tenant: TenantContext,
     AxumPath((document_id, asset_path)): AxumPath<(String, String)>,
 ) -> ApiResult<Response> {
+    if crate::services::clearance::must_hide(&document_id).await? {
+        return Err(ApiError::NotFound(format!(
+            "Document {document_id} not found"
+        )));
+    }
     ensure_document_exists(&state, &tenant, &document_id).await?;
     let (bytes, content_type) =
         read_mm_asset_payload(&state, &tenant, &document_id, &asset_path).await?;

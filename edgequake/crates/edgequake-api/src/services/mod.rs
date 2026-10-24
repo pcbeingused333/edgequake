@@ -14,6 +14,7 @@ pub mod auth_memory_store;
 pub mod auth_validation;
 pub mod cancel_facade;
 pub mod cancel_retract;
+pub mod clearance;
 #[cfg(feature = "postgres")]
 pub mod compensation_drain_applier;
 pub mod content_granularity;

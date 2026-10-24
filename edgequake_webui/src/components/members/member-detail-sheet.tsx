@@ -1,10 +1,13 @@
 'use client';
 
+import { MemberAccessControl } from '@/components/clearance/member-access-control';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import type { MemberView, MemberViewer, OrgRole } from '@/lib/api/edgequake/members';
+import { useClearanceSettings } from '@/lib/clearance/use-clearance';
 import { displayName } from '@/lib/members/format';
 import { linkBlock, roleChangeBlock, roleOptions } from '@/lib/members/permissions';
+import { useTenantStore } from '@/stores/use-tenant-store';
 import { KeyRound, ShieldCheck, WandSparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { MemberActionsMenu, type MemberAction } from './member-actions-menu';
@@ -81,6 +84,11 @@ export function MemberDetailSheet({
   const { t, i18n } = useTranslation();
   const lockedReason = useLockedReason();
   const never = t('members.neverSignedIn', 'Never');
+  const workspaceId = useTenantStore((state) => state.selectedWorkspaceId);
+  const clearance = useClearanceSettings(workspaceId);
+  // Access profiles apply to real members of this workspace, and only owners and admins edit them.
+  const showAccessProfiles =
+    Boolean(workspaceId) && clearance.data?.can_manage === true && member?.kind === 'member';
 
   return (
     <Sheet open={!!member} onOpenChange={(o) => !o && onClose()}>
@@ -120,7 +128,12 @@ export function MemberDetailSheet({
               <Field label={t('members.columns.signIn', 'Sign-in')}>
                 <SignInBadges methods={member.sign_in} />
               </Field>
-              <Field label={t('members.detail.scope', 'Access')}>
+              {showAccessProfiles && (
+                <Field label={t('members.detail.clearance', 'Access')} testId="detail-clearance">
+                  <MemberAccessControl workspaceId={workspaceId ?? ''} userId={member.id} />
+                </Field>
+              )}
+              <Field label={t('members.detail.scope', 'Scope')}>
                 {member.workspace_id
                   ? t('members.detail.workspaceOnly', 'One workspace')
                   : t('members.detail.wholeOrg', 'Whole organization')}

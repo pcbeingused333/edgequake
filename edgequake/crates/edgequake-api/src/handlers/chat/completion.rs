@@ -184,7 +184,11 @@ pub async fn chat_completion(
     }
 
     // SPEC-005: Resolve document filter → allowed_document_ids for RAG context scoping
-    if let Some(ref filter) = request.document_filter {
+    if request.document_filter.is_some()
+        || crate::handlers::query::document_filter_resolver::clearance_restricts_query()
+    {
+        let filter = request.document_filter.clone().unwrap_or_default();
+        let filter = &filter;
         let ws_id_str = workspace_id.as_ref().map(|id| id.to_string());
         let tenant_filter = Some(data_tenant_id.clone());
         if let Some(allowed_ids) =

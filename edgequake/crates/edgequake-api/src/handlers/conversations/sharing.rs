@@ -33,6 +33,13 @@ pub async fn share_conversation(
     _tenant_ctx: TenantContext,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<ShareResponse>> {
+    if edgequake_storage::clearance_session::ClearanceSession::current()
+        .is_some_and(|session| session.enforced && !session.break_glass)
+    {
+        return Err(ApiError::Conflict(
+            "Sharing is off while document labels are on".into(),
+        ));
+    }
     let share_id = state.conversation_service.share_conversation(id).await?;
 
     Ok(Json(ShareResponse {

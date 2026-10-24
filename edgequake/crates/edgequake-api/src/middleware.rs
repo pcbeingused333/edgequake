@@ -283,7 +283,7 @@ pub async fn protected_api_auth(
                 {
                     return error.into_response();
                 }
-                return next.run(request).await;
+                return crate::services::clearance::run_scoped(request, next).await;
             }
             Ok(None) => {}
             Err(e) => {

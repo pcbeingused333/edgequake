@@ -32,6 +32,52 @@ pub async fn resolve_document_filter(
     tenant_id: &Option<String>,
     workspace_id: &Option<String>,
 ) -> Result<Option<Vec<String>>, crate::error::ApiError> {
+    let resolved =
+        resolve_document_filter_unscoped(kv_storage, pool, filter, tenant_id, workspace_id).await?;
+    intersect_clearance(kv_storage, pool, workspace_id, resolved).await
+}
+
+/// True when this request must not see the whole library.
+pub fn clearance_restricts_query() -> bool {
+    edgequake_storage::clearance_session::ClearanceSession::current()
+        .is_some_and(|session| !session.predicate_sql().is_empty())
+}
+
+async fn intersect_clearance(
+    kv_storage: &dyn KVStorage,
+    pool: crate::services::OptionalPgPool<'_>,
+    workspace_id: &Option<String>,
+    resolved: Option<Vec<String>>,
+) -> Result<Option<Vec<String>>, crate::error::ApiError> {
+    if !clearance_restricts_query() {
+        return Ok(resolved);
+    }
+    // No database means there is no visible set. Fail closed.
+    if pool.is_none() {
+        return Ok(Some(Vec::new()));
+    }
+    let workspace = workspace_id.as_deref().unwrap_or("");
+    let visible = crate::services::workspace_document_index::list_workspace_document_ids(
+        kv_storage, pool, workspace,
+    )
+    .await
+    .map_err(|error| crate::error::ApiError::Internal(error.to_string()))?;
+    let allowed: std::collections::HashSet<String> = visible.iter().cloned().collect();
+    match resolved {
+        None => Ok(Some(visible)),
+        Some(ids) => Ok(Some(
+            ids.into_iter().filter(|id| allowed.contains(id)).collect(),
+        )),
+    }
+}
+
+async fn resolve_document_filter_unscoped(
+    kv_storage: &dyn KVStorage,
+    pool: crate::services::OptionalPgPool<'_>,
+    filter: &DocumentFilter,
+    tenant_id: &Option<String>,
+    workspace_id: &Option<String>,
+) -> Result<Option<Vec<String>>, crate::error::ApiError> {
     // Fast path: no filter criteria at all
     if filter.is_empty() {
         return Ok(None);

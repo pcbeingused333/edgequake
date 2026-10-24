@@ -436,6 +436,9 @@ pub(crate) async fn list_documents_inner(
                 query_ready: None,
                 cancelled_from_stage: meta.cancelled_from_stage,
                 extraction: meta.extraction,
+
+                classification: None,
+                compartments: None,
             }
         })
         .collect();
@@ -716,6 +719,22 @@ pub(crate) async fn list_documents_inner(
                 &mut documents,
             )
             .await;
+            if edgequake_storage::clearance_session::ClearanceSession::current()
+                .is_some_and(|session| session.enforced)
+            {
+                let ids: Vec<uuid::Uuid> = documents
+                    .iter()
+                    .filter_map(|document| uuid::Uuid::parse_str(&document.id).ok())
+                    .collect();
+                if let Ok(labels) = crate::services::clearance::labels_for(pool, &ids).await {
+                    for document in &mut documents {
+                        if let Some((classification, compartments)) = labels.get(&document.id) {
+                            document.classification = classification.clone();
+                            document.compartments = Some(compartments.clone());
+                        }
+                    }
+                }
+            }
         }
     }
 

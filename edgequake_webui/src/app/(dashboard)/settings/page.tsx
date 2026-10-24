@@ -11,6 +11,7 @@ import { ProviderStatusHub } from '@/components/settings/provider-status-hub';
 import { ModelRoleMatrixCard } from '@/components/settings/model-role-matrix-card';
 import { LangfuseObservabilityCard } from '@/components/settings/langfuse-observability-card';
 import { MembersLinkCard } from '@/components/settings/members-link-card';
+import { DocumentLabelsCard } from '@/components/settings/document-labels-card';
 import { VisionLLMSettingsCard } from '@/components/settings/vision-llm-settings-card';
 import { PageHeader } from '@/components/shared/page-header';
 import { PageShell } from '@/components/shared/page-shell';
@@ -551,6 +552,7 @@ export default function SettingsPage() {
       </SettingsSection>
 
       <SettingsSection id="access">
+      <DocumentLabelsCard />
       <ConnectionsCard />
 
       <ModelRoleMatrixCard />

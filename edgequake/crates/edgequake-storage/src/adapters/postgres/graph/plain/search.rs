@@ -20,6 +20,12 @@ pub(in crate::adapters::postgres::graph) mod search {
         workspace_id: Option<&str>,
     ) -> Result<Vec<(GraphNode, usize)>> {
         let pool = storage.pool.get().await?;
+        if let Some(session) = crate::clearance_session::ClearanceSession::current() {
+            if !session.predicate_sql().is_empty() {
+                return search_visible_contributions(&pool, query, limit, workspace_id, &session)
+                    .await;
+            }
+        }
         // Migration 206. LIKE is not leakproof, so the tenant role cannot use
         // the trigram indexes. The owner function applies the session tenant
         // and keeps ORDER BY degree DESC, node_id.
@@ -51,6 +57,13 @@ pub(in crate::adapters::postgres::graph) mod search {
         tenant_id: Option<&str>,
         workspace_id: Option<&str>,
     ) -> Result<Vec<(GraphNode, usize)>> {
+        if let Some(session) = crate::clearance_session::ClearanceSession::current() {
+            if !session.predicate_sql().is_empty() {
+                let pool = storage.pool.get().await?;
+                return search_visible_contributions(&pool, "", limit, workspace_id, &session)
+                    .await;
+            }
+        }
         let scope = tenant_and("n", tenant_id, workspace_id, TenantMode::Strict);
         let etype = entity_type
             .map(|t| {
@@ -83,6 +96,59 @@ pub(in crate::adapters::postgres::graph) mod search {
             .filter_map(|row| {
                 let node = node_from_row(row)?;
                 let degree: i64 = row.try_get("degree").unwrap_or(0);
+                Some((node, degree.max(0) as usize))
+            })
+            .collect())
+    }
+
+    async fn search_visible_contributions(
+        pool: &sqlx::PgPool,
+        query: &str,
+        limit: usize,
+        workspace_id: Option<&str>,
+        session: &crate::clearance_session::ClearanceSession,
+    ) -> Result<Vec<(GraphNode, usize)>> {
+        let Some(workspace) = workspace_id.and_then(|id| uuid::Uuid::parse_str(id).ok()) else {
+            return Ok(Vec::new());
+        };
+        let mut conn = pool.acquire().await.map_err(|error| {
+            StorageError::Database(format!("clearance graph search failed: {error}"))
+        })?;
+        crate::adapters::postgres::rls::apply_clearance_session(&mut conn, session)
+            .await
+            .map_err(|error| StorageError::Database(error.to_string()))?;
+        let limit = i64::try_from(limit.max(1)).unwrap_or(i64::MAX);
+        let rows = sqlx::query(
+            "SELECT entity_name, (array_agg(fragment ORDER BY contribution_id))[1] AS fragment, count(*) AS degree
+             FROM public.graph_contributions
+             WHERE workspace_id = $1
+               AND kind IN ('entity', 'node')
+               AND entity_name ILIKE '%' || $2 || '%'
+               AND (public.clearance_covers(classification_rank, compartment_ids)
+                    OR (uploaded_by = (SELECT public.current_user_id()) AND classification_rank = 5))
+             GROUP BY entity_name
+             ORDER BY count(*) DESC, entity_name
+             LIMIT $3",
+        )
+        .bind(workspace)
+        .bind(query.to_lowercase())
+        .bind(limit)
+        .fetch_all(&mut *conn)
+        .await
+        .map_err(|error| StorageError::Database(format!("clearance graph search failed: {error}")))?;
+        Ok(rows
+            .iter()
+            .filter_map(|row| {
+                let name: String = row.try_get("entity_name").ok()?;
+                let fragment: Option<String> = row.try_get("fragment").ok();
+                let degree: i64 = row.try_get("degree").unwrap_or(0);
+                let mut node = GraphNode::new(name);
+                if let Some(fragment) = fragment {
+                    node.properties.insert(
+                        "description".to_string(),
+                        serde_json::Value::String(fragment),
+                    );
+                }
                 Some((node, degree.max(0) as usize))
             })
             .collect())

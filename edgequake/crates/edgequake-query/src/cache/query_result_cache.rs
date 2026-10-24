@@ -27,6 +27,11 @@ fn cache_key(request: &QueryRequest, mode: QueryMode) -> String {
             id.hash(&mut hasher);
         }
     }
+    // SPEC-174: two principals with different clearance must not share a context.
+    if let Some(session) = edgequake_storage::clearance_session::ClearanceSession::current() {
+        session.fingerprint.hash(&mut hasher);
+        session.policy_epoch.hash(&mut hasher);
+    }
     // SPEC-022 P-H6: Mix ordering depends on per-request weights — must not share cache entries.
     if mode == QueryMode::Mix {
         if let Some(mw) = &request.mix_weights {
