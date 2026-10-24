@@ -65,7 +65,8 @@ pub struct PdfContentView {
 /// Viewer metadata. Must not name the PDF byte column.
 pub const PDF_CONTENT_VIEW_SQL: &str = r#"
 SELECT d.pdf_id, d.workspace_id, d.document_id, d.filename, d.content_type,
-       d.file_size_bytes, d.processing_status, d.markdown_content, d.markdown_location
+       d.file_size_bytes, d.processing_status, d.markdown_content,
+       d.markdown_object_id, d.markdown_location
 FROM pdf_documents d
 WHERE d.pdf_id = $1
 "#;
@@ -755,7 +756,31 @@ mod tests {
     #[test]
     fn content_view_sql_does_not_read_the_pdf_bytes() {
         assert!(PDF_CONTENT_VIEW_SQL.contains("markdown_content"));
+        assert!(PDF_CONTENT_VIEW_SQL.contains("markdown_object_id"));
+        assert!(
+            PDF_CONTENT_VIEW_SQL.find("workspace_id")
+                < PDF_CONTENT_VIEW_SQL.find("markdown_object_id")
+        );
         assert!(!PDF_CONTENT_VIEW_SQL.contains("pdf_data"));
         assert!(!PDF_CONTENT_VIEW_SQL.contains("pdf_document_blobs"));
+    }
+
+    #[test]
+    fn content_view_passes_workspace_before_markdown_owner() {
+        let src = include_str!("adapters/postgres/pdf_storage_impl.rs");
+        let start = src
+            .find("async fn get_pdf_content_view")
+            .expect("content view");
+        let call = src[start..]
+            .find("markdown_text(")
+            .expect("content view calls markdown_text");
+        let window: String = src[start + call..start + call + 160]
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        assert!(
+            window.starts_with("markdown_text(workspace_id,owner,"),
+            "{window}"
+        );
     }
 }

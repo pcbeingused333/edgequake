@@ -635,8 +635,9 @@ impl PdfDocumentStorage for PostgresPdfStorage {
         let workspace_id: Uuid = row.get("workspace_id");
         let location: String = row.get("markdown_location");
         let column: Option<String> = row.get("markdown_content");
-        let markdown = if self.objects.is_some() {
-            self.markdown_text(*pdf_id, workspace_id, location, column)
+        let markdown_object_id: Option<Uuid> = row.get("markdown_object_id");
+        let markdown = if let Some(owner) = markdown_object_id.filter(|_| self.objects.is_some()) {
+            self.markdown_text(workspace_id, owner, location, column)
                 .await?
         } else {
             column

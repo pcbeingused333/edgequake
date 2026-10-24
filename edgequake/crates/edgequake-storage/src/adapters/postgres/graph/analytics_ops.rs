@@ -254,9 +254,6 @@ impl PostgresAGEGraphStorage {
     ) -> Result<std::collections::HashMap<String, usize>> {
         use std::collections::HashMap;
 
-        if self.plain_reads_ready().await? {
-            return super::plain::counts::counts::counts_by_prefixes(self, prefixes).await;
-        }
         let mut out = HashMap::with_capacity(prefixes.len());
         if prefixes.is_empty() {
             return Ok(out);
@@ -265,6 +262,7 @@ impl PostgresAGEGraphStorage {
         let probe_limit = super::helpers::source_count_probe_limit(probe_limit);
         let batch_limit = super::helpers::SOURCE_PREFIX_BATCH_LIMIT;
         let timeout_ms = super::helpers::SOURCE_COUNT_STATEMENT_TIMEOUT_MS;
+        let plain = self.plain_reads_ready().await?;
         LAST_SOURCE_PREFIX_COUNT_LEN.store(prefixes.len(), Ordering::Relaxed);
 
         for (batch_index, batch) in prefixes.chunks(batch_limit).enumerate() {
@@ -274,6 +272,7 @@ impl PostgresAGEGraphStorage {
                     probe_limit,
                     batch_index,
                     timeout_ms,
+                    plain,
                 )
                 .await
             {
@@ -300,6 +299,7 @@ impl PostgresAGEGraphStorage {
         probe_limit: usize,
         batch_index: usize,
         timeout_ms: u32,
+        plain: bool,
     ) -> Result<std::collections::HashMap<String, usize>> {
         use std::collections::HashMap;
 
@@ -318,17 +318,26 @@ impl PostgresAGEGraphStorage {
         let mut conn = pool.acquire().await.map_err(|e| {
             StorageError::Connection(format!("Failed to acquire connection: {}", e))
         })?;
-
-        // SPEC-084 / LAW-9 / GH-331 + IMP-031-08 + SPEC-089 + SPEC-149: child "Node" +
-        // MATERIALIZED probe-first GIN on both indexed lineage arrays.
-        let sql = super::helpers::node_counts_by_source_prefixes_sql(&self.graph_name);
-
         let mut timed = super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
-        let rows: std::result::Result<Vec<(String, i64)>, sqlx::Error> = sqlx::query_as(&sql)
-            .bind(&normalized)
-            .bind(probe_limit as i32)
-            .fetch_all(timed.as_mut())
-            .await;
+
+        // SPEC-084 / LAW-9 / GH-331 + IMP-031-08 + SPEC-089 + SPEC-149.
+        // Plain reads use eq_graph_nodes. A ledger still on AGE keeps "Node".
+        let rows: std::result::Result<Vec<(String, i64)>, sqlx::Error> = if plain {
+            let sql = super::helpers::plain_node_counts_by_source_prefixes_sql();
+            sqlx::query_as(&sql)
+                .bind(&normalized)
+                .bind(probe_limit as i32)
+                .bind(&self.namespace)
+                .fetch_all(timed.as_mut())
+                .await
+        } else {
+            let sql = super::helpers::node_counts_by_source_prefixes_sql(&self.graph_name);
+            sqlx::query_as(&sql)
+                .bind(&normalized)
+                .bind(probe_limit as i32)
+                .fetch_all(timed.as_mut())
+                .await
+        };
 
         match rows {
             Ok(rows) => {

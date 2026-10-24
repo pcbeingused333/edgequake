@@ -178,6 +178,8 @@ pub(in crate::adapters::postgres::graph) fn source_ids_count_probes_cte_sql() ->
 ///
 /// `from_join` includes `FROM probes pr INNER JOIN … alias` without ON.
 /// `select_list` must include `pr.prefix, pr.ord` plus a stable row id.
+/// `extra_and` is appended inside the same ON (a constant predicate such as
+/// ` AND v.namespace = $3`). Empty keeps the AGE join unchanged.
 ///
 /// WHY OR: the parameterized probe join plans as
 /// a `BitmapOr` over both GIN indexes, so each heap row is rechecked once.
@@ -187,13 +189,14 @@ pub(in crate::adapters::postgres::graph) fn lineage_count_hits_cte_sql(
     select_list: &str,
     from_join: &str,
     props: &str,
+    extra_and: &str,
 ) -> String {
     let predicates: Vec<String> = INDEXED_LINEAGE_ARRAY_KEYS
         .iter()
         .map(|key| format!("(({props})::jsonb -> '{key}') @> to_jsonb(pr.chunk_id)"))
         .collect();
     format!(
-        "hits AS MATERIALIZED (\n              SELECT {select_list} {from_join} ON ({})\n            )",
+        "hits AS MATERIALIZED (\n              SELECT {select_list} {from_join} ON (({}){extra_and})\n            )",
         predicates.join(" OR ")
     )
 }
@@ -210,6 +213,7 @@ pub fn node_counts_by_source_prefixes_sql(graph_name: &str) -> String {
         "pr.prefix, pr.ord, v.id",
         &format!(r#"FROM probes pr INNER JOIN {graph_name}."Node" v"#),
         "ag_catalog.agtype_to_json(v.properties)",
+        "",
     );
     format!(
         r#"
@@ -217,6 +221,36 @@ pub fn node_counts_by_source_prefixes_sql(graph_name: &str) -> String {
             WITH {probes_cte},
             {hits_cte}
             SELECT p.prefix, count(DISTINCT h.id)::BIGINT AS cnt
+            FROM prefixes p
+            LEFT JOIN hits h ON h.prefix = p.prefix
+            GROUP BY p.prefix, p.ord
+            ORDER BY p.ord
+            "#,
+        probes_cte = probes_cte.trim(),
+        hits_cte = hits_cte.trim(),
+    )
+}
+
+/// Batched per-prefix node counts on `public.eq_graph_nodes`.
+///
+/// Same probe series and both lineage GIN arms as
+/// [`node_counts_by_source_prefixes_sql`]. The serving graph after SPEC-164
+/// is this table, not an Apache AGE `"Node"` label. Binds: `$1` prefixes,
+/// `$2` probe upper bound, `$3` namespace. Returns `(prefix, cnt BIGINT)`.
+pub fn plain_node_counts_by_source_prefixes_sql() -> String {
+    let probes_cte = source_ids_count_probes_cte_sql();
+    let hits_cte = lineage_count_hits_cte_sql(
+        "pr.prefix, pr.ord, v.node_id",
+        "FROM probes pr INNER JOIN public.eq_graph_nodes v",
+        "v.properties",
+        " AND v.namespace = $3",
+    );
+    format!(
+        r#"
+            /* DATA-PLAIN-GRAPH-NODE-COUNTS-BY-SOURCE-PREFIXES */
+            WITH {probes_cte},
+            {hits_cte}
+            SELECT p.prefix, count(DISTINCT h.node_id)::BIGINT AS cnt
             FROM prefixes p
             LEFT JOIN hits h ON h.prefix = p.prefix
             GROUP BY p.prefix, p.ord
@@ -351,11 +385,29 @@ mod tests {
     }
 
     #[test]
+    fn plain_count_sql_reads_eq_graph_nodes_not_age() {
+        let sql = plain_node_counts_by_source_prefixes_sql();
+        assert!(sql.contains("DATA-PLAIN-GRAPH-NODE-COUNTS-BY-SOURCE-PREFIXES"));
+        assert!(sql.contains("public.eq_graph_nodes"));
+        assert!(sql.contains("v.namespace = $3"));
+        assert!(sql.contains("count(DISTINCT h.node_id)"));
+        assert!(!sql.contains("ag_catalog"));
+        assert!(!sql.contains("\"Node\""));
+        for key in INDEXED_LINEAGE_ARRAY_KEYS {
+            assert!(
+                sql.contains(&format!("-> '{key}') @>")),
+                "plain count SQL must GIN-probe {key}: {sql}"
+            );
+        }
+    }
+
+    #[test]
     fn lineage_count_hits_cte_ors_both_gin_keys_in_one_join() {
         let cte = lineage_count_hits_cte_sql(
             "pr.prefix, pr.ord, v.id",
             r#"FROM probes pr INNER JOIN g."Node" v"#,
             "ag_catalog.agtype_to_json(v.properties)",
+            "",
         );
         assert!(!cte.contains("UNION"), "{cte}");
         assert_eq!(cte.matches("INNER JOIN").count(), 1, "{cte}");

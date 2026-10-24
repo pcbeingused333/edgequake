@@ -38,8 +38,9 @@ pub(in crate::adapters::postgres::graph) use source_lineage_sql::{
 
 /// SPEC-089 / SPEC-107 R2: public SSOT for GIN node-count batch + timeout bounds.
 pub use source_lineage_sql::{
-    node_counts_by_source_prefixes_sql, LINEAGE_GIN_INDEXES, LINEAGE_GIN_PENDING_LIST_LIMIT_KB,
-    SOURCE_COUNT_STATEMENT_TIMEOUT_MS, SOURCE_PREFIX_BATCH_LIMIT,
+    node_counts_by_source_prefixes_sql, plain_node_counts_by_source_prefixes_sql,
+    LINEAGE_GIN_INDEXES, LINEAGE_GIN_PENDING_LIST_LIMIT_KB, SOURCE_COUNT_STATEMENT_TIMEOUT_MS,
+    SOURCE_PREFIX_BATCH_LIMIT,
 };
 
 #[cfg(test)]

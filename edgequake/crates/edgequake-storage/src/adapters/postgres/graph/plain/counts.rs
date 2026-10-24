@@ -1,12 +1,8 @@
 //! Counts and workspace stats (Q-GRAPH-019, 024..026).
 
-use std::collections::HashMap;
-
 use sqlx::Row;
 
-use super::super::helpers::SOURCE_PREFIX_BATCH_LIMIT;
 use super::super::PostgresAGEGraphStorage;
-use super::scan::scan;
 use crate::error::{Result, StorageError};
 
 #[allow(clippy::module_inception)]
@@ -60,25 +56,6 @@ pub(in crate::adapters::postgres::graph) mod counts {
         .await
         .map_err(|e| StorageError::Database(format!("plain distinct types failed: {e}")))?;
         Ok(n.max(0) as usize)
-    }
-
-    pub(in crate::adapters::postgres::graph) async fn counts_by_prefixes(
-        storage: &PostgresAGEGraphStorage,
-        prefixes: &[String],
-    ) -> Result<HashMap<String, usize>> {
-        let mut out = HashMap::new();
-        for chunk in prefixes.chunks(SOURCE_PREFIX_BATCH_LIMIT) {
-            for prefix in chunk {
-                let nodes = scan::find_nodes_by_source_prefixes(
-                    storage,
-                    &crate::traits::NodeListFilter::default(),
-                    std::slice::from_ref(prefix),
-                )
-                .await?;
-                out.insert(prefix.clone(), nodes.len());
-            }
-        }
-        Ok(out)
     }
 }
 

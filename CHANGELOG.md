@@ -26,6 +26,11 @@ so this is a statistical tie. EdgeQuake does not claim a win. Evidence recall is
 - Keys must stay under `{prefix}/t/{tenant}/w/{workspace}/`. `make dev` uses the prefix-only app user `eq-originals-app`. The process does not create a bucket. `EDGEQUAKE_ORIGINAL_STORE_CREATE_BUCKET=true` fails at boot.
 - Amazon S3 (no custom endpoint) sends `x-amz-checksum-sha256` and skips the read-back. MinIO, GCS, and Azure still read the object back. Operator notes: [originals](docs/operations/originals.md).
 
+### Fixed
+
+- PDF content reads the workspace id and the markdown object id. A missing markdown object stays on the database column.
+- Startup health counts entities on `eq_graph_nodes` once the graph ledger is ready. An installed Apache AGE extension with no graph is not treated as the serving graph.
+
 ### Limits
 
 - Amazon S3, GCS, and Azure are implemented and unproven on a live account. MinIO is the store exercised end to end.

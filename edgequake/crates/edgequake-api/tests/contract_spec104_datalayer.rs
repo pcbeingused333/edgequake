@@ -228,6 +228,10 @@ fn e2e_104_05_source_gin_check_all_graphs() {
         src.contains("ag_catalog.ag_graph"),
         "must discover eq_*_graph from ag_catalog"
     );
+    assert!(
+        src.contains("graphs.is_empty()") && src.contains("check_plain_graph_lineage"),
+        "an empty AGE catalog must check eq_graph_nodes, not a dropped graph schema"
+    );
 }
 
 /// SPEC-149: INV-C must count with the storage SSOT (both lineage GIN arms),
@@ -236,8 +240,9 @@ fn e2e_104_05_source_gin_check_all_graphs() {
 fn e2e_149_inv_c_uses_storage_count_sql_ssot() {
     let src = include_str!("../src/storage_inspector.rs");
     assert!(
-        src.contains("edgequake_storage::node_counts_by_source_prefixes_sql("),
-        "INV-C must build its count SQL from edgequake_storage"
+        src.contains("edgequake_storage::plain_node_counts_by_source_prefixes_sql(")
+            && src.contains("edgequake_storage::node_counts_by_source_prefixes_sql("),
+        "INV-C must build both count SQLs from edgequake_storage"
     );
     assert!(
         !src.contains("-> 'source_ids')") && !src.contains("-> 'source_chunk_ids')"),
@@ -250,6 +255,15 @@ fn e2e_149_inv_c_uses_storage_count_sql_ssot() {
             "shared count SQL must GIN-probe {key}: {sql}"
         );
     }
+    let plain = edgequake_storage::plain_node_counts_by_source_prefixes_sql();
+    assert!(
+        plain.contains("public.eq_graph_nodes") && plain.contains("v.namespace = $3"),
+        "plain count SQL must read eq_graph_nodes: {plain}"
+    );
+    assert!(
+        !plain.contains("ag_catalog") && !plain.contains("\"Node\""),
+        "plain count SQL must not touch Apache AGE: {plain}"
+    );
 }
 
 #[test]
@@ -729,4 +743,53 @@ async fn e2e_104_pg_tenant_slug_get_or_create() {
     assert_eq!(count, 1);
 
     let _ = svc.delete_tenant(id1).await;
+}
+
+/// The product graph is `eq_graph_nodes`. A database that still has the AGE
+/// extension but no `"Node"` label must not fail INV-C or warn about that label.
+#[tokio::test]
+async fn e2e_inv_c_uses_plain_graph_when_age_node_is_absent() {
+    let Some(url) = database_url() else {
+        eprintln!("SKIP e2e_inv_c_uses_plain_graph_when_age_node_is_absent: no DATABASE_URL");
+        return;
+    };
+    let pool = match PgPool::connect(&url).await {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("SKIP connect failed: {e}");
+            return;
+        }
+    };
+    let age_node: bool =
+        sqlx::query_scalar(r#"SELECT to_regclass('eq_eq_default_graph."Node"') IS NOT NULL"#)
+            .fetch_one(&pool)
+            .await
+            .unwrap_or(true);
+    if age_node {
+        eprintln!("SKIP: AGE Node still exists");
+        return;
+    }
+    let plain: bool = sqlx::query_scalar("SELECT to_regclass('public.eq_graph_nodes') IS NOT NULL")
+        .fetch_one(&pool)
+        .await
+        .unwrap_or(false);
+    if !plain {
+        eprintln!("SKIP: public.eq_graph_nodes is absent");
+        return;
+    }
+
+    let inspector =
+        StorageInspector::new(Arc::new(pool), InspectorConfig::for_namespace("default"));
+    let report = inspector.inspect().await;
+    let joined = report
+        .schema_issues
+        .iter()
+        .map(|issue| format!("{} {}", issue.check_name, issue.description))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        !joined.contains(r#"eq_eq_default_graph.Node"#)
+            && !joined.contains("m038_idx_node_source_ids_gin:eq_eq_default_graph"),
+        "plain graph must not be reported as a missing AGE relation:\n{joined}"
+    );
 }
