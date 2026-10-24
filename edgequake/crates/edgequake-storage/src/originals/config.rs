@@ -488,21 +488,36 @@ fn build_object_blob(settings: &Settings) -> Result<ObjectBlob, OriginalsError> 
     let (kind, bucket, prefix) = classify_url(url)?;
     // Validation already refused missing cloud credentials. Building is the
     // first moment a client exists, and it does not dial.
-    let store: Arc<dyn ObjectStore> = match kind {
-        StoreKind::AmazonS3 => Arc::new(LimitStore::new(
-            build_s3(settings, &bucket)?,
-            STORE_REQUEST_LIMIT,
-        )),
-        StoreKind::GoogleCloudStorage => Arc::new(LimitStore::new(
-            build_gcs(settings, &bucket)?,
-            STORE_REQUEST_LIMIT,
-        )),
-        StoreKind::MicrosoftAzure => Arc::new(LimitStore::new(
-            build_azure(settings, url)?,
-            STORE_REQUEST_LIMIT,
-        )),
-    };
-    Ok(ObjectBlob::prefixed(store, prefix))
+    let allow_http = settings.allow_http;
+    match kind {
+        StoreKind::AmazonS3 => {
+            let s3 = build_s3(settings, &bucket)?;
+            let signer: Arc<dyn object_store::signer::Signer> = Arc::new(s3.clone());
+            let store: Arc<dyn ObjectStore> = Arc::new(LimitStore::new(s3, STORE_REQUEST_LIMIT));
+            Ok(ObjectBlob::prefixed(store, prefix).with_signer(
+                signer,
+                Some(super::S3_CHECKSUM_HEADER),
+                allow_http,
+            ))
+        }
+        StoreKind::GoogleCloudStorage => {
+            let gcs = build_gcs(settings, &bucket)?;
+            let signer: Arc<dyn object_store::signer::Signer> = Arc::new(gcs.clone());
+            let store: Arc<dyn ObjectStore> = Arc::new(LimitStore::new(gcs, STORE_REQUEST_LIMIT));
+            Ok(ObjectBlob::prefixed(store, prefix).with_signer(signer, None, allow_http))
+        }
+        StoreKind::MicrosoftAzure => {
+            let azure = build_azure(settings, url)?;
+            let signer: Arc<dyn object_store::signer::Signer> = Arc::new(azure.clone());
+            let store: Arc<dyn ObjectStore> = Arc::new(LimitStore::new(azure, STORE_REQUEST_LIMIT));
+            // Headers make `signed_url_opts` return NotSupported. The caller relays.
+            Ok(ObjectBlob::prefixed(store, prefix).with_signer(
+                signer,
+                Some(super::S3_CHECKSUM_HEADER),
+                allow_http,
+            ))
+        }
+    }
 }
 
 fn build_s3(

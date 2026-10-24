@@ -30,7 +30,7 @@ pub enum KindFilter {
 impl KindFilter {
     pub fn includes(self, kind: OwnerKind) -> bool {
         match self {
-            Self::All => true,
+            Self::All => kind != OwnerKind::Upload,
             Self::Both => matches!(kind, OwnerKind::Pdf | OwnerKind::Original),
             Self::One(want) => want == kind,
         }
@@ -277,6 +277,7 @@ impl OriginalsLedger for MemoryLedger {
                     markdown_rows += 1;
                     markdown_bytes += len;
                 }
+                OwnerKind::Upload => {}
             }
         }
         let pdf_verified = state
@@ -467,6 +468,7 @@ impl OriginalsLedger for MemoryLedger {
                 OwnerKind::Original => original += 1,
                 OwnerKind::Asset => asset += 1,
                 OwnerKind::Markdown => markdown += 1,
+                OwnerKind::Upload => {}
             }
         }
         Ok(ClearView {

@@ -1,5 +1,9 @@
 //! MCP Streamable HTTP handler — thin Axum adapter (SPEC-028 SOTA).
 
+pub mod upload_put;
+
+pub use upload_put::mcp_upload_put;
+
 use axum::{
     body::Bytes,
     extract::{Extension, State},
@@ -25,6 +29,23 @@ pub struct McpJsonRpcRequest {
     #[serde(default)]
     pub params: Option<Value>,
 }
+
+/// OpenAPI anchor for the SPEC-173 relay PUT. The handler reads raw bytes.
+#[utoipa::path(
+    put,
+    path = "/api/v1/mcp/uploads/{upload_id}",
+    tag = "MCP",
+    params(("upload_id" = String, Path, description = "Upload handle from eq_upload_begin")),
+    responses(
+        (status = 204, description = "Bytes stored"),
+        (status = 403, description = "Signature, type, or hash rejected"),
+        (status = 404, description = "Unknown or expired upload"),
+        (status = 409, description = "Upload is not open for a relay PUT"),
+        (status = 413, description = "Body longer than the declared length")
+    )
+)]
+#[allow(dead_code)]
+pub async fn mcp_upload_put_openapi() {}
 
 /// OpenAPI schema anchor (runtime uses raw body parsing in [`mcp_handler`]).
 #[utoipa::path(

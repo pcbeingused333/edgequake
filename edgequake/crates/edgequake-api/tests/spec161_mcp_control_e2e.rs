@@ -177,7 +177,7 @@ async fn t161_12_13_18_19_20_upload_session() {
         &app,
         "/mcp",
         "eq_upload_begin",
-        json!({"filename": "../evil.txt", "byte_length": payload.len(), "sha256": sha}),
+        json!({"filename": "../evil.txt", "byte_length": payload.len(), "sha256": sha, "chunked": true}),
     )
     .await;
     let sc = tool_structured(&begin);
@@ -226,7 +226,7 @@ async fn t161_12_13_18_19_20_upload_session() {
         &app,
         "/mcp",
         "eq_upload_begin",
-        json!({"filename": "abort.txt"}),
+        json!({"filename": "abort.txt", "chunked": true}),
     )
     .await;
     let uid2 = tool_structured(&begin2)["upload_id"]
@@ -252,7 +252,7 @@ async fn t161_17_bad_checksum() {
         &app,
         "/mcp",
         "eq_upload_begin",
-        json!({"filename": "a.txt", "sha256": "deadbeef", "byte_length": 3}),
+        json!({"filename": "a.txt", "sha256": "deadbeef", "byte_length": 3, "chunked": true}),
     )
     .await;
     let uid = tool_structured(&begin)["upload_id"].as_str().unwrap();
@@ -485,7 +485,7 @@ async fn t161_14_expired_upload_id() {
         &app,
         "/mcp",
         "eq_upload_begin",
-        json!({"filename": "ttl.txt"}),
+        json!({"filename": "ttl.txt", "chunked": true}),
     )
     .await;
     let uid = tool_structured(&begin)["upload_id"]

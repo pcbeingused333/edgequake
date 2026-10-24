@@ -285,6 +285,23 @@ impl Server {
                 });
             }
         }
+        {
+            let state = self.state.clone();
+            let cancel_uploads = cancel.clone();
+            tokio::spawn(async move {
+                loop {
+                    if let Err(err) =
+                        crate::mcp::project::upload_session::reap_uploads(&state).await
+                    {
+                        warn!(error = %err, "mcp upload reaper pass failed");
+                    }
+                    tokio::select! {
+                        _ = cancel_uploads.cancelled() => break,
+                        _ = tokio::time::sleep(std::time::Duration::from_secs(60)) => {}
+                    }
+                }
+            });
+        }
         tokio::spawn(async move {
             wait_for_shutdown_signal().await;
             info!(

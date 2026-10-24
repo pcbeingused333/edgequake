@@ -4,7 +4,7 @@
 
 schema_version = 1
 compat_serve_min = 149
-compat_serve_max = 218
+compat_serve_max = 219
 irreversible_drop = [125, 126, 131, 171]
 legacy_cutover_assert = 142
 
@@ -1577,6 +1577,13 @@ lock_class = "ddl_access_exclusive"
 [[migration]]
 version = 218
 file = "218_spec172_pdf_chunk_sha.sql"
+phase = "expand"
+no_transaction = false
+lock_class = "ddl_access_exclusive"
+
+[[migration]]
+version = 219
+file = "219_spec173_mcp_upload_sessions.sql"
 phase = "expand"
 no_transaction = false
 lock_class = "ddl_access_exclusive"

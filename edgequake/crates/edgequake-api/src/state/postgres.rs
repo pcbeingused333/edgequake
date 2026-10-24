@@ -727,7 +727,7 @@ impl AppState {
             pdf_vision,
             parse_jobs: crate::handlers::parse::ParseJobStore::from_env(),
             mcp_uploads: std::sync::Arc::new(
-                crate::mcp::project::upload_session::McpUploadStore::new(),
+                crate::mcp::project::upload_session::McpUploadStore::postgres(pool.clone()),
             ),
             read_path_db,
             migration_bootstrap: Some(migration_bootstrap),

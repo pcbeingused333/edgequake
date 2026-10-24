@@ -33,6 +33,7 @@ use crate::handlers;
         handlers::query::context::get_context_artifact,
         handlers::mcp::mcp_openapi,
         handlers::mcp::mcp_openapi_v1,
+        handlers::mcp::mcp_upload_put_openapi,
         handlers::mcp::mcp_registry_server_json,
         handlers::mcp_oauth_protected_resource,
         handlers::mcp::mcp_oauth_protected_resource_path,

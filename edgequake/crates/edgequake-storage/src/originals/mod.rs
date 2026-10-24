@@ -13,6 +13,7 @@ mod format;
 mod io;
 mod key;
 mod ledger;
+mod presign;
 mod reaper;
 
 #[cfg(feature = "postgres")]
@@ -45,6 +46,7 @@ pub use io::{
 };
 pub use key::{object_key, scoped_object_key, OwnerKind};
 pub use ledger::{Claim, KindFilter, MemoryLedger, OriginalsLedger, OwnerRow, RefView, Scope};
+pub use presign::{presign_put, reject_insecure_presign, PresignedPut, S3_CHECKSUM_HEADER};
 pub use reaper::{expired_inflight, reap, InflightRow, ReapStats, INFLIGHT_TTL};
 
 #[cfg(feature = "postgres")]

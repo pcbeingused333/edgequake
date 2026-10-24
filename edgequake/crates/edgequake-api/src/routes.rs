@@ -220,6 +220,12 @@ fn mcp_routes(state: AppState) -> Router<AppState> {
             get(handlers::openid_configuration),
         )
         .route(
+            "/api/v1/mcp/uploads/{upload_id}",
+            put(handlers::mcp_upload_put).layer(DefaultBodyLimit::max(
+                edgequake_storage::originals::MAX_UPLOAD_BYTES,
+            )),
+        )
+        .route(
             "/oauth/authorize",
             get(handlers::oauth_authorize_get).post(handlers::oauth_authorize_post),
         )

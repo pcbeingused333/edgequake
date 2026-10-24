@@ -55,6 +55,8 @@ pub enum OriginalsError {
     Usage(String),
     #[error("store: {0}")]
     Store(String),
+    #[error("not supported: {0}")]
+    NotSupported(String),
 }
 
 impl OriginalsError {
@@ -68,6 +70,7 @@ impl OriginalsError {
             Self::Database(_) => "database",
             Self::Usage(_) => "usage",
             Self::Store(_) => "store",
+            Self::NotSupported(_) => "not_supported",
         }
     }
 
@@ -205,6 +208,20 @@ pub trait BlobStore: Send + Sync {
     fn multipart_calls(&self) -> u64 {
         0
     }
+
+    /// Presign capability, when this backend can sign a PUT. Memory stores return `None`.
+    fn signer(&self) -> Option<std::sync::Arc<dyn object_store::signer::Signer>> {
+        None
+    }
+
+    /// Header the backend checks as a SHA-256 checksum on PUT. GCS signs `content-type` only.
+    fn checksum_header(&self) -> Option<&'static str> {
+        None
+    }
+
+    fn allow_http_presign(&self) -> bool {
+        false
+    }
 }
 
 /// `object_store` backend. `probe` is the only list. The reaper does not call it.
@@ -216,6 +233,9 @@ pub struct ObjectBlob {
     list_calls: AtomicU64,
     put_calls: AtomicU64,
     multipart_calls: AtomicU64,
+    signer: Option<Arc<dyn object_store::signer::Signer>>,
+    checksum_header: Option<&'static str>,
+    allow_http_presign: bool,
 }
 
 impl ObjectBlob {
@@ -230,7 +250,22 @@ impl ObjectBlob {
             list_calls: AtomicU64::new(0),
             put_calls: AtomicU64::new(0),
             multipart_calls: AtomicU64::new(0),
+            signer: None,
+            checksum_header: None,
+            allow_http_presign: false,
         }
+    }
+
+    pub fn with_signer(
+        mut self,
+        signer: Arc<dyn object_store::signer::Signer>,
+        checksum_header: Option<&'static str>,
+        allow_http_presign: bool,
+    ) -> Self {
+        self.signer = Some(signer);
+        self.checksum_header = checksum_header;
+        self.allow_http_presign = allow_http_presign;
+        self
     }
 
     fn require_key(&self, key: &str) -> Result<(), StoreFault> {
@@ -412,6 +447,18 @@ impl BlobStore for ObjectBlob {
 
     fn multipart_calls(&self) -> u64 {
         self.multipart_calls.load(Ordering::Relaxed)
+    }
+
+    fn signer(&self) -> Option<Arc<dyn object_store::signer::Signer>> {
+        self.signer.clone()
+    }
+
+    fn checksum_header(&self) -> Option<&'static str> {
+        self.checksum_header
+    }
+
+    fn allow_http_presign(&self) -> bool {
+        self.allow_http_presign
     }
 }
 

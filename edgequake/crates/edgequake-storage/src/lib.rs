@@ -110,6 +110,7 @@ pub mod kv_key_schema;
 #[cfg(feature = "postgres")]
 pub mod legacy_store_census;
 pub mod lineage_canon;
+pub mod mcp_upload;
 pub mod metadata_filter_sql;
 pub mod mm_asset_storage;
 pub mod namespace_tables;

@@ -41,6 +41,7 @@ chrono = { workspace = true }
 # SPEC-172: one client for S3, MinIO, GCS, and Azure Blob.
 object_store = { version = "0.14.2", default-features = false, features = ["aws", "gcp", "azure"] }
 bytes = "1"
+base64 = "0.22"
 futures = { version = "0.3", default-features = false, features = ["std"] }
 
 edgequake-observability = { path = "../edgequake-observability", optional = true, features = ["metrics"] }

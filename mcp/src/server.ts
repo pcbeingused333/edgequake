@@ -4,6 +4,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { callRemoteTool } from "./gateway-bridge.js";
+import { uploadLocalFile } from "./upload-local.js";
 
 const QUERY_INSTRUCTIONS = `EdgeQuake is a Graph-RAG store. Do not invent document lists.
 1. eq_document_list before answering "what's in the workspace".
@@ -152,12 +153,12 @@ export function createServer(): McpServer {
   registerBridgeTool(
     server,
     "eq_upload_begin",
-    "Start a chunked upload handle.",
+    "Declare a file. Returns upload_id and a one-shot PUT url. Do not paste the url or the file bytes.",
   );
   registerBridgeTool(
     server,
     "eq_upload_write",
-    "Write the next contiguous chunk.",
+    "Append a small chunk. A PDF uses the PUT from eq_upload_begin instead.",
   );
   registerBridgeTool(
     server,
@@ -168,6 +169,27 @@ export function createServer(): McpServer {
     server,
     "eq_upload_abort",
     "Abort an open upload handle.",
+  );
+  server.tool(
+    "eq_upload_local",
+    "Read a file under EDGEQUAKE_UPLOAD_ROOT and PUT it to EdgeQuake. The remote server does not see the path.",
+    { path: z.string() },
+    async ({ path: filePath }) => {
+      try {
+        const text = JSON.stringify(await uploadLocalFile(filePath));
+        return { content: [{ type: "text" as const, text }] };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
   );
   registerBridgeTool(
     server,

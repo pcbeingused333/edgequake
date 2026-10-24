@@ -78,7 +78,7 @@ async fn v034_large_database_upgrades_without_losing_rows() {
             .fetch_one(&pool)
             .await
             .expect("head");
-    assert_eq!(head, 218, "the large database must reach migration 218");
+    assert_eq!(head, 219, "the large database must reach migration 219");
     assert_public_ledger(&pool, &[15, 16, 169, 202]).await;
     let stored_167: String = sqlx::query_scalar(
         "SELECT encode(checksum, 'hex') FROM public._sqlx_migrations WHERE version = 167",

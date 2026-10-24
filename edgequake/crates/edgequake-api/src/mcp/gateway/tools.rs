@@ -483,16 +483,17 @@ fn eq_graph_image_tool() -> Value {
 fn eq_upload_begin_tool() -> Value {
     json!({
         "name": "eq_upload_begin",
-        "description": "Start an async chunked upload. Returns upload_id. Then eq_upload_write and eq_upload_commit. Commit admits a document and returns pending task_id.",
+        "description": "Declare a file. Returns upload_id and a one-shot PUT url. The host PUTs the raw bytes with the returned headers. Do not paste the url or the file. Then eq_upload_commit and poll eq_task_get until indexed. Pass chunked=true only for a small body that will use eq_upload_write.",
         "inputSchema": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["filename", "byte_length"],
+            "required": ["filename", "byte_length", "sha256"],
             "properties": {
                 "filename": { "type": "string" },
                 "media_type": { "type": "string" },
                 "byte_length": { "type": "integer", "minimum": 1 },
                 "sha256": { "type": "string" },
+                "chunked": { "type": "boolean", "default": false },
                 "workspace_id": { "type": "string", "x-mcp-header": "Workspace-Id" }
             }
         },
@@ -509,14 +510,15 @@ fn eq_upload_begin_tool() -> Value {
 fn eq_upload_write_tool() -> Value {
     json!({
         "name": "eq_upload_write",
-        "description": "Append a contiguous chunk to an upload_id. Does not admit the document.",
+        "description": "Append a contiguous chunk to a chunked upload_id. A PDF uses the PUT from eq_upload_begin instead. Does not admit the document.",
         "inputSchema": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["upload_id", "offset", "data_base64"],
+            "required": ["upload_id", "offset", "chunk_base64"],
             "properties": {
                 "upload_id": { "type": "string" },
                 "offset": { "type": "integer", "minimum": 0 },
+                "chunk_base64": { "type": "string" },
                 "data_base64": { "type": "string" },
                 "workspace_id": { "type": "string", "x-mcp-header": "Workspace-Id" }
             }
@@ -534,7 +536,7 @@ fn eq_upload_write_tool() -> Value {
 fn eq_upload_commit_tool() -> Value {
     json!({
         "name": "eq_upload_commit",
-        "description": "Admit the uploaded file asynchronously. Returns document_id, task_id, status pending. Poll eq_task_get until indexed.",
+        "description": "Admit the uploaded file asynchronously. Returns document_id, task_id, status pending. Poll eq_task_get until indexed. A second call returns the same ids.",
         "inputSchema": {
             "type": "object",
             "additionalProperties": false,
@@ -549,7 +551,7 @@ fn eq_upload_commit_tool() -> Value {
         "annotations": {
             "readOnlyHint": false,
             "destructiveHint": false,
-            "idempotentHint": false,
+            "idempotentHint": true,
             "openWorldHint": true
         }
     })

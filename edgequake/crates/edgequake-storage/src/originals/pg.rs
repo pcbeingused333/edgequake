@@ -268,6 +268,7 @@ fn owner_column(kind: OwnerKind) -> &'static str {
         OwnerKind::Original => "document_id",
         OwnerKind::Asset => "asset_object_id",
         OwnerKind::Markdown => "markdown_object_id",
+        OwnerKind::Upload => "upload_id",
     }
 }
 
@@ -485,6 +486,11 @@ impl OriginalsLedger for PgLedger {
             OwnerKind::Original => (None, Some(claim.owner_id), None, None),
             OwnerKind::Asset => (None, None, Some(claim.owner_id), None),
             OwnerKind::Markdown => (None, None, None, Some(claim.owner_id)),
+            OwnerKind::Upload => {
+                return Err(OriginalsError::Usage(
+                    "upload staging is not an original".into(),
+                ));
+            }
         };
         let result = sqlx::query(
             r#"
@@ -696,6 +702,11 @@ impl OriginalsLedger for PgLedger {
                 .await
                 .map_err(map_db)?;
             }
+            OwnerKind::Upload => {
+                return Err(OriginalsError::Usage(
+                    "upload staging is not an original".into(),
+                ));
+            }
         }
         Ok(())
     }
@@ -741,6 +752,11 @@ impl OriginalsLedger for PgLedger {
                 OwnerKind::Markdown => {
                     "UPDATE pdf_documents SET markdown_content = NULL, markdown_location = 'object' WHERE markdown_object_id = $1"
                 }
+                OwnerKind::Upload => {
+                    return Err(OriginalsError::Usage(
+                        "upload staging is not an original".into(),
+                    ));
+                }
             };
             sqlx::query(clear)
                 .bind(owner)
@@ -761,6 +777,11 @@ impl OriginalsLedger for PgLedger {
             }
             OwnerKind::Markdown => {
                 "UPDATE pdf_documents SET markdown_content = CASE WHEN $3 THEN convert_from($2, 'UTF8') ELSE COALESCE(markdown_content, '') || convert_from($2, 'UTF8') END, markdown_location = 'database' WHERE markdown_object_id = $1"
+            }
+            OwnerKind::Upload => {
+                return Err(OriginalsError::Usage(
+                    "upload staging is not an original".into(),
+                ));
             }
         };
         sqlx::query(sql)
@@ -787,6 +808,11 @@ impl OriginalsLedger for PgLedger {
             OwnerKind::Markdown => {
                 "SELECT convert_to(markdown_content, 'UTF8') FROM pdf_documents WHERE markdown_object_id = $1"
             }
+            OwnerKind::Upload => {
+                return Err(OriginalsError::Usage(
+                    "upload staging is not an original".into(),
+                ));
+            }
         };
         let value: Option<Option<Vec<u8>>> = sqlx::query_scalar(sql)
             .bind(owner)
@@ -811,6 +837,11 @@ impl OriginalsLedger for PgLedger {
                 "SELECT COALESCE(doc.content, '') FROM pdf_documents d \
                  LEFT JOIN documents doc ON doc.id = d.document_id WHERE d.markdown_object_id = $1"
             }
+            OwnerKind::Upload => {
+                return Err(OriginalsError::Usage(
+                    "upload staging is not an original".into(),
+                ));
+            }
         };
         sqlx::query_scalar(sql)
             .bind(owner)
@@ -833,6 +864,11 @@ async fn ref_exists(pool: &PgPool, kind: OwnerKind, owner: Uuid) -> Result<bool,
         OwnerKind::Original => "SELECT 1 FROM original_object_refs WHERE document_id = $1",
         OwnerKind::Asset => "SELECT 1 FROM original_object_refs WHERE asset_object_id = $1",
         OwnerKind::Markdown => "SELECT 1 FROM original_object_refs WHERE markdown_object_id = $1",
+        OwnerKind::Upload => {
+            return Err(OriginalsError::Usage(
+                "upload staging is not an original".into(),
+            ));
+        }
     };
     let row = sqlx::query(sql)
         .bind(owner)
@@ -1102,6 +1138,11 @@ async fn count_bytea(
             "SELECT count(*)::bigint FROM pdf_documents WHERE markdown_content IS NOT NULL AND ($1::uuid IS NULL OR workspace_id = $1)",
             "SELECT COALESCE(sum(octet_length(convert_to(markdown_content, 'UTF8'))), 0)::bigint FROM pdf_documents WHERE markdown_content IS NOT NULL AND ($1::uuid IS NULL OR workspace_id = $1)",
         ),
+        OwnerKind::Upload => {
+            return Err(OriginalsError::Usage(
+                "upload staging is not an original".into(),
+            ));
+        }
     };
     let _ = scope.kind;
     let rows: i64 = sqlx::query_scalar(sql_rows)
@@ -1208,6 +1249,11 @@ async fn verified_count(pool: &PgPool, kind: OwnerKind) -> Result<u64, Originals
         }
         OwnerKind::Markdown => {
             "SELECT count(*)::bigint FROM original_object_refs WHERE markdown_object_id IS NOT NULL AND verified_at IS NOT NULL"
+        }
+        OwnerKind::Upload => {
+            return Err(OriginalsError::Usage(
+                "upload staging is not an original".into(),
+            ));
         }
     };
     let n: i64 = sqlx::query_scalar(sql)

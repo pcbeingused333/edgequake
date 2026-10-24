@@ -9,6 +9,8 @@ pub enum OwnerKind {
     Original,
     Asset,
     Markdown,
+    /// In-flight agent upload. Not an original, and not a migrate target.
+    Upload,
 }
 
 impl OwnerKind {
@@ -18,6 +20,7 @@ impl OwnerKind {
             Self::Original => "original",
             Self::Asset => "asset",
             Self::Markdown => "markdown",
+            Self::Upload => "upload",
         }
     }
 }

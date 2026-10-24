@@ -81,7 +81,7 @@ Available only with the `control` or `memory` profile:
 | Tool | Purpose |
 |------|---------|
 | `eq_ingest` | Ingest text. Returns `pending` and a `task_id`. |
-| `eq_upload_begin`, `eq_upload_write`, `eq_upload_commit`, `eq_upload_abort` | Chunked upload |
+| `eq_upload_begin`, `eq_upload_write`, `eq_upload_commit`, `eq_upload_abort` | Declare a file, PUT the bytes to the returned URL, then commit. `eq_upload_write` is only for a small chunked body. |
 | `eq_document_delete`, `eq_workspace_delete` | Delete. `confirm: true` is required. |
 | `eq_document_download`, `eq_asset_get`, `eq_graph_image` | Bytes and pictures |
 
