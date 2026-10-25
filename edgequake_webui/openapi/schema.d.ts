@@ -821,14 +821,11 @@ export interface paths {
         };
         /**
          * Get the full effective configuration with its resolution chain.
-         * @description `GET /api/v1/config/effective`
+         * @description `GET /api/v1/config/effective?workspace_id=`
          *
-         *     Returns the complete priority chain for LLM, Embedding, and Vision config:
-         *     which level is active, where each value came from, and whether there are
-         *     any provider/model mismatches that need operator attention.
-         *
-         *     This is the "source of truth" endpoint for diagnosing configuration issues.
-         *     The frontend settings page uses this to render the Config Explainability panel.
+         *     Returns the priority chain for LLM, Embedding, and Vision config, plus one
+         *     resolved row per usage for the workspace (SPEC-175). Only a member of the
+         *     workspace may read it. A missing `workspace_id` is 400.
          */
         get: operations["get_effective_config"];
         put?: never;
@@ -849,6 +846,22 @@ export interface paths {
         get: operations["list_connections"];
         put?: never;
         post: operations["create_connection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/connections/shapes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_connection_shapes"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1124,6 +1137,54 @@ export interface paths {
         /** Probe the decision backend. */
         get: operations["get_decision_status"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/deployment/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_deployment_providers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/deployment/providers/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["put_deployment_provider"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/deployment/providers/{slug}/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["put_connection_models"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2529,6 +2590,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/settings-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/me/settings-access?tenant_id=&workspace_id=` */
+        get: operations["get_settings_access"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messages/{message_id}": {
         parameters: {
             query?: never;
@@ -2592,6 +2670,23 @@ export interface paths {
         put?: never;
         /** Invalidate discovery caches and force re-fetch on next catalog request. */
         post: operations["refresh_model_discovery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/models/eligible": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/models/eligible?workspace_id=&usage=`: models a member may pick. */
+        get: operations["get_eligible_models"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3065,6 +3160,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/secret-backend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_secret_backend"];
+        put: operations["put_secret_backend"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/secret-backend/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["test_secret_backend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_secrets"];
+        put?: never;
+        post: operations["create_secret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/secrets/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["delete_secret"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/app-attribution": {
         parameters: {
             query?: never;
@@ -3470,6 +3629,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tenants/{tenant_id}/model-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/tenants/{tenant_id}/model-catalog`: registered models for the ceiling
+         *     editor (tenant managers only). Member pickers use `/models/eligible` instead.
+         */
+        get: operations["get_tenant_model_catalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenant_id}/model-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/tenants/{tenant_id}/model-policy`: ceiling rows (Super Admin only). */
+        get: operations["get_tenant_model_policy"];
+        /**
+         * `PUT /api/v1/tenants/{tenant_id}/model-policy`: replace the ceiling (Super Admin only).
+         *     An empty `rows` array returns the tenant to unconstrained.
+         */
+        put: operations["put_tenant_model_policy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenant_id}/provider-offer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_tenant_provider_offer"];
+        put: operations["put_tenant_provider_offer"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tenants/{tenant_id}/workspaces": {
         parameters: {
             query?: never;
@@ -3861,6 +4077,43 @@ export interface paths {
          *     - External scheduler integration (cron jobs)
          */
         post: operations["trigger_metrics_snapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/model-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/workspaces/{workspace_id}/model-policy`: narrowing rows (members read). */
+        get: operations["get_workspace_model_policy"];
+        /**
+         * `PUT /api/v1/workspaces/{workspace_id}/model-policy`: replace narrowing rows
+         *     (workspace owner or admin). A row that enables a pair the ceiling omits is 422.
+         */
+        put: operations["put_workspace_model_policy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/provider-offer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_workspace_provider_offer"];
+        put: operations["put_workspace_provider_offer"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4839,6 +5092,28 @@ export interface components {
             roles: string[];
         };
         /**
+         * @description One registered deployment model. Discovery-only models are never listed: they can
+         *     never be eligible, so they cannot be a ceiling choice.
+         * @example {
+         *       "display_name": {},
+         *       "health": {},
+         *       "model": {},
+         *       "provider": {},
+         *       "provider_display_name": {},
+         *       "usages": []
+         *     }
+         */
+        CatalogEntryDto: {
+            display_name: string;
+            /** @description `healthy` (last probe ok), `probe_failed` (last probe failed), `unknown` (never probed). */
+            health: string;
+            model: string;
+            provider: string;
+            provider_display_name: string;
+            /** @description Configurable usages this model can serve, in `CONFIGURABLE_USAGES` order. */
+            usages: string[];
+        };
+        /**
          * @example {
          *       "current_password": {},
          *       "new_password": {}
@@ -5418,6 +5693,20 @@ export interface components {
             satisfied: boolean;
         };
         /**
+         * @example {
+         *       "id": {},
+         *       "supports_chat": {},
+         *       "supports_embedding": {},
+         *       "supports_vision": {}
+         *     }
+         */
+        ConnectionModelBody: {
+            id: string;
+            supports_chat?: boolean;
+            supports_embedding?: boolean;
+            supports_vision?: boolean;
+        };
+        /**
          * @description Provider connection status
          * @example {}
          * @enum {string}
@@ -5435,7 +5724,9 @@ export interface components {
          *       "key_fingerprint": {},
          *       "last_test_error": {},
          *       "last_test_ok": {},
+         *       "legacy": {},
          *       "locality": {},
+         *       "secret_backend": {},
          *       "slug": {},
          *       "source": {},
          *       "tenant_id": {},
@@ -5454,7 +5745,11 @@ export interface components {
             key_fingerprint?: string | null;
             last_test_error?: string | null;
             last_test_ok?: boolean | null;
+            /** @description True when the row was created on a tenant before fleet-only creates. */
+            legacy?: boolean;
             locality: string;
+            /** @description `database`, `infisical`, or `legacy`. Env rows leave this empty. */
+            secret_backend?: string | null;
             slug: string;
             source: string;
             /** Format: uuid */
@@ -6767,6 +7062,38 @@ export interface components {
             relationships_to_update: number;
         };
         /**
+         * @example {
+         *       "api_shape": {},
+         *       "display_name": {},
+         *       "key_configured": {},
+         *       "models": [],
+         *       "offered": {},
+         *       "origin": {},
+         *       "probe": {},
+         *       "slug": {},
+         *       "withdrawn": {}
+         *     }
+         */
+        DeploymentProviderDto: {
+            api_shape: string;
+            display_name: string;
+            key_configured: boolean;
+            models: components["schemas"]["OfferModelDto"][];
+            offered: boolean;
+            origin: string;
+            probe: string;
+            slug: string;
+            withdrawn: boolean;
+        };
+        /**
+         * @example {
+         *       "providers": []
+         *     }
+         */
+        DeploymentProvidersResponse: {
+            providers: components["schemas"]["DeploymentProviderDto"][];
+        };
+        /**
          * @description Description version for tracking evolution.
          * @example {
          *       "created_at": {},
@@ -7251,11 +7578,14 @@ export interface components {
          * @example {
          *       "embedding": {},
          *       "llm": {},
+         *       "policy_mode": {},
          *       "priority_mode": {},
          *       "priority_rule": {},
          *       "reasoning_roles": {},
          *       "server_config_available": {},
-         *       "vision": {}
+         *       "usages": [],
+         *       "vision": {},
+         *       "workspace_id": {}
          *     }
          */
         EffectiveConfigResponse: {
@@ -7263,6 +7593,8 @@ export interface components {
             embedding: components["schemas"]["ConfigAreaResponse"];
             /** @description LLM chat/extraction configuration chain. */
             llm: components["schemas"]["ConfigAreaResponse"];
+            /** @description SPEC-175: `unconstrained` or `constrained` (tenant ceiling has rows). */
+            policy_mode?: string;
             /** @description Active priority mode: `server` or `env`. */
             priority_mode: string;
             /** @description Priority rule explanation shown to the user. */
@@ -7273,8 +7605,12 @@ export interface components {
             };
             /** @description Whether PostgreSQL server_config persistence is available. */
             server_config_available: boolean;
+            /** @description SPEC-175: one resolved row per usage. New clients read this, not the legacy fields. */
+            usages?: components["schemas"]["EffectiveUsageDto"][];
             /** @description Vision/PDF configuration chain. */
             vision: components["schemas"]["ConfigAreaResponse"];
+            /** @description SPEC-175: workspace the usages were resolved for (always set by the handler). */
+            workspace_id?: string | null;
         };
         /**
          * @example {
@@ -7310,6 +7646,68 @@ export interface components {
             mode: string;
             /** @description `workspace`, `env`, or `default`. */
             source: string;
+        };
+        /**
+         * @description One usage as the server resolved it for a workspace.
+         * @example {
+         *       "broken_reason": {},
+         *       "connection_id": {},
+         *       "eligible": {},
+         *       "locked": {},
+         *       "model": {},
+         *       "provider": {},
+         *       "provider_display_name": {},
+         *       "reasoning_effort": {},
+         *       "source": {},
+         *       "usage": {}
+         *     }
+         */
+        EffectiveUsageDto: {
+            /** @description `none` when eligible; otherwise `capability` or `not_eligible`. */
+            broken_reason: string;
+            /** @description `provider_connections.id` when the winning workspace role set one. */
+            connection_id?: string | null;
+            /** @description The pair is in `eligible_models(usage, None)` for this workspace. */
+            eligible: boolean;
+            locked: boolean;
+            model: string;
+            provider: string;
+            provider_display_name?: string | null;
+            /** @description Reasoning effort when the winning workspace role set one. */
+            reasoning_effort?: string | null;
+            /** @description Winning layer: `operator_lock`, `workspace_role`, `workspace_default`, … */
+            source: string;
+            /** @description Wire name: `extract`, `query`, `summary`, `vlm`, `keyword`, `embedding`, `decision`. */
+            usage: string;
+        };
+        /**
+         * @example {
+         *       "display_name": {},
+         *       "model": {},
+         *       "provider": {},
+         *       "provider_display_name": {},
+         *       "supports_vision": {}
+         *     }
+         */
+        EligibleModelDto: {
+            display_name: string;
+            model: string;
+            provider: string;
+            provider_display_name: string;
+            supports_vision: boolean;
+        };
+        /**
+         * @example {
+         *       "models": [],
+         *       "policy_mode": {},
+         *       "usage": {}
+         *     }
+         */
+        EligibleModelsResponse: {
+            models: components["schemas"]["EligibleModelDto"][];
+            /** @description `constrained` when the tenant ceiling restricts this usage. */
+            policy_mode: string;
+            usage: string;
         };
         /** @description Embedding model item with provider info. */
         EmbeddingModelItem: components["schemas"]["ModelResponse"] & {
@@ -9021,6 +9419,16 @@ export interface components {
             y1: number;
         };
         /**
+         * @example {
+         *       "display_name": {},
+         *       "slug": {}
+         *     }
+         */
+        LegacyConnectionDto: {
+            display_name: string;
+            slug: string;
+        };
+        /**
          * @description Line range information.
          * @example {
          *       "end_line": {},
@@ -10355,6 +10763,32 @@ export interface components {
             log_format: string;
             /** @description Whether OTLP gRPC export is enabled at runtime. */
             otel_enabled: boolean;
+        };
+        /**
+         * @example {
+         *       "id": {},
+         *       "usages": []
+         *     }
+         */
+        OfferModelDto: {
+            id: string;
+            usages: string[];
+        };
+        /**
+         * @example {
+         *       "display_name": {},
+         *       "enabled": {},
+         *       "models": [],
+         *       "offered_by_parent": {},
+         *       "slug": {}
+         *     }
+         */
+        OfferProviderDto: {
+            display_name: string;
+            enabled: boolean;
+            models: components["schemas"]["OfferModelDto"][];
+            offered_by_parent: boolean;
+            slug: string;
         };
         /**
          * @description Ollama chat request.
@@ -11768,6 +12202,21 @@ export interface components {
          */
         PipelinePhase: "upload" | "pdf_conversion" | "chunking" | "embedding" | "extraction" | "graph_storage";
         /**
+         * @description One policy row on the wire. `enabled` defaults to true.
+         * @example {
+         *       "enabled": {},
+         *       "model": {},
+         *       "provider": {},
+         *       "usage": {}
+         *     }
+         */
+        PolicyRowDto: {
+            enabled?: boolean;
+            model: string;
+            provider: string;
+            usage: string;
+        };
+        /**
          * @description SPEC-112 LAW-112-8: one role pool's configured max and live occupancy.
          * @example {
          *       "idle": {},
@@ -11980,6 +12429,28 @@ export interface components {
             name: string;
         };
         /**
+         * @example {
+         *       "can_manage": {},
+         *       "enabled_count": {},
+         *       "legacy": [],
+         *       "offer_mode": {},
+         *       "parent_count": {},
+         *       "providers": [],
+         *       "tenant_id": {},
+         *       "workspace_id": {}
+         *     }
+         */
+        ProviderOfferResponse: {
+            can_manage: boolean;
+            enabled_count: number;
+            legacy: components["schemas"]["LegacyConnectionDto"][];
+            offer_mode: string;
+            parent_count: number;
+            providers: components["schemas"]["OfferProviderDto"][];
+            tenant_id: string;
+            workspace_id?: string | null;
+        };
+        /**
          * @description Provider information with models.
          * @example {
          *       "auth_kind": {},
@@ -12088,6 +12559,14 @@ export interface components {
             llm: components["schemas"]["LlmProviderHealth"];
         };
         /**
+         * @example {
+         *       "models": []
+         *     }
+         */
+        PutConnectionModelsRequest: {
+            models: components["schemas"]["ConnectionModelBody"][];
+        };
+        /**
          * @description Request body for creating/updating a knowledge injection (text mode).
          * @example {
          *       "name": "company_policy",
@@ -12125,11 +12604,62 @@ export interface components {
         };
         /**
          * @example {
+         *       "offer_mode": {},
+         *       "slugs": []
+         *     }
+         */
+        PutOfferRequest: {
+            offer_mode: string;
+            slugs?: string[];
+        };
+        /**
+         * @description Body for `PUT .../model-policy`: replaces every row of that scope.
+         * @example {
+         *       "rows": []
+         *     }
+         */
+        PutPolicyRequest: {
+            rows: components["schemas"]["PolicyRowDto"][];
+        };
+        /**
+         * @example {
          *       "rules": []
          *     }
          */
         PutRulesRequest: {
             rules: components["schemas"]["RuleBody"][];
+        };
+        /**
+         * @example {
+         *       "name": {},
+         *       "value": {}
+         *     }
+         */
+        PutSecret: {
+            name: string;
+            value: string;
+        };
+        /**
+         * @example {
+         *       "allow_private_network": {},
+         *       "base_url": {},
+         *       "client_id": {},
+         *       "client_secret": {},
+         *       "environment": {},
+         *       "kind": {},
+         *       "project_id": {},
+         *       "secret_path": {}
+         *     }
+         */
+        PutSecretBackend: {
+            allow_private_network?: boolean | null;
+            base_url?: string | null;
+            client_id?: string | null;
+            client_secret?: string | null;
+            environment?: string | null;
+            kind: string;
+            project_id?: string | null;
+            secret_path?: string | null;
         };
         /**
          * @example {
@@ -13965,6 +14495,31 @@ export interface components {
         };
         /**
          * @example {
+         *       "administered_workspace_ids": [],
+         *       "instance_admin": {},
+         *       "tenant_manage": {},
+         *       "tenant_role": {},
+         *       "user_id": {},
+         *       "workspace_id": {},
+         *       "workspace_manage": {}
+         *     }
+         */
+        SettingsAccessResponse: {
+            /** @description Workspaces the caller may administer in this tenant. */
+            administered_workspace_ids: string[];
+            /** @description Platform admin: the `Admin` global role. */
+            instance_admin: boolean;
+            /** @description Super admin rights in this tenant (tenant owner/admin, or platform admin). */
+            tenant_manage: boolean;
+            /** @description Highest tenant-wide membership role (`owner|admin|member|readonly`), if any. */
+            tenant_role?: string | null;
+            user_id: string;
+            workspace_id?: string | null;
+            /** @description Owner or admin of the requested workspace, or a tenant manager. */
+            workspace_manage: boolean;
+        };
+        /**
+         * @example {
          *       "admin_email": {},
          *       "admin_password": {},
          *       "admin_username": {},
@@ -14591,6 +15146,7 @@ export interface components {
          *       "query": {},
          *       "question_type": {},
          *       "reasoning_effort": {},
+         *       "rerank_model": {},
          *       "response_type": {},
          *       "session_id": {},
          *       "stream_format": {},
@@ -14638,6 +15194,8 @@ export interface components {
             question_type?: string | null;
             /** @description SPEC-109: reasoning effort override for streaming query. */
             reasoning_effort?: string | null;
+            /** @description SPEC-175 EC-175-09: rejected with 422 `rerank_model_rejected`. Rerank is deployment-level. */
+            rerank_model?: string | null;
             /** @description Answer formatting cue (083 / LightRAG `response_type`). */
             response_type?: string | null;
             /** @description Optional Langfuse / GenAI session id (SPEC-124). Mirrors `QueryRequest.session_id`. */
@@ -14804,6 +15362,17 @@ export interface components {
             workspace_id: string;
         };
         /**
+         * @description `GET /tenants/{id}/model-catalog`: registered models and the tenant ceiling mode.
+         * @example {
+         *       "entries": [],
+         *       "policy_mode": {}
+         *     }
+         */
+        TenantCatalogResponse: {
+            entries: components["schemas"]["CatalogEntryDto"][];
+            policy_mode: string;
+        };
+        /**
          * @description List response with pagination info.
          * @example {
          *       "items": [],
@@ -14821,6 +15390,19 @@ export interface components {
             offset: number;
             /** @description Total tenants (not page length). SPEC-140. */
             total: number;
+        };
+        /**
+         * @description Tenant ceiling. `constrained_usages` lists usages with at least one ceiling row.
+         * @example {
+         *       "constrained_usages": [],
+         *       "rows": [],
+         *       "tenant_id": {}
+         *     }
+         */
+        TenantPolicyResponse: {
+            constrained_usages: string[];
+            rows: components["schemas"]["PolicyRowDto"][];
+            tenant_id: string;
         };
         /**
          * @description Tenant response DTO.
@@ -15597,6 +16179,14 @@ export interface components {
             note: string;
         };
         /**
+         * @example {
+         *       "withdrawn": {}
+         *     }
+         */
+        WithdrawRequest: {
+            withdrawn: boolean;
+        };
+        /**
          * @description Workspace cost summary response.
          * @example {
          *       "average_cost_per_document": {},
@@ -15653,6 +16243,19 @@ export interface components {
             offset: number;
             /** @description Total matching workspaces for the tenant (not page length). SPEC-140. */
             total: number;
+        };
+        /**
+         * @description Workspace narrowing. `can_manage` tells the UI whether to show the editor.
+         * @example {
+         *       "can_manage": {},
+         *       "rows": [],
+         *       "workspace_id": {}
+         *     }
+         */
+        WorkspacePolicyResponse: {
+            can_manage: boolean;
+            rows: components["schemas"]["PolicyRowDto"][];
+            workspace_id: string;
         };
         /**
          * @description Workspace response DTO.
@@ -17317,14 +17920,17 @@ export interface operations {
     };
     get_effective_config: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Workspace to resolve the usages for (required) */
+                workspace_id?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Effective configuration chain */
+            /** @description Effective configuration and usages */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -17332,6 +17938,27 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EffectiveConfigResponse"];
                 };
+            };
+            /** @description workspace_id is missing */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Caller is not a member of the workspace */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workspace not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -17357,6 +17984,16 @@ export interface operations {
                 "application/json": components["schemas"]["UpsertConnection"];
             };
         };
+        responses: never;
+    };
+    list_connection_shapes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: never;
     };
     update_connection: {
@@ -17952,6 +18589,78 @@ export interface operations {
                 content: {
                     "application/json": Record<string, never>;
                 };
+            };
+        };
+    };
+    get_deployment_providers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deployment provider offer */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentProvidersResponse"];
+                };
+            };
+        };
+    };
+    put_deployment_provider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Provider slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WithdrawRequest"];
+            };
+        };
+        responses: {
+            /** @description Withdrawal updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentProviderDto"];
+                };
+            };
+        };
+    };
+    put_connection_models: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Fleet provider slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutConnectionModelsRequest"];
+            };
+        };
+        responses: {
+            /** @description Models replaced */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -20514,6 +21223,31 @@ export interface operations {
             };
         };
     };
+    get_settings_access: {
+        parameters: {
+            query?: {
+                /** @description Tenant to check; defaults to the default tenant */
+                tenant_id?: string;
+                /** @description Workspace to check for workspace-level management */
+                workspace_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's settings grants */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsAccessResponse"];
+                };
+            };
+        };
+    };
     delete_message: {
         parameters: {
             query?: never;
@@ -20593,6 +21327,45 @@ export interface operations {
         responses: {
             /** @description Discovery cache invalidated */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_eligible_models: {
+        parameters: {
+            query: {
+                /** @description Workspace id */
+                workspace_id: string;
+                /** @description extract | query | summary | vlm | keyword | embedding | decision */
+                usage: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Eligible models for this usage */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EligibleModelsResponse"];
+                };
+            };
+            /** @description Not a member of this workspace */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown usage or rerank */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -21267,6 +22040,76 @@ export interface operations {
                 };
             };
         };
+    };
+    get_secret_backend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: never;
+    };
+    put_secret_backend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutSecretBackend"];
+            };
+        };
+        responses: never;
+    };
+    test_secret_backend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: never;
+    };
+    list_secrets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: never;
+    };
+    create_secret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutSecret"];
+            };
+        };
+        responses: never;
+    };
+    delete_secret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: never;
     };
     get_app_attribution_settings: {
         parameters: {
@@ -22172,6 +23015,157 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_tenant_model_catalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant id */
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Registered models and the tenant ceiling mode */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantCatalogResponse"];
+                };
+            };
+            /** @description Tenant owner or admin required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_tenant_model_policy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant id */
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tenant model ceiling */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantPolicyResponse"];
+                };
+            };
+            /** @description Tenant owner or admin required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    put_tenant_model_policy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant id */
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutPolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description Ceiling replaced */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantPolicyResponse"];
+                };
+            };
+            /** @description Tenant owner or admin required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid row, duplicate row, or rerank usage */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_tenant_provider_offer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant id */
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tenant provider offer */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderOfferResponse"];
+                };
+            };
+        };
+    };
+    put_tenant_provider_offer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant id */
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutOfferRequest"];
+            };
+        };
+        responses: {
+            /** @description Tenant provider offer replaced */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderOfferResponse"];
+                };
             };
         };
     };
@@ -23153,6 +24147,134 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_workspace_model_policy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace id */
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workspace narrowing */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspacePolicyResponse"];
+                };
+            };
+            /** @description Not a member of this workspace */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workspace not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    put_workspace_model_policy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace id */
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutPolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description Narrowing replaced */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspacePolicyResponse"];
+                };
+            };
+            /** @description Workspace owner or admin required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid row or row widens the tenant ceiling */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_workspace_provider_offer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace id */
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workspace provider offer */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderOfferResponse"];
+                };
+            };
+        };
+    };
+    put_workspace_provider_offer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace id */
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutOfferRequest"];
+            };
+        };
+        responses: {
+            /** @description Workspace provider offer replaced */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderOfferResponse"];
+                };
             };
         };
     };

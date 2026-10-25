@@ -112,6 +112,7 @@ pub mod postgres_workspace_store;
 pub mod process_fingerprint;
 pub mod progress_counts;
 pub mod progress_facade;
+pub mod provider_offer_rows;
 pub mod query_context;
 pub mod query_execution;
 pub mod query_generation;

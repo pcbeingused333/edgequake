@@ -1802,11 +1802,23 @@
           "Settings"
         ],
         "summary": "Get the full effective configuration with its resolution chain.",
-        "description": "`GET /api/v1/config/effective`\n\nReturns the complete priority chain for LLM, Embedding, and Vision config:\nwhich level is active, where each value came from, and whether there are\nany provider/model mismatches that need operator attention.\n\nThis is the \"source of truth\" endpoint for diagnosing configuration issues.\nThe frontend settings page uses this to render the Config Explainability panel.",
+        "description": "`GET /api/v1/config/effective?workspace_id=`\n\nReturns the priority chain for LLM, Embedding, and Vision config, plus one\nresolved row per usage for the workspace (SPEC-175). Only a member of the\nworkspace may read it. A missing `workspace_id` is 400.",
         "operationId": "get_effective_config",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "query",
+            "description": "Workspace to resolve the usages for (required)",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Effective configuration chain",
+            "description": "Effective configuration and usages",
             "content": {
               "application/json": {
                 "schema": {
@@ -1814,6 +1826,15 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "workspace_id is missing"
+          },
+          "403": {
+            "description": "Caller is not a member of the workspace"
+          },
+          "404": {
+            "description": "Workspace not found"
           }
         },
         "security": [
@@ -1865,6 +1886,27 @@
           },
           "required": true
         },
+        "responses": {},
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/connections/shapes": {
+      "get": {
+        "tags": [
+          "Providers"
+        ],
+        "operationId": "list_connection_shapes",
         "responses": {},
         "security": [
           {
@@ -3035,6 +3077,137 @@
         ]
       }
     },
+    "/api/v1/deployment/providers": {
+      "get": {
+        "tags": [
+          "Providers"
+        ],
+        "operationId": "get_deployment_providers",
+        "responses": {
+          "200": {
+            "description": "Deployment provider offer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentProvidersResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/deployment/providers/{slug}": {
+      "put": {
+        "tags": [
+          "Providers"
+        ],
+        "operationId": "put_deployment_provider",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Provider slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WithdrawRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Withdrawal updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentProviderDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/deployment/providers/{slug}/models": {
+      "put": {
+        "tags": [
+          "Providers"
+        ],
+        "operationId": "put_connection_models",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Fleet provider slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutConnectionModelsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Models replaced"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
     "/api/v1/documents": {
       "get": {
         "tags": [
@@ -3975,8 +4148,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "recover_stuck",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "recover_stuck"
       }
     },
     "/api/v1/documents/reprocess": {
@@ -4033,8 +4206,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "reprocess_failed"
+        "x-edgequake-v2-job-type": "reprocess_failed",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/documents/scan": {
@@ -5339,8 +5512,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reanalyze_multimodal",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reanalyze_multimodal"
       }
     },
     "/api/v1/documents/{document_id}/retry-chunks": {
@@ -7077,6 +7250,61 @@
         ]
       }
     },
+    "/api/v1/me/settings-access": {
+      "get": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "`GET /api/v1/me/settings-access?tenant_id=&workspace_id=`",
+        "operationId": "get_settings_access",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "description": "Tenant to check; defaults to the default tenant",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "workspace_id",
+            "in": "query",
+            "description": "Workspace to check for workspace-level management",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's settings grants",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsAccessResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
     "/api/v1/messages/{message_id}": {
       "delete": {
         "tags": [
@@ -7212,6 +7440,66 @@
         "responses": {
           "200": {
             "description": "Discovery cache invalidated"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/models/eligible": {
+      "get": {
+        "tags": [
+          "Models"
+        ],
+        "summary": "`GET /api/v1/models/eligible?workspace_id=&usage=`: models a member may pick.",
+        "operationId": "get_eligible_models",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "query",
+            "description": "Workspace id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "usage",
+            "in": "query",
+            "description": "extract | query | summary | vlm | keyword | embedding | decision",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Eligible models for this usage",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EligibleModelsResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not a member of this workspace"
+          },
+          "422": {
+            "description": "Unknown usage or rerank"
           }
         },
         "security": [
@@ -8395,6 +8683,158 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/secret-backend": {
+      "get": {
+        "tags": [
+          "Secrets"
+        ],
+        "operationId": "get_secret_backend",
+        "responses": {},
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Secrets"
+        ],
+        "operationId": "put_secret_backend",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutSecretBackend"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {},
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/secret-backend/test": {
+      "post": {
+        "tags": [
+          "Secrets"
+        ],
+        "operationId": "test_secret_backend",
+        "responses": {},
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/secrets": {
+      "get": {
+        "tags": [
+          "Secrets"
+        ],
+        "operationId": "list_secrets",
+        "responses": {},
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Secrets"
+        ],
+        "operationId": "create_secret",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutSecret"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {},
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/secrets/{name}": {
+      "delete": {
+        "tags": [
+          "Secrets"
+        ],
+        "operationId": "delete_secret",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {},
         "security": [
           {
             "bearer_auth": [],
@@ -9793,6 +10233,257 @@
           },
           "409": {
             "description": "Suspended, SSO-managed or yourself"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/model-catalog": {
+      "get": {
+        "tags": [
+          "Models"
+        ],
+        "summary": "`GET /api/v1/tenants/{tenant_id}/model-catalog`: registered models for the ceiling\neditor (tenant managers only). Member pickers use `/models/eligible` instead.",
+        "operationId": "get_tenant_model_catalog",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "description": "Tenant id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Registered models and the tenant ceiling mode",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantCatalogResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Tenant owner or admin required"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/model-policy": {
+      "get": {
+        "tags": [
+          "Models"
+        ],
+        "summary": "`GET /api/v1/tenants/{tenant_id}/model-policy`: ceiling rows (Super Admin only).",
+        "operationId": "get_tenant_model_policy",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "description": "Tenant id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant model ceiling",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantPolicyResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Tenant owner or admin required"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Models"
+        ],
+        "summary": "`PUT /api/v1/tenants/{tenant_id}/model-policy`: replace the ceiling (Super Admin only).\nAn empty `rows` array returns the tenant to unconstrained.",
+        "operationId": "put_tenant_model_policy",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "description": "Tenant id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutPolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Ceiling replaced",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantPolicyResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Tenant owner or admin required"
+          },
+          "422": {
+            "description": "Invalid row, duplicate row, or rerank usage"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant_id}/provider-offer": {
+      "get": {
+        "tags": [
+          "Providers"
+        ],
+        "operationId": "get_tenant_provider_offer",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "description": "Tenant id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant provider offer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderOfferResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Providers"
+        ],
+        "operationId": "put_tenant_provider_offer",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "description": "Tenant id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutOfferRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Tenant provider offer replaced",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderOfferResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -11424,6 +12115,212 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/model-policy": {
+      "get": {
+        "tags": [
+          "Models"
+        ],
+        "summary": "`GET /api/v1/workspaces/{workspace_id}/model-policy`: narrowing rows (members read).",
+        "operationId": "get_workspace_model_policy",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workspace narrowing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspacePolicyResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not a member of this workspace"
+          },
+          "404": {
+            "description": "Workspace not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Models"
+        ],
+        "summary": "`PUT /api/v1/workspaces/{workspace_id}/model-policy`: replace narrowing rows\n(workspace owner or admin). A row that enables a pair the ceiling omits is 422.",
+        "operationId": "put_workspace_model_policy",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutPolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Narrowing replaced",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspacePolicyResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Workspace owner or admin required"
+          },
+          "422": {
+            "description": "Invalid row or row widens the tenant ceiling"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/provider-offer": {
+      "get": {
+        "tags": [
+          "Providers"
+        ],
+        "operationId": "get_workspace_provider_offer",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workspace provider offer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderOfferResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Providers"
+        ],
+        "operationId": "put_workspace_provider_offer",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutOfferRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Workspace provider offer replaced",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderOfferResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/rebuild-embeddings": {
       "post": {
         "tags": [
@@ -11494,8 +12391,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "rebuild_embeddings"
+        "x-edgequake-v2-job-type": "rebuild_embeddings",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/rebuild-knowledge-graph": {
@@ -11568,8 +12465,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "rebuild_knowledge_graph",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "rebuild_knowledge_graph"
       }
     },
     "/api/v1/workspaces/{workspace_id}/reprocess-documents": {
@@ -11642,8 +12539,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reprocess_all",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reprocess_all"
       }
     },
     "/api/v1/workspaces/{workspace_id}/stats": {
@@ -12243,8 +13140,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-upgrade": "RFC6455",
-        "x-edgequake-transport": "websocket"
+        "x-edgequake-transport": "websocket",
+        "x-edgequake-upgrade": "RFC6455"
       }
     },
     "/ws/progress/{track_id}": {
@@ -12275,8 +13172,8 @@
             "description": "Track not found for this workspace"
           }
         },
-        "x-edgequake-transport": "websocket",
-        "x-edgequake-upgrade": "RFC6455"
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
       }
     }
   },
@@ -13384,6 +14281,51 @@
           "id": {},
           "label": {},
           "roles": []
+        }
+      },
+      "CatalogEntryDto": {
+        "type": "object",
+        "description": "One registered deployment model. Discovery-only models are never listed: they can\nnever be eligible, so they cannot be a ceiling choice.",
+        "required": [
+          "provider",
+          "provider_display_name",
+          "model",
+          "display_name",
+          "health",
+          "usages"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "health": {
+            "type": "string",
+            "description": "`healthy` (last probe ok), `probe_failed` (last probe failed), `unknown` (never probed)."
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "provider_display_name": {
+            "type": "string"
+          },
+          "usages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Configurable usages this model can serve, in `CONFIGURABLE_USAGES` order."
+          }
+        },
+        "example": {
+          "display_name": {},
+          "health": {},
+          "model": {},
+          "provider": {},
+          "provider_display_name": {},
+          "usages": []
         }
       },
       "ChangePasswordRequest": {
@@ -14599,6 +15541,32 @@
           "satisfied": {}
         }
       },
+      "ConnectionModelBody": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "supports_chat": {
+            "type": "boolean"
+          },
+          "supports_embedding": {
+            "type": "boolean"
+          },
+          "supports_vision": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "id": {},
+          "supports_chat": {},
+          "supports_embedding": {},
+          "supports_vision": {}
+        }
+      },
       "ConnectionStatus": {
         "type": "string",
         "description": "Provider connection status",
@@ -14666,8 +15634,19 @@
               "null"
             ]
           },
+          "legacy": {
+            "type": "boolean",
+            "description": "True when the row was created on a tenant before fleet-only creates."
+          },
           "locality": {
             "type": "string"
+          },
+          "secret_backend": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`database`, `infisical`, or `legacy`. Env rows leave this empty."
           },
           "slug": {
             "type": "string"
@@ -14698,7 +15677,9 @@
           "key_fingerprint": {},
           "last_test_error": {},
           "last_test_ok": {},
+          "legacy": {},
           "locality": {},
+          "secret_backend": {},
           "slug": {},
           "source": {},
           "tenant_id": {},
@@ -17256,6 +18237,80 @@
           "relationships_to_update": {}
         }
       },
+      "DeploymentProviderDto": {
+        "type": "object",
+        "required": [
+          "slug",
+          "display_name",
+          "origin",
+          "api_shape",
+          "offered",
+          "withdrawn",
+          "probe",
+          "key_configured",
+          "models"
+        ],
+        "properties": {
+          "api_shape": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "key_configured": {
+            "type": "boolean"
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OfferModelDto"
+            }
+          },
+          "offered": {
+            "type": "boolean"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "probe": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "withdrawn": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "api_shape": {},
+          "display_name": {},
+          "key_configured": {},
+          "models": [],
+          "offered": {},
+          "origin": {},
+          "probe": {},
+          "slug": {},
+          "withdrawn": {}
+        }
+      },
+      "DeploymentProvidersResponse": {
+        "type": "object",
+        "required": [
+          "providers"
+        ],
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeploymentProviderDto"
+            }
+          }
+        },
+        "example": {
+          "providers": []
+        }
+      },
       "DescriptionVersionResponse": {
         "type": "object",
         "description": "Description version for tracking evolution.",
@@ -18343,6 +19398,10 @@
             "$ref": "#/components/schemas/ConfigAreaResponse",
             "description": "LLM chat/extraction configuration chain."
           },
+          "policy_mode": {
+            "type": "string",
+            "description": "SPEC-175: `unconstrained` or `constrained` (tenant ceiling has rows)."
+          },
           "priority_mode": {
             "type": "string",
             "description": "Active priority mode: `server` or `env`."
@@ -18365,19 +19424,36 @@
             "type": "boolean",
             "description": "Whether PostgreSQL server_config persistence is available."
           },
+          "usages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EffectiveUsageDto"
+            },
+            "description": "SPEC-175: one resolved row per usage. New clients read this, not the legacy fields."
+          },
           "vision": {
             "$ref": "#/components/schemas/ConfigAreaResponse",
             "description": "Vision/PDF configuration chain."
+          },
+          "workspace_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-175: workspace the usages were resolved for (always set by the handler)."
           }
         },
         "example": {
           "embedding": {},
           "llm": {},
+          "policy_mode": {},
           "priority_mode": {},
           "priority_rule": {},
           "reasoning_roles": {},
           "server_config_available": {},
-          "vision": {}
+          "usages": [],
+          "vision": {},
+          "workspace_id": {}
         }
       },
       "EffectiveContextResponse": {
@@ -18464,6 +19540,140 @@
         "example": {
           "mode": {},
           "source": {}
+        }
+      },
+      "EffectiveUsageDto": {
+        "type": "object",
+        "description": "One usage as the server resolved it for a workspace.",
+        "required": [
+          "usage",
+          "provider",
+          "model",
+          "source",
+          "locked",
+          "eligible",
+          "broken_reason"
+        ],
+        "properties": {
+          "broken_reason": {
+            "type": "string",
+            "description": "`none` when eligible; otherwise `capability` or `not_eligible`."
+          },
+          "connection_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`provider_connections.id` when the winning workspace role set one."
+          },
+          "eligible": {
+            "type": "boolean",
+            "description": "The pair is in `eligible_models(usage, None)` for this workspace."
+          },
+          "locked": {
+            "type": "boolean"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "provider_display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reasoning_effort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Reasoning effort when the winning workspace role set one."
+          },
+          "source": {
+            "type": "string",
+            "description": "Winning layer: `operator_lock`, `workspace_role`, `workspace_default`, …"
+          },
+          "usage": {
+            "type": "string",
+            "description": "Wire name: `extract`, `query`, `summary`, `vlm`, `keyword`, `embedding`, `decision`."
+          }
+        },
+        "example": {
+          "broken_reason": {},
+          "connection_id": {},
+          "eligible": {},
+          "locked": {},
+          "model": {},
+          "provider": {},
+          "provider_display_name": {},
+          "reasoning_effort": {},
+          "source": {},
+          "usage": {}
+        }
+      },
+      "EligibleModelDto": {
+        "type": "object",
+        "required": [
+          "provider",
+          "provider_display_name",
+          "model",
+          "display_name",
+          "supports_vision"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "provider_display_name": {
+            "type": "string"
+          },
+          "supports_vision": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "display_name": {},
+          "model": {},
+          "provider": {},
+          "provider_display_name": {},
+          "supports_vision": {}
+        }
+      },
+      "EligibleModelsResponse": {
+        "type": "object",
+        "required": [
+          "usage",
+          "policy_mode",
+          "models"
+        ],
+        "properties": {
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EligibleModelDto"
+            }
+          },
+          "policy_mode": {
+            "type": "string",
+            "description": "`constrained` when the tenant ceiling restricts this usage."
+          },
+          "usage": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "models": [],
+          "policy_mode": {},
+          "usage": {}
         }
       },
       "EmbeddingModelItem": {
@@ -21928,6 +23138,25 @@
           "y1": {}
         }
       },
+      "LegacyConnectionDto": {
+        "type": "object",
+        "required": [
+          "slug",
+          "display_name"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "display_name": {},
+          "slug": {}
+        }
+      },
       "LineRangeInfo": {
         "type": "object",
         "description": "Line range information.",
@@ -24521,6 +25750,65 @@
           "langfuse_enabled": {},
           "log_format": {},
           "otel_enabled": {}
+        }
+      },
+      "OfferModelDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "usages"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "usages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "example": {
+          "id": {},
+          "usages": []
+        }
+      },
+      "OfferProviderDto": {
+        "type": "object",
+        "required": [
+          "slug",
+          "display_name",
+          "offered_by_parent",
+          "enabled",
+          "models"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OfferModelDto"
+            }
+          },
+          "offered_by_parent": {
+            "type": "boolean"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "display_name": {},
+          "enabled": {},
+          "models": [],
+          "offered_by_parent": {},
+          "slug": {}
         }
       },
       "OllamaChatRequest": {
@@ -27215,6 +28503,35 @@
         ],
         "example": {}
       },
+      "PolicyRowDto": {
+        "type": "object",
+        "description": "One policy row on the wire. `enabled` defaults to true.",
+        "required": [
+          "provider",
+          "model",
+          "usage"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "usage": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "enabled": {},
+          "model": {},
+          "provider": {},
+          "usage": {}
+        }
+      },
       "PoolRoleHealth": {
         "type": "object",
         "description": "SPEC-112 LAW-112-8: one role pool's configured max and live occupancy.",
@@ -27664,6 +28981,65 @@
           "name": {}
         }
       },
+      "ProviderOfferResponse": {
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "offer_mode",
+          "parent_count",
+          "enabled_count",
+          "can_manage",
+          "providers",
+          "legacy"
+        ],
+        "properties": {
+          "can_manage": {
+            "type": "boolean"
+          },
+          "enabled_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "legacy": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LegacyConnectionDto"
+            }
+          },
+          "offer_mode": {
+            "type": "string"
+          },
+          "parent_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OfferProviderDto"
+            }
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "workspace_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "example": {
+          "can_manage": {},
+          "enabled_count": {},
+          "legacy": [],
+          "offer_mode": {},
+          "parent_count": {},
+          "providers": [],
+          "tenant_id": {},
+          "workspace_id": {}
+        }
+      },
       "ProviderResponse": {
         "type": "object",
         "description": "Provider information with models.",
@@ -27899,6 +29275,23 @@
           "llm": {}
         }
       },
+      "PutConnectionModelsRequest": {
+        "type": "object",
+        "required": [
+          "models"
+        ],
+        "properties": {
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectionModelBody"
+            }
+          }
+        },
+        "example": {
+          "models": []
+        }
+      },
       "PutInjectionRequest": {
         "type": "object",
         "description": "Request body for creating/updating a knowledge injection (text mode).",
@@ -27958,6 +29351,45 @@
           "workspace_id": {}
         }
       },
+      "PutOfferRequest": {
+        "type": "object",
+        "required": [
+          "offer_mode"
+        ],
+        "properties": {
+          "offer_mode": {
+            "type": "string"
+          },
+          "slugs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "example": {
+          "offer_mode": {},
+          "slugs": []
+        }
+      },
+      "PutPolicyRequest": {
+        "type": "object",
+        "description": "Body for `PUT .../model-policy`: replaces every row of that scope.",
+        "required": [
+          "rows"
+        ],
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PolicyRowDto"
+            }
+          }
+        },
+        "example": {
+          "rows": []
+        }
+      },
       "PutRulesRequest": {
         "type": "object",
         "required": [
@@ -27973,6 +29405,88 @@
         },
         "example": {
           "rules": []
+        }
+      },
+      "PutSecret": {
+        "type": "object",
+        "required": [
+          "name",
+          "value"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "name": {},
+          "value": {}
+        }
+      },
+      "PutSecretBackend": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "allow_private_network": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "client_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "client_secret": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "environment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "secret_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "example": {
+          "allow_private_network": {},
+          "base_url": {},
+          "client_id": {},
+          "client_secret": {},
+          "environment": {},
+          "kind": {},
+          "project_id": {},
+          "secret_path": {}
         }
       },
       "QueryEngineHealthSnapshot": {
@@ -31498,6 +33012,62 @@
           "reason": {}
         }
       },
+      "SettingsAccessResponse": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "instance_admin",
+          "tenant_manage",
+          "workspace_manage",
+          "administered_workspace_ids"
+        ],
+        "properties": {
+          "administered_workspace_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Workspaces the caller may administer in this tenant."
+          },
+          "instance_admin": {
+            "type": "boolean",
+            "description": "Platform admin: the `Admin` global role."
+          },
+          "tenant_manage": {
+            "type": "boolean",
+            "description": "Super admin rights in this tenant (tenant owner/admin, or platform admin)."
+          },
+          "tenant_role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Highest tenant-wide membership role (`owner|admin|member|readonly`), if any."
+          },
+          "user_id": {
+            "type": "string"
+          },
+          "workspace_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workspace_manage": {
+            "type": "boolean",
+            "description": "Owner or admin of the requested workspace, or a tenant manager."
+          }
+        },
+        "example": {
+          "administered_workspace_ids": [],
+          "instance_admin": {},
+          "tenant_manage": {},
+          "tenant_role": {},
+          "user_id": {},
+          "workspace_id": {},
+          "workspace_manage": {}
+        }
+      },
       "SetupInitializeRequest": {
         "type": "object",
         "required": [
@@ -32874,6 +34444,13 @@
             ],
             "description": "SPEC-109: reasoning effort override for streaming query."
           },
+          "rerank_model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SPEC-175 EC-175-09: rejected with 422 `rerank_model_rejected`. Rerank is deployment-level."
+          },
           "response_type": {
             "type": [
               "string",
@@ -32916,6 +34493,7 @@
           "query": {},
           "question_type": {},
           "reasoning_effort": {},
+          "rerank_model": {},
           "response_type": {},
           "session_id": {},
           "stream_format": {},
@@ -33217,6 +34795,29 @@
           "workspace_id": {}
         }
       },
+      "TenantCatalogResponse": {
+        "type": "object",
+        "description": "`GET /tenants/{id}/model-catalog`: registered models and the tenant ceiling mode.",
+        "required": [
+          "policy_mode",
+          "entries"
+        ],
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogEntryDto"
+            }
+          },
+          "policy_mode": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "entries": [],
+          "policy_mode": {}
+        }
+      },
       "TenantListResponse": {
         "type": "object",
         "description": "List response with pagination info.",
@@ -33255,6 +34856,37 @@
           "limit": {},
           "offset": {},
           "total": {}
+        }
+      },
+      "TenantPolicyResponse": {
+        "type": "object",
+        "description": "Tenant ceiling. `constrained_usages` lists usages with at least one ceiling row.",
+        "required": [
+          "tenant_id",
+          "constrained_usages",
+          "rows"
+        ],
+        "properties": {
+          "constrained_usages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PolicyRowDto"
+            }
+          },
+          "tenant_id": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "constrained_usages": [],
+          "rows": [],
+          "tenant_id": {}
         }
       },
       "TenantResponse": {
@@ -34927,6 +36559,20 @@
           "note": {}
         }
       },
+      "WithdrawRequest": {
+        "type": "object",
+        "required": [
+          "withdrawn"
+        ],
+        "properties": {
+          "withdrawn": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "withdrawn": {}
+        }
+      },
       "WorkspaceCostSummaryResponse": {
         "type": "object",
         "description": "Workspace cost summary response.",
@@ -35046,6 +36692,34 @@
           "limit": {},
           "offset": {},
           "total": {}
+        }
+      },
+      "WorkspacePolicyResponse": {
+        "type": "object",
+        "description": "Workspace narrowing. `can_manage` tells the UI whether to show the editor.",
+        "required": [
+          "workspace_id",
+          "can_manage",
+          "rows"
+        ],
+        "properties": {
+          "can_manage": {
+            "type": "boolean"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PolicyRowDto"
+            }
+          },
+          "workspace_id": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "can_manage": {},
+          "rows": [],
+          "workspace_id": {}
         }
       },
       "WorkspaceResponse": {

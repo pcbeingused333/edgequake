@@ -6,6 +6,7 @@
  * from the eligible list, and editors can narrow the list for this workspace.
  */
 
+import { ProviderOfferEditor } from "@/components/settings/providers/provider-offer-editor";
 import { QueryDefaultsGroup } from "@/components/settings/sections/query-defaults-group";
 import { WorkspaceModelNarrowingCard } from "@/components/settings/models/workspace-model-narrowing-card";
 import { WorkspaceRoleEditor } from "@/components/settings/models/workspace-role-editor";
@@ -24,6 +25,7 @@ export function WorkspaceModelsSection() {
       title={t("settings.shell.sections.models", "Models")}
       lead={t("settings.shell.models.lead", "The models this workspace uses for each job. Members can read these; editors can change them.")}
     >
+      <ProviderOfferEditor parent="workspace" workspaceId={workspaceId} readOnly={!canEdit} />
       <WorkspaceRoleEditor readOnly={!canEdit} />
       {workspaceId ? <WorkspaceModelNarrowingCard workspaceId={workspaceId} readOnly={!canEdit} /> : null}
       {canEdit ? <RebuildEmbeddingsButton variant="card" /> : null}

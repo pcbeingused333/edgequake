@@ -48,7 +48,14 @@ pub async fn effective_view(
     let resolved = resolve_effective_usages(&src);
     let ceiling = load_rows(state, workspace.tenant_id, None).await?;
     let narrowing = load_rows(state, workspace.tenant_id, Some(workspace.workspace_id)).await?;
-    let catalog = load_catalog(state).await;
+    let mut catalog = load_catalog(state).await;
+    crate::services::model_policy_catalog::append_connection_models(state, &mut catalog).await?;
+    let offer = crate::services::provider_offer_rows::load_workspace_offer(
+        state,
+        workspace.tenant_id,
+        workspace.workspace_id,
+    )
+    .await?;
     let entries: Vec<CatalogEntry> = catalog.iter().map(|item| item.entry.clone()).collect();
     let usages = resolved
         .iter()
@@ -61,6 +68,7 @@ pub async fn effective_view(
                     catalog: &catalog,
                     ceiling: &ceiling,
                     narrowing: &narrowing,
+                    offered: &offer.slugs,
                 },
             )
         })
@@ -77,6 +85,7 @@ struct Facts<'a> {
     catalog: &'a [CatalogItem],
     ceiling: &'a [edgequake_core::model_policy::PolicyRow],
     narrowing: &'a [edgequake_core::model_policy::PolicyRow],
+    offered: &'a std::collections::BTreeSet<String>,
 }
 
 fn annotate(r: &ResolvedUsage, workspace: &Workspace, facts: &Facts<'_>) -> EffectiveUsageDto {
@@ -87,6 +96,7 @@ fn annotate(r: &ResolvedUsage, workspace: &Workspace, facts: &Facts<'_>) -> Effe
         facts.entries,
         facts.ceiling,
         facts.narrowing,
+        crate::services::model_policy_enforcement::offer_filter(r.is_locked(), facts.offered),
     );
     let (connection_id, reasoning_effort) = role_extras(r, workspace);
     EffectiveUsageDto {

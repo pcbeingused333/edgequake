@@ -71,6 +71,10 @@ describe("settings registry — search (EC-175-33)", () => {
     expect(searchSections(PLATFORM, "langfuse tracing").map((h) => h.section.id)).toEqual(["observability"]);
   });
 
+  it("a workspace admin searching for provider lands on Models", () => {
+    expect(searchSections(WS_ADMIN, "provider").map((h) => h.section.id)).toEqual(["models"]);
+  });
+
   it("an empty query returns nothing", () => {
     expect(searchSections(PLATFORM, "   ")).toHaveLength(0);
   });
@@ -119,7 +123,7 @@ describe("settings registry — routes", () => {
   });
 
   it("round-trips every section href through the matcher", () => {
-    const ids = ["appearance", "graph", "browser-data", "models", "ingestion", "access", "people", "secrets", "connections", "fleet", "observability"] as const;
+    const ids = ["appearance", "graph", "browser-data", "models", "ingestion", "access", "people", "org-providers", "secrets", "connections", "providers", "fleet", "observability"] as const;
     for (const id of ids) {
       const href = sectionHref(id);
       expect(sectionFromPathname(href)?.section).toBe(id);

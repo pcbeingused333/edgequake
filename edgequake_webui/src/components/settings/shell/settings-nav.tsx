@@ -19,7 +19,7 @@ import {
 } from "@/lib/settings/registry";
 import type { SettingsAccess } from "@/lib/settings/access";
 import type { Workspace } from "@/types";
-import { Activity, Cpu, FileText, HardDrive, KeyRound, Network, Palette, Plug, Server, ShieldCheck, Users } from "lucide-react";
+import { Activity, Cpu, FileText, HardDrive, KeyRound, Layers, Network, Palette, Plug, Server, ShieldCheck, Users } from "lucide-react";
 import Link from "next/link";
 import { useId, type KeyboardEvent, type ComponentType } from "react";
 
@@ -31,8 +31,10 @@ const ICONS: Record<SettingsSectionId, ComponentType<{ className?: string }>> = 
   ingestion: FileText,
   access: ShieldCheck,
   people: Users,
+  "org-providers": Layers,
   secrets: KeyRound,
   connections: Plug,
+  providers: Layers,
   fleet: Server,
   observability: Activity,
 };
@@ -100,7 +102,7 @@ export function SettingsNav({
                           : "text-muted-foreground hover:bg-muted hover:text-foreground",
                       )}
                     >
-                      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      {Icon ? <Icon className="h-4 w-4 shrink-0" aria-hidden="true" /> : null}
                       <span className="truncate">{section.label}</span>
                     </Link>
                   </li>

@@ -52,6 +52,7 @@ pub mod model_policy;
 pub mod model_resolution;
 #[cfg(feature = "pipeline")]
 pub mod orchestrator;
+pub mod provider_offer;
 pub mod resource;
 pub mod server_config_overrides;
 pub mod sota_bridge;

@@ -49,7 +49,7 @@ fn catalog() -> Vec<CatalogEntry> {
 #[test]
 fn unconstrained_without_rows_returns_every_capable_registered_model() {
     let cat = catalog();
-    let got = eligible_models(Usage::Query, &cat, &[], &[]);
+    let got = eligible_models(Usage::Query, &cat, &[], &[], None);
     assert_eq!(names(&got), ["gpt-5-nano", "gpt-5-mini", "gemma3"]);
     assert_eq!(policy_mode(&[], Usage::Query), PolicyMode::Unconstrained);
 }
@@ -58,7 +58,7 @@ fn unconstrained_without_rows_returns_every_capable_registered_model() {
 fn ceiling_keeps_only_enabled_pairs_for_that_usage() {
     let cat = catalog();
     let ceiling = [row("openai", "gpt-5-nano", Usage::Query, true)];
-    let got = eligible_models(Usage::Query, &cat, &ceiling, &[]);
+    let got = eligible_models(Usage::Query, &cat, &ceiling, &[], None);
     assert_eq!(names(&got), ["gpt-5-nano"]);
     assert_eq!(policy_mode(&ceiling, Usage::Query), PolicyMode::Constrained);
 }
@@ -70,7 +70,7 @@ fn disabled_ceiling_row_excludes_its_pair() {
         row("openai", "gpt-5-nano", Usage::Query, true),
         row("ollama", "gemma3", Usage::Query, false),
     ];
-    let got = eligible_models(Usage::Query, &cat, &ceiling, &[]);
+    let got = eligible_models(Usage::Query, &cat, &ceiling, &[], None);
     assert_eq!(names(&got), ["gpt-5-nano"]);
 }
 
@@ -78,7 +78,7 @@ fn disabled_ceiling_row_excludes_its_pair() {
 fn ceiling_for_one_usage_does_not_constrain_another() {
     let cat = catalog();
     let ceiling = [row("openai", "gpt-5-nano", Usage::Query, true)];
-    let extract = eligible_models(Usage::Extract, &cat, &ceiling, &[]);
+    let extract = eligible_models(Usage::Extract, &cat, &ceiling, &[], None);
     assert_eq!(names(&extract), ["gpt-5-nano", "gpt-5-mini", "gemma3"]);
     assert_eq!(
         policy_mode(&ceiling, Usage::Extract),
@@ -98,7 +98,7 @@ fn discovery_only_model_is_not_eligible() {
             ..ModelFacts::default()
         },
     ));
-    let got = eligible_models(Usage::Query, &cat, &[], &[]);
+    let got = eligible_models(Usage::Query, &cat, &[], &[], None);
     assert!(!names(&got).contains(&"gpt-discovered-only".to_string()));
 }
 
@@ -107,16 +107,16 @@ fn failed_probe_removes_model_and_missing_probe_keeps_it() {
     let mut cat = catalog();
     cat[0].facts.probe = Some(false);
     cat[1].facts.probe = None;
-    let got = eligible_models(Usage::Query, &cat, &[], &[]);
+    let got = eligible_models(Usage::Query, &cat, &[], &[], None);
     assert_eq!(names(&got), ["gpt-5-mini", "gemma3"]);
 }
 
 #[test]
 fn capability_predicate_gates_each_usage() {
     let cat = catalog();
-    let emb = eligible_models(Usage::Embedding, &cat, &[], &[]);
+    let emb = eligible_models(Usage::Embedding, &cat, &[], &[], None);
     assert_eq!(names(&emb), ["text-embedding-3-small"]);
-    let query = eligible_models(Usage::Query, &cat, &[], &[]);
+    let query = eligible_models(Usage::Query, &cat, &[], &[], None);
     assert!(!names(&query).contains(&"text-embedding-3-small".to_string()));
 }
 
@@ -133,21 +133,21 @@ fn vlm_requires_vision_and_chat() {
             ..ModelFacts::default()
         },
     ));
-    let got = eligible_models(Usage::Vlm, &cat, &[], &[]);
+    let got = eligible_models(Usage::Vlm, &cat, &[], &[], None);
     assert_eq!(names(&got), ["gpt-vision"]);
 }
 
 #[test]
 fn rerank_is_never_eligible_in_this_wave() {
     let cat = catalog();
-    assert!(eligible_models(Usage::Rerank, &cat, &[], &[]).is_empty());
+    assert!(eligible_models(Usage::Rerank, &cat, &[], &[], None).is_empty());
 }
 
 #[test]
 fn disabled_narrowing_row_removes_pair_and_others_stay() {
     let cat = catalog();
     let narrowing = [row("openai", "gpt-5-mini", Usage::Query, false)];
-    let got = eligible_models(Usage::Query, &cat, &[], &narrowing);
+    let got = eligible_models(Usage::Query, &cat, &[], &narrowing, None);
     assert_eq!(names(&got), ["gpt-5-nano", "gemma3"]);
 }
 
@@ -156,7 +156,7 @@ fn enabled_narrowing_row_does_not_add_a_pair_the_ceiling_omitted() {
     let cat = catalog();
     let ceiling = [row("openai", "gpt-5-nano", Usage::Query, true)];
     let narrowing = [row("ollama", "gemma3", Usage::Query, true)];
-    let got = eligible_models(Usage::Query, &cat, &ceiling, &narrowing);
+    let got = eligible_models(Usage::Query, &cat, &ceiling, &narrowing, None);
     assert_eq!(names(&got), ["gpt-5-nano"]);
 }
 
@@ -206,7 +206,7 @@ fn usage_wire_names_round_trip() {
 fn ceiling_that_disables_every_model_for_a_usage_is_reported_empty() {
     let cat = catalog();
     let ceiling = [row("openai", "gpt-5-nano", Usage::Query, false)];
-    let empty = usages_left_empty(&ceiling, &cat, &ceiling, &[]);
+    let empty = usages_left_empty(&ceiling, &cat, &ceiling, &[], None);
     assert_eq!(empty, vec![Usage::Query]);
 }
 
@@ -215,7 +215,7 @@ fn ceiling_naming_only_a_missing_model_is_reported_empty() {
     let cat = catalog();
     let ceiling = [row("openai", "gpt-not-in-catalog", Usage::Query, true)];
     assert_eq!(
-        usages_left_empty(&ceiling, &cat, &ceiling, &[]),
+        usages_left_empty(&ceiling, &cat, &ceiling, &[], None),
         vec![Usage::Query]
     );
 }
@@ -224,7 +224,7 @@ fn ceiling_naming_only_a_missing_model_is_reported_empty() {
 fn usable_ceiling_is_not_reported_empty() {
     let cat = catalog();
     let ceiling = [row("ollama", "gemma3", Usage::Query, true)];
-    assert!(usages_left_empty(&ceiling, &cat, &ceiling, &[]).is_empty());
+    assert!(usages_left_empty(&ceiling, &cat, &ceiling, &[], None).is_empty());
 }
 
 #[test]
@@ -233,7 +233,7 @@ fn narrowing_that_removes_the_only_model_is_reported_empty() {
     let ceiling = [row("ollama", "gemma3", Usage::Query, true)];
     let narrowing = [row("ollama", "gemma3", Usage::Query, false)];
     assert_eq!(
-        usages_left_empty(&narrowing, &cat, &ceiling, &narrowing),
+        usages_left_empty(&narrowing, &cat, &ceiling, &narrowing, None),
         vec![Usage::Query]
     );
 }
@@ -243,5 +243,5 @@ fn only_written_usages_are_checked() {
     let cat = catalog();
     // The tenant ceiling for extract is empty, but the write names only query.
     let written = [row("ollama", "gemma3", Usage::Query, true)];
-    assert!(usages_left_empty(&written, &cat, &written, &[]).is_empty());
+    assert!(usages_left_empty(&written, &cat, &written, &[], None).is_empty());
 }

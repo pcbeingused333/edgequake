@@ -14,6 +14,7 @@ use crate::handlers::auth::ApiRequireAdmin;
 use crate::providers::probe::{probe_provider, ProbeRequest, ProbeResponse};
 use crate::ssrf::{validate_provider_url, SsrfPolicy};
 use crate::state::AppState;
+use edgequake_core::provider_offer::parse_slug;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ConnectionView {
@@ -35,6 +36,9 @@ pub struct ConnectionView {
     pub secret_backend: Option<String>,
     pub last_test_ok: Option<bool>,
     pub last_test_error: Option<String>,
+    /// True when the row was created on a tenant before fleet-only creates.
+    #[serde(default)]
+    pub legacy: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -55,7 +59,7 @@ pub struct UpsertConnection {
     pub allow_private_network: Option<bool>,
 }
 
-fn env_connections() -> Vec<ConnectionView> {
+pub(crate) fn env_connections() -> Vec<ConnectionView> {
     let mut out = Vec::new();
     let mut push = |slug: &str, shape: &str, url: &str| {
         out.push(ConnectionView {
@@ -79,6 +83,7 @@ fn env_connections() -> Vec<ConnectionView> {
             secret_backend: None,
             last_test_ok: None,
             last_test_error: None,
+            legacy: false,
         });
     };
     let non_empty = |key: &str| std::env::var(key).ok().filter(|s| !s.is_empty());
@@ -221,6 +226,7 @@ impl ConnectionRow {
             source: "db".into(),
             last_test_ok: self.last_test_ok,
             last_test_error: self.last_test_error,
+            legacy: self.tenant_id.is_some(),
         }
     }
 }
@@ -232,7 +238,13 @@ pub async fn create_connection(
     tenant_ctx: crate::middleware::TenantContext,
     Json(body): Json<UpsertConnection>,
 ) -> Result<(StatusCode, Json<ConnectionView>), ApiError> {
-    let view = upsert(&state, None, scoped_tenant(&tenant_ctx)?, body).await?;
+    if scoped_tenant(&tenant_ctx)?.is_some() {
+        return Err(ApiError::unprocessable_coded(
+            "connection_scope_global",
+            "Providers are added on the deployment.",
+        ));
+    }
+    let view = upsert(&state, None, None, body).await?;
     Ok((StatusCode::CREATED, Json(view)))
 }
 
@@ -244,9 +256,38 @@ pub async fn update_connection(
     Path(id): Path<Uuid>,
     Json(body): Json<UpsertConnection>,
 ) -> ApiResult<Json<ConnectionView>> {
-    Ok(Json(
-        upsert(&state, Some(id), scoped_tenant(&tenant_ctx)?, body).await?,
-    ))
+    let header = scoped_tenant(&tenant_ctx)?;
+    if let Some(tenant_id) = header {
+        #[cfg(feature = "postgres")]
+        {
+            let pool = state
+                .pg_pool
+                .as_ref()
+                .ok_or_else(|| ApiError::ServiceUnavailable {
+                    message: "PostgreSQL required".into(),
+                    retry_after_secs: 5,
+                })?;
+            let owner: Option<Option<Uuid>> =
+                sqlx::query_scalar("SELECT tenant_id FROM provider_connections WHERE id = $1")
+                    .bind(id)
+                    .fetch_optional(pool)
+                    .await
+                    .map_err(map_sql)?;
+            let Some(owner) = owner else {
+                return Err(ApiError::NotFound("connection not found".into()));
+            };
+            if owner.is_none() {
+                return Err(ApiError::unprocessable_coded(
+                    "connection_scope_global",
+                    "Providers are added on the deployment.",
+                ));
+            }
+            if owner != Some(tenant_id) {
+                return Err(ApiError::NotFound("connection not found".into()));
+            }
+        }
+    }
+    Ok(Json(upsert(&state, Some(id), header, body).await?))
 }
 
 #[utoipa::path(delete, path = "/api/v1/connections/{id}", tag = "Providers")]
@@ -270,7 +311,7 @@ pub async fn delete_connection(
             sqlx::query_as::<_, DeletedConnection>(
                 "DELETE FROM provider_connections \
                  WHERE id = $1 AND (tenant_id IS NULL OR tenant_id = $2) \
-                 RETURNING tenant_id, secret_ref",
+                 RETURNING tenant_id, secret_ref, slug",
             )
             .bind(id)
             .bind(tenant_id)
@@ -278,7 +319,7 @@ pub async fn delete_connection(
             .await
         } else {
             sqlx::query_as::<_, DeletedConnection>(
-                "DELETE FROM provider_connections WHERE id = $1 RETURNING tenant_id, secret_ref",
+                "DELETE FROM provider_connections WHERE id = $1 RETURNING tenant_id, secret_ref, slug",
             )
             .bind(id)
             .fetch_optional(pool)
@@ -298,6 +339,9 @@ pub async fn delete_connection(
                     tracing::warn!(error = %err, "connection deleted but its secret could not be removed");
                 }
             }
+        }
+        if let Some(slug) = parse_slug(&found.slug) {
+            crate::services::provider_offer_rows::remove_offers_for_slug(pool, &slug).await?;
         }
         Ok(StatusCode::NO_CONTENT)
     }
@@ -620,6 +664,7 @@ async fn upsert(
 struct DeletedConnection {
     tenant_id: Option<Uuid>,
     secret_ref: Option<serde_json::Value>,
+    slug: String,
 }
 
 #[cfg(feature = "postgres")]

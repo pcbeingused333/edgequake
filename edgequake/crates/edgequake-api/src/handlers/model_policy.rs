@@ -73,7 +73,10 @@ pub async fn get_tenant_model_catalog(
 ) -> ApiResult<Json<TenantCatalogResponse>> {
     require_tenant_access(&state, &auth, tenant_id, TenantAccess::Manage).await?;
     let ceiling = load_rows(&state, tenant_id, None).await?;
-    let catalog = load_catalog(&state).await;
+    let offer = crate::services::provider_offer_rows::load_global_offer(&state).await?;
+    let mut catalog = load_catalog(&state).await;
+    crate::services::model_policy_catalog::append_connection_models(&state, &mut catalog).await?;
+    catalog.retain(|item| offer.contains(&item.entry.provider));
     Ok(Json(catalog_view(&catalog, &ceiling)))
 }
 
@@ -99,8 +102,10 @@ pub async fn put_tenant_model_policy(
 ) -> ApiResult<Json<TenantPolicyResponse>> {
     require_tenant_access(&state, &auth, tenant_id, TenantAccess::Manage).await?;
     let rows = parse_policy_rows(&body.rows)?;
+    let offer = crate::services::provider_offer_rows::load_global_offer(&state).await?;
+    ensure_in_offer(&rows, &offer)?;
     let catalog = load_catalog(&state).await;
-    ensure_usable(&rows, &catalog, &rows, &[])?;
+    ensure_usable(&rows, &catalog, &rows, &[], Some(&offer))?;
     replace_rows(&state, tenant_id, None, &rows).await?;
     Ok(Json(tenant_view(tenant_id, &rows)))
 }
@@ -176,7 +181,11 @@ pub async fn put_workspace_model_policy(
         ));
     }
     let catalog = load_catalog(&state).await;
-    ensure_usable(&rows, &catalog, &ceiling, &rows)?;
+    let offer =
+        crate::services::provider_offer_rows::load_tenant_offer(&state, workspace.tenant_id)
+            .await?;
+    ensure_in_offer(&rows, &offer.slugs)?;
+    ensure_usable(&rows, &catalog, &ceiling, &rows, Some(&offer.slugs))?;
     replace_rows(&state, workspace.tenant_id, Some(workspace_id), &rows).await?;
     Ok(Json(workspace_view(workspace_id, scope, &rows)))
 }
@@ -224,9 +233,16 @@ pub async fn get_eligible_models(
 
     let ceiling = load_rows(&state, workspace.tenant_id, None).await?;
     let narrowing = load_rows(&state, workspace.tenant_id, Some(query.workspace_id)).await?;
-    let catalog = load_catalog(&state).await;
+    let mut catalog = load_catalog(&state).await;
+    crate::services::model_policy_catalog::append_connection_models(&state, &mut catalog).await?;
     let entries = catalog_entries(&catalog);
-    let eligible = eligible_models(usage, &entries, &ceiling, &narrowing);
+    let offer = crate::services::provider_offer_rows::load_workspace_offer(
+        &state,
+        workspace.tenant_id,
+        query.workspace_id,
+    )
+    .await?;
+    let eligible = eligible_models(usage, &entries, &ceiling, &narrowing, Some(&offer.slugs));
 
     Ok(Json(EligibleModelsResponse {
         usage: usage.as_str().to_string(),
@@ -266,6 +282,21 @@ fn eligible_dtos(eligible: &[&CatalogEntry], catalog: &[CatalogItem]) -> Vec<Eli
 // Shared checks
 // ---------------------------------------------------------------------------
 
+fn ensure_in_offer(
+    rows: &[PolicyRow],
+    offered: &std::collections::BTreeSet<String>,
+) -> ApiResult<()> {
+    for row in rows {
+        if !offered.contains(&row.provider) {
+            return Err(ApiError::unprocessable_coded(
+                "provider_not_in_parent",
+                format!("{} is not offered by the parent", row.provider),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Load an active workspace; an unknown or inactive id is 404 (never another tenant's).
 pub(crate) async fn workspace_or_404(state: &AppState, workspace_id: Uuid) -> ApiResult<Workspace> {
     state
@@ -283,8 +314,15 @@ fn ensure_usable(
     catalog: &[CatalogItem],
     ceiling: &[PolicyRow],
     narrowing: &[PolicyRow],
+    offered: Option<&std::collections::BTreeSet<String>>,
 ) -> ApiResult<()> {
-    let empty = usages_left_empty(written, &catalog_entries(catalog), ceiling, narrowing);
+    let empty = usages_left_empty(
+        written,
+        &catalog_entries(catalog),
+        ceiling,
+        narrowing,
+        offered,
+    );
     if empty.is_empty() {
         return Ok(());
     }
@@ -303,5 +341,33 @@ pub(crate) fn require_member(scope: CallerScope) -> ApiResult<()> {
         Ok(())
     } else {
         Err(ApiError::forbidden_reason("workspace_access_denied"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ensure_in_offer;
+    use edgequake_core::model_policy::PolicyRow;
+    use edgequake_core::Usage;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn model_policy_outside_offer_is_422() {
+        let offered = BTreeSet::from(["openai".to_string()]);
+        let rows = [PolicyRow {
+            provider: "acme".into(),
+            model: "local".into(),
+            usage: Usage::Query,
+            enabled: true,
+        }];
+        let err = ensure_in_offer(&rows, &offered).unwrap_err();
+        assert_eq!(err.code(), "provider_not_in_parent");
+        let allowed = [PolicyRow {
+            provider: "openai".into(),
+            model: "gpt-5-nano".into(),
+            usage: Usage::Query,
+            enabled: true,
+        }];
+        assert!(ensure_in_offer(&allowed, &offered).is_ok());
     }
 }

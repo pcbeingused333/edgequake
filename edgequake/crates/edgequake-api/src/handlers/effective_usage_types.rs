@@ -20,7 +20,7 @@ pub struct EffectiveUsageDto {
     /// Winning layer: `operator_lock`, `workspace_role`, `workspace_default`, …
     pub source: String,
     pub locked: bool,
-    /// The pair is in `eligible_models(usage)` for this workspace.
+    /// The pair is in `eligible_models(usage, None)` for this workspace.
     pub eligible: bool,
     /// `none` when eligible; otherwise `capability` or `not_eligible`.
     pub broken_reason: String,

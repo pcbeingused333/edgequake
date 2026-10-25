@@ -9,6 +9,7 @@ use edgequake_core::model_policy::{CatalogEntry, ModelFacts};
 use crate::handlers::models_types::{EmbeddingModelItem, LlmModelItem, ModelResponse};
 use crate::model_catalog::active_provider_names;
 use crate::state::AppState;
+use crate::error::ApiResult;
 
 /// One catalog model plus the display fields the member picker needs.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,4 +84,51 @@ pub async fn load_catalog(state: &AppState) -> Vec<CatalogItem> {
         .map(from_llm)
         .chain(embedding.iter().map(from_embedding))
         .collect()
+}
+
+/// Models saved on a fleet connection join the catalog under that connection's slug.
+/// A custom provider does not inherit another provider's cards.
+#[cfg(feature = "postgres")]
+pub async fn append_connection_models(state: &AppState, catalog: &mut Vec<CatalogItem>) -> ApiResult<()> {
+    let Some(pool) = state.optional_pg_pool() else {
+        return Ok(());
+    };
+    let rows: Vec<(String, String, bool, bool, bool)> = sqlx::query_as(
+        "SELECT c.slug, m.model, m.supports_chat, m.supports_vision, m.supports_embedding \
+         FROM connection_models m \
+         JOIN provider_connections c ON c.id = m.connection_id \
+         WHERE c.tenant_id IS NULL \
+         ORDER BY c.slug, m.model",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|err| crate::error::ApiError::Internal(err.to_string()))?;
+    for (slug, model, chat, vision, embedding) in rows {
+        let slug = slug.to_lowercase();
+        if catalog.iter().any(|item| item.entry.provider == slug && item.entry.model == model) {
+            continue;
+        }
+        catalog.push(CatalogItem {
+            display_name: model.clone(),
+            provider_display_name: slug.clone(),
+            supports_vision: vision,
+            entry: CatalogEntry {
+                provider: slug,
+                model,
+                facts: ModelFacts {
+                    chat,
+                    vision,
+                    embedding,
+                    registered: true,
+                    probe: Some(true),
+                },
+            },
+        });
+    }
+    Ok(())
+}
+
+#[cfg(not(feature = "postgres"))]
+pub async fn append_connection_models(_state: &AppState, _catalog: &mut Vec<CatalogItem>) -> ApiResult<()> {
+    Ok(())
 }

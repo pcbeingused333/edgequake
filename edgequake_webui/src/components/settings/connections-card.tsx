@@ -163,6 +163,7 @@ export function ConnectionsCard() {
       const place = connectionLocality(baseUrl);
       await apiClient('/connections', {
         method: 'POST',
+        omitTenant: true,
         body: JSON.stringify({
           slug,
           display_name: slug,

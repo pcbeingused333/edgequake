@@ -441,10 +441,65 @@ impl WorkspaceProviderResolver {
                 .try_llm_from_workspace_connection(ws, edgequake_core::LlmRole::Query)
                 .await?
             {
+                self.refuse_unoffered(Some(ws), request).await?;
                 return Ok(Some(from_conn));
             }
+            let resolved =
+                self.resolve_llm_provider_with_workspace(Some(ws), tenant.as_ref(), request)?;
+            self.refuse_unoffered(Some(ws), request).await?;
+            return Ok(resolved);
         }
-        self.resolve_llm_provider_with_workspace(workspace, tenant.as_ref(), request)
+        self.resolve_llm_provider_with_workspace(None, None, request)
+    }
+
+    /// A named provider that this workspace is not allowed to use stops the query.
+    /// It does not fall through to the process key. No database means no offer
+    /// (unit tests and a server that has not migrated yet).
+    async fn refuse_unoffered(
+        &self,
+        workspace: Option<&Workspace>,
+        request: &LlmResolutionRequest,
+    ) -> Result<(), ProviderResolutionError> {
+        let Some(ws) = workspace else {
+            return Ok(());
+        };
+        let provider = configured_provider(request, Some(ws));
+        if provider.is_empty() {
+            return Ok(());
+        }
+        #[cfg(not(feature = "postgres"))]
+        {
+            let _ = provider;
+            return Ok(());
+        }
+        #[cfg(feature = "postgres")]
+        {
+            let Some(pool) = self.pg_pool.as_ref() else {
+                return Ok(());
+            };
+            let offer = match crate::services::provider_offer_rows::load_workspace_offer_from_pool(
+                pool,
+                ws.tenant_id,
+                ws.workspace_id,
+            )
+            .await
+            {
+                Ok(offer) => offer,
+                Err(err) => {
+                    warn!(error = %err, "provider offer unavailable; query was not refused");
+                    return Ok(());
+                }
+            };
+            if edgequake_core::provider_offer::provider_outside_offer(&provider, &offer.slugs) {
+                return Err(unoffered(&provider, request));
+            }
+            if let Some(slug) = query_role_connection_slug(pool, ws).await {
+                if edgequake_core::provider_offer::provider_outside_offer(&slug, &offer.slugs) {
+                    return Err(unoffered(&slug, request));
+                }
+            }
+            Ok(())
+        }
     }
 
     async fn try_llm_from_workspace_connection(
@@ -826,6 +881,59 @@ impl WorkspaceProviderResolver {
     }
 }
 
+#[cfg(feature = "postgres")]
+fn unoffered(provider: &str, request: &LlmResolutionRequest) -> ProviderResolutionError {
+    ProviderResolutionError::ProviderCreationFailed {
+        provider: provider.to_string(),
+        model: request.model.clone().unwrap_or_default(),
+        reason: "provider is not offered to this workspace".into(),
+        is_api_key_error: false,
+    }
+}
+
+#[cfg(feature = "postgres")]
+async fn query_role_connection_slug(pool: &sqlx::PgPool, workspace: &Workspace) -> Option<String> {
+    let raw = edgequake_core::metadata_connection_id(workspace, "query")?;
+    let id = crate::providers::connection_store::parse_connection_id(&raw)?;
+    match sqlx::query_scalar::<_, String>("SELECT slug FROM provider_connections WHERE id = $1")
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+    {
+        Ok(slug) => slug.filter(|value| !value.trim().is_empty()),
+        Err(err) => {
+            warn!(error = %err, "connection slug unavailable; offer check used the named provider only");
+            None
+        }
+    }
+}
+
+fn configured_provider(request: &LlmResolutionRequest, workspace: Option<&Workspace>) -> String {
+    if let Some(provider) = request
+        .provider
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return provider.to_string();
+    }
+    let Some(ws) = workspace else {
+        return String::new();
+    };
+    if let Some(provider) = ws
+        .metadata
+        .get("llm_roles")
+        .and_then(|roles| roles.get("query"))
+        .and_then(|query| query.get("provider"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return provider.to_string();
+    }
+    ws.llm_provider.trim().to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1051,6 +1159,25 @@ mod tests {
             assert_eq!(resolved.provider_name, "mock");
             assert_eq!(resolved.model_name, "tenant-model");
             assert_eq!(resolved.source, ProviderSource::Tenant);
+        }
+
+        #[test]
+        fn configured_provider_prefers_request_then_role() {
+            let mut workspace = Workspace::new(Uuid::nil(), "Names", "names");
+            workspace.llm_provider = "openai".into();
+            workspace.metadata.insert(
+                "llm_roles".into(),
+                serde_json::json!({ "query": { "provider": "acme" } }),
+            );
+            assert_eq!(
+                configured_provider(&LlmResolutionRequest::default(), Some(&workspace)),
+                "acme"
+            );
+            let request = LlmResolutionRequest {
+                provider: Some("ollama".into()),
+                ..LlmResolutionRequest::default()
+            };
+            assert_eq!(configured_provider(&request, Some(&workspace)), "ollama");
         }
 
         #[tokio::test]

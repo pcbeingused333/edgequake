@@ -342,6 +342,10 @@ fn api_v1_routes(state: AppState) -> Router<AppState> {
             "/tenants/{tenant_id}/model-catalog",
             get(handlers::get_tenant_model_catalog),
         )
+        .route(
+            "/tenants/{tenant_id}/provider-offer",
+            get(handlers::get_tenant_provider_offer).put(handlers::put_tenant_provider_offer),
+        )
         .route("/tenants/{tenant_id}", put(handlers::update_tenant))
         .route("/tenants/{tenant_id}", delete(handlers::delete_tenant))
         // SPEC-169: organization members + invitations
@@ -446,6 +450,10 @@ fn api_v1_routes(state: AppState) -> Router<AppState> {
         .route(
             "/workspaces/{workspace_id}/model-policy",
             get(handlers::get_workspace_model_policy).put(handlers::put_workspace_model_policy),
+        )
+        .route(
+            "/workspaces/{workspace_id}/provider-offer",
+            get(handlers::get_workspace_provider_offer).put(handlers::put_workspace_provider_offer),
         )
         .route(
             "/workspaces/{workspace_id}/clearance/tags",
@@ -888,6 +896,18 @@ fn api_v1_routes(state: AppState) -> Router<AppState> {
         .route("/models", get(handlers::list_models))
         .route("/models/llm", get(handlers::list_llm_models))
         .route("/models/eligible", get(handlers::get_eligible_models))
+        .route(
+            "/deployment/providers",
+            get(handlers::get_deployment_providers),
+        )
+        .route(
+            "/deployment/providers/{slug}",
+            put(handlers::put_deployment_provider),
+        )
+        .route(
+            "/deployment/providers/{slug}/models",
+            put(handlers::put_connection_models),
+        )
         .route("/models/embedding", get(handlers::list_embedding_models))
         .route("/models/health", get(handlers::check_providers_health))
         .route("/providers/test", post(handlers::test_provider))

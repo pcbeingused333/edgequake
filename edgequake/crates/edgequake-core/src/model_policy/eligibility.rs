@@ -9,7 +9,10 @@
 //! A narrowing row cannot add a pair the ceiling omitted, because the ceiling step
 //! runs first. [`widening_rows`] reports those writes so the API can reject them.
 
+use std::collections::BTreeSet;
+
 use super::{CatalogEntry, PolicyMode, PolicyRow};
+use crate::provider_offer::filter_catalog;
 use crate::usage_resolution::Usage;
 
 /// Whether the tenant ceiling constrains `usage`.
@@ -36,16 +39,24 @@ pub fn policy_mode(ceiling: &[PolicyRow], usage: Usage) -> PolicyMode {
 }
 
 /// Models a member may pick for `usage`, in catalog order.
+///
+/// `offered` is the workspace offer. `None` skips the offer filter and exists
+/// for callers that have not loaded an offer. Production passes `Some`.
 pub fn eligible_models<'a>(
     usage: Usage,
     catalog: &'a [CatalogEntry],
     ceiling: &[PolicyRow],
     narrowing: &[PolicyRow],
+    offered: Option<&BTreeSet<String>>,
 ) -> Vec<&'a CatalogEntry> {
     let usage_ceiling = rows_for(ceiling, usage);
     let usage_narrowing = rows_for(narrowing, usage);
-    catalog
-        .iter()
+    let source: Vec<&CatalogEntry> = match offered {
+        Some(slugs) => filter_catalog(catalog, slugs),
+        None => catalog.iter().collect(),
+    };
+    source
+        .into_iter()
         .filter(|entry| entry.facts.registered)
         .filter(|entry| entry.facts.supports(usage))
         .filter(|entry| entry.facts.probe != Some(false))
@@ -75,13 +86,14 @@ pub fn usages_left_empty(
     catalog: &[CatalogEntry],
     ceiling: &[PolicyRow],
     narrowing: &[PolicyRow],
+    offered: Option<&BTreeSet<String>>,
 ) -> Vec<Usage> {
     let mut named: Vec<Usage> = written.iter().map(|row| row.usage).collect();
     named.sort_by_key(|usage| usage.as_str());
     named.dedup();
     named
         .into_iter()
-        .filter(|usage| eligible_models(*usage, catalog, ceiling, narrowing).is_empty())
+        .filter(|usage| eligible_models(*usage, catalog, ceiling, narrowing, offered).is_empty())
         .collect()
 }
 

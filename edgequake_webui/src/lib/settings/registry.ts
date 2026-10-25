@@ -21,8 +21,10 @@ export type SettingsSectionId =
   | "ingestion"
   | "access"
   | "people"
+  | "org-providers"
   | "secrets"
   | "connections"
+  | "providers"
   | "fleet"
   | "observability";
 
@@ -123,6 +125,14 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
     keywords: ["people", "members", "invite", "roles", "sso", "seats"],
   },
   {
+    id: "org-providers",
+    scope: "organization",
+    label: "Providers",
+    segment: "providers",
+    gate: "tenantManage",
+    keywords: ["provider", "providers", "ceiling", "model", "anthropic", "openai", "offer"],
+  },
+  {
     id: "secrets",
     scope: "organization",
     label: "Secrets",
@@ -137,6 +147,14 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
     segment: "connections",
     gate: "instanceAdmin",
     keywords: ["connections", "api key", "base url", "provider key", "test", "secret"],
+  },
+  {
+    id: "providers",
+    scope: "deployment",
+    label: "Providers",
+    segment: "providers",
+    gate: "instanceAdmin",
+    keywords: ["provider", "offer", "withdraw", "model", "fleet provider"],
   },
   {
     id: "fleet",

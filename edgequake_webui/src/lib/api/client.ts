@@ -131,6 +131,8 @@ export interface ApiClientOptions extends RequestInit {
    * Pass `0` to disable. Combined with any caller-provided `signal` via AbortSignal.any.
    */
   timeoutMs?: number;
+  /** Do not send X-Tenant-ID. Fleet provider creates are deployment-scoped. */
+  omitTenant?: boolean;
 }
 
 /** Request aborted because the client-side deadline elapsed. */
@@ -270,9 +272,11 @@ export function buildHeaders(customHeaders?: HeadersInit, body?: unknown): Heade
   }
 
   const { tenantId, workspaceId, userId } = getTenantContext();
+  const omitTenant = headers.get("X-Edgequake-Omit-Tenant") === "1";
+  if (omitTenant) headers.delete("X-Edgequake-Omit-Tenant");
   // Allow callers to override tenant/workspace (e.g. create-tenant wizard
   // updating the new tenant's Default Workspace before store selection).
-  if (tenantId && !headers.has("X-Tenant-ID")) {
+  if (tenantId && !omitTenant && !headers.has("X-Tenant-ID")) {
     headers.set("X-Tenant-ID", tenantId);
   }
   if (workspaceId && !headers.has("X-Workspace-ID")) {
@@ -380,18 +384,20 @@ export async function apiClient<T>(
   endpoint: string,
   options: ApiClientOptions = {},
 ): Promise<T> {
-  const { silent = false, timeoutMs, signal: userSignal, ...fetchOptions } =
+  const { silent = false, timeoutMs, signal: userSignal, omitTenant = false, ...fetchOptions } =
     options;
   const url = endpoint.startsWith("http")
     ? endpoint
     : `${getRuntimeApiBaseUrl()}${endpoint}`;
 
+  const callerHeaders = new Headers(fetchOptions.headers);
+  if (omitTenant) callerHeaders.set("X-Edgequake-Omit-Tenant", "1");
   const signal = resolveFetchSignal(timeoutMs, userSignal);
   const config: RequestInit = {
     ...fetchOptions,
     credentials: fetchOptions.credentials ?? "include",
     signal,
-    headers: buildHeaders(fetchOptions.headers, fetchOptions.body),
+    headers: buildHeaders(callerHeaders, fetchOptions.body),
   };
 
   try {
@@ -401,7 +407,7 @@ export async function apiClient<T>(
     if (response.status === 401) {
       const refreshed = await tryRefreshToken();
       if (refreshed) {
-        config.headers = buildHeaders(fetchOptions.headers, fetchOptions.body);
+        config.headers = buildHeaders(callerHeaders, fetchOptions.body);
         // Fresh deadline for the retry attempt.
         config.signal = resolveFetchSignal(timeoutMs, userSignal);
         const retryResponse = await fetch(url, config);

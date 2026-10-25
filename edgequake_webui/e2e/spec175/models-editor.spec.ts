@@ -105,8 +105,8 @@ test.describe("SPEC-175 model editors @spec175", () => {
   });
 
   test("the organization ceiling shows registered models with health and saves a full replacement (EC-175-06)", async ({ page }) => {
-    const recorder = await openSettings(page, "super_admin", "/settings/organization/people");
-    await expect(h1(page)).toHaveText("People");
+    const recorder = await openSettings(page, "super_admin", "/settings/organization/providers");
+    await expect(h1(page)).toHaveText("Providers");
     await expect(ceiling(page).getByTestId("ceiling-row-ollama::qwen3").getByText("Check failed")).toBeVisible();
     await expect(ceiling(page).getByTestId("ceiling-row-ollama::nomic-embed").getByText("Not checked")).toBeVisible();
     await expect(ceiling(page).getByTestId("ceiling-summary-query")).toHaveText("Any model");
@@ -127,7 +127,7 @@ test.describe("SPEC-175 model editors @spec175", () => {
   });
 
   test("clearing the ceiling returns the organization to unconstrained", async ({ page }) => {
-    const recorder = await openSettings(page, "super_admin", "/settings/organization/people", 1440, {
+    const recorder = await openSettings(page, "super_admin", "/settings/organization/providers", 1440, {
       tenantRows: [{ provider: "ollama", model: "gemma3", usage: "query", enabled: true }],
     });
     await expect(ceiling(page).getByTestId("ceiling-summary-query")).toHaveText("1 allowed");
@@ -138,7 +138,7 @@ test.describe("SPEC-175 model editors @spec175", () => {
   });
 
   test("a saved pair that left the catalog is kept on save, never silently dropped", async ({ page }) => {
-    const recorder = await openSettings(page, "super_admin", "/settings/organization/people", 1440, {
+    const recorder = await openSettings(page, "super_admin", "/settings/organization/providers", 1440, {
       tenantRows: [{ provider: "retired", model: "old-model", usage: "query", enabled: true }],
     });
     await expect(ceiling(page).getByTestId("ceiling-row-retired::old-model").getByText("Not registered")).toBeVisible();
@@ -151,7 +151,7 @@ test.describe("SPEC-175 model editors @spec175", () => {
   });
 
   test("the model roles and ceiling render in dark mode (visual review)", async ({ page }) => {
-    await openSettings(page, "super_admin", "/settings/organization/people");
+    await openSettings(page, "super_admin", "/settings/organization/providers");
     await applyTheme(page, "dark");
     await expect(ceiling(page)).toBeVisible();
     await shot(page, "tenant-ceiling", { theme: "dark" });
