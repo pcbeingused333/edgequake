@@ -23,10 +23,11 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
+import { SettingsNotice } from "@/components/settings/shell/settings-frame";
 import { clearanceApi } from "@/lib/clearance/api";
 import { reportError } from "@/lib/clearance/errors";
 import { compartmentTags, documentCountLabel, profileLine } from "@/lib/clearance/summary";
-import type { SecurityRoleView } from "@/lib/clearance/types";
+import type { ClearanceSettings, SecurityRoleView } from "@/lib/clearance/types";
 import {
   invalidateClearanceViews,
   useClearanceRoles,
@@ -34,7 +35,7 @@ import {
   useClearanceTags,
 } from "@/lib/clearance/use-clearance";
 import { useTenantStore } from "@/stores/use-tenant-store";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 
 const PREVIEW_LIMIT = 20;
@@ -70,6 +71,43 @@ function SettingRow({
   );
 }
 
+/**
+ * What to show instead of the editors, or null when the editors can render.
+ * Every non-happy path says something, so the Access screen is never blank.
+ */
+function accessNotice(
+  settings: Pick<UseQueryResult<ClearanceSettings>, "isPending" | "isError" | "refetch">,
+  canManage: boolean,
+): ReactNode {
+  if (settings.isPending) {
+    return <SettingsNotice testId="document-labels-status">Loading access settings…</SettingsNotice>;
+  }
+  if (settings.isError) {
+    return (
+      <SettingsNotice tone="danger" testId="document-labels-status">
+        <span>Could not load access settings.</span>{" "}
+        <Button
+          type="button"
+          variant="link"
+          size="sm"
+          className="h-auto p-0"
+          onClick={() => void settings.refetch()}
+        >
+          Try again
+        </Button>
+      </SettingsNotice>
+    );
+  }
+  if (!canManage) {
+    return (
+      <SettingsNotice testId="document-labels-status">
+        Only workspace owners and admins can change document access.
+      </SettingsNotice>
+    );
+  }
+  return null;
+}
+
 /** Settings → Access. Owners and admins only. */
 export function DocumentLabelsCard() {
   const workspaceId = useTenantStore((state) => state.selectedWorkspaceId);
@@ -91,7 +129,11 @@ export function DocumentLabelsCard() {
     onError: (error) => reportError(error, "Could not turn on document labels."),
   });
 
-  if (!workspaceId || !canManage) return null;
+  if (!workspaceId) {
+    return <SettingsNotice testId="document-labels-status">Choose a workspace to manage document access.</SettingsNotice>;
+  }
+  const notice = accessNotice(settings, canManage);
+  if (notice) return notice;
 
   const on = settings.data?.enforcement === true;
   const tagList = tags.data ?? [];
@@ -152,7 +194,15 @@ export function DocumentLabelsCard() {
             </div>
             <NewProfileButton workspaceId={workspaceId} />
           </div>
-          {profiles.length === 0 ? (
+          {roles.isPending ? (
+            <p className="rounded-md border border-dashed px-3 py-4 text-center text-sm text-muted-foreground" data-testid="access-profiles-loading">
+              Loading profiles…
+            </p>
+          ) : roles.isError ? (
+            <p role="alert" className="rounded-md border border-dashed px-3 py-4 text-center text-sm text-destructive">
+              Could not load profiles. Refresh the page to try again.
+            </p>
+          ) : profiles.length === 0 ? (
             <p className="rounded-md border border-dashed px-3 py-4 text-center text-sm text-muted-foreground">
               No profiles yet. Create one to start.
             </p>

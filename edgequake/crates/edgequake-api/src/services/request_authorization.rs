@@ -147,6 +147,7 @@ fn global_resource(path: &str) -> bool {
         "/api/v1/models",
         "/api/v1/roles",
         "/api/v1/config/",
+        "/api/v1/me/",
         "/api/v1/decision/",
         "/api/v1/setup/",
     ]

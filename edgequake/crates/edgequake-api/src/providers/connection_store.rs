@@ -68,11 +68,13 @@ pub fn parse_connection_id(raw: &str) -> Option<Uuid> {
 #[cfg(feature = "postgres")]
 #[derive(sqlx::FromRow)]
 struct StoredConnectionRow {
+    tenant_id: Option<Uuid>,
     api_shape: String,
     base_url: String,
     api_key_ciphertext: Option<Vec<u8>>,
     api_key_nonce: Option<Vec<u8>>,
     key_id: Option<String>,
+    secret_ref: Option<serde_json::Value>,
 }
 
 /// Decrypt a `provider_connections` row into a runtime spec.
@@ -86,7 +88,7 @@ pub async fn load_connection_spec(
     use crate::providers::connection_factory::ConnectionSpec;
 
     let row = sqlx::query_as::<_, StoredConnectionRow>(
-        r#"SELECT api_shape, base_url, api_key_ciphertext, api_key_nonce, key_id
+        r#"SELECT tenant_id, api_shape, base_url, api_key_ciphertext, api_key_nonce, key_id, secret_ref
            FROM provider_connections WHERE id = $1"#,
     )
     .bind(id)
@@ -95,19 +97,15 @@ pub async fn load_connection_spec(
     .map_err(|e| ApiError::Internal(e.to_string()))?
     .ok_or_else(|| ApiError::NotFound("connection not found".into()))?;
 
-    let api_key = match (row.api_key_ciphertext, row.api_key_nonce, row.key_id) {
-        (Some(ct), Some(nonce), Some(kid)) => {
-            let env = edgequake_secrets::Envelope {
-                ciphertext: ct,
-                nonce,
-                key_id: kid,
-            };
-            edgequake_secrets::decrypt_string(&env)
-                .ok()
-                .map(|s| s.expose().to_string())
-        }
-        _ => None,
-    };
+    let api_key = super::secret_manager::reveal_connection_key(
+        pool,
+        row.tenant_id,
+        row.secret_ref,
+        row.api_key_ciphertext,
+        row.api_key_nonce,
+        row.key_id,
+    )
+    .await?;
 
     Ok(ConnectionSpec {
         shape: row.api_shape,

@@ -334,6 +334,14 @@ fn api_v1_routes(state: AppState) -> Router<AppState> {
         .route("/tenants", post(handlers::create_tenant))
         .route("/tenants", get(handlers::list_tenants))
         .route("/tenants/{tenant_id}", get(handlers::get_tenant))
+        .route(
+            "/tenants/{tenant_id}/model-policy",
+            get(handlers::get_tenant_model_policy).put(handlers::put_tenant_model_policy),
+        )
+        .route(
+            "/tenants/{tenant_id}/model-catalog",
+            get(handlers::get_tenant_model_catalog),
+        )
         .route("/tenants/{tenant_id}", put(handlers::update_tenant))
         .route("/tenants/{tenant_id}", delete(handlers::delete_tenant))
         // SPEC-169: organization members + invitations
@@ -434,6 +442,10 @@ fn api_v1_routes(state: AppState) -> Router<AppState> {
         .route(
             "/workspaces/{workspace_id}/clearance",
             get(handlers::get_clearance_settings).post(handlers::enable_clearance),
+        )
+        .route(
+            "/workspaces/{workspace_id}/model-policy",
+            get(handlers::get_workspace_model_policy).put(handlers::put_workspace_model_policy),
         )
         .route(
             "/workspaces/{workspace_id}/clearance/tags",
@@ -866,6 +878,7 @@ fn api_v1_routes(state: AppState) -> Router<AppState> {
         .route("/settings/langfuse", get(handlers::get_langfuse_settings))
         // Effective configuration with full resolution chain (explainability)
         .route("/config/effective", get(handlers::get_effective_config))
+        .route("/me/settings-access", get(handlers::get_settings_access))
         // Models Configuration API (SPEC-032 OODA 66-70)
         .route("/models/search", get(handlers::search_models))
         .route(
@@ -874,12 +887,27 @@ fn api_v1_routes(state: AppState) -> Router<AppState> {
         )
         .route("/models", get(handlers::list_models))
         .route("/models/llm", get(handlers::list_llm_models))
+        .route("/models/eligible", get(handlers::get_eligible_models))
         .route("/models/embedding", get(handlers::list_embedding_models))
         .route("/models/health", get(handlers::check_providers_health))
         .route("/providers/test", post(handlers::test_provider))
+        .route("/connections/shapes", get(handlers::list_connection_shapes))
         .route(
             "/connections",
             get(handlers::list_connections).post(handlers::create_connection),
+        )
+        .route(
+            "/secret-backend",
+            get(handlers::get_secret_backend).put(handlers::put_secret_backend),
+        )
+        .route("/secret-backend/test", post(handlers::test_secret_backend))
+        .route(
+            "/secrets",
+            get(handlers::list_secrets).post(handlers::create_secret),
+        )
+        .route(
+            "/secrets/{name}",
+            axum::routing::delete(handlers::delete_secret),
         )
         .route(
             "/connections/{id}",

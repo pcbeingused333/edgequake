@@ -143,6 +143,34 @@ pub fn answer_cache_key(prompt: &str) -> String {
     llm_cache_storage_key("mix", LlmCacheType::Query, &hash_query_prompt(prompt))
 }
 
+/// Model identity an answer is produced under (`provider/model`).
+pub fn answer_model_identity(llm: &dyn crate::LLMProvider) -> String {
+    format!("{}/{}", llm.name(), llm.model())
+}
+
+/// SPEC-175 EC-175-27: the answer hash covers the built prompt, the model that writes the
+/// answer, and the reasoning effort. A completion from model A is never served for model B.
+pub fn hash_query_answer(
+    prompt: &str,
+    model_identity: &str,
+    reasoning_effort: Option<&str>,
+) -> String {
+    let effort = reasoning_effort
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("");
+    compute_args_hash(&[model_identity, effort, prompt])
+}
+
+/// Legacy L1 answer key that includes the model identity (SPEC-175 EC-175-27).
+pub fn answer_cache_key_for_model(prompt: &str, model_identity: &str) -> String {
+    llm_cache_storage_key(
+        "mix",
+        LlmCacheType::Query,
+        &hash_query_answer(prompt, model_identity, None),
+    )
+}
+
 /// Unified LLM response cache port (DIP).
 #[async_trait]
 pub trait LlmResponseCache: Send + Sync {
@@ -337,6 +365,27 @@ pub type SharedLlmResponseCache = Arc<dyn LlmResponseCache>;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn answer_cache_key_changes_with_model() {
+        // EC-175-27: the same prompt under two models must not share an answer.
+        let a = hash_query_answer("ctx + question", "openai/gpt-5-nano", None);
+        let b = hash_query_answer("ctx + question", "openai/gpt-5-mini", None);
+        assert_ne!(a, b);
+        assert_ne!(
+            answer_cache_key_for_model("p", "openai/gpt-5-nano"),
+            answer_cache_key_for_model("p", "openai/gpt-5-mini")
+        );
+        // Blank effort is the same as no effort; a real effort busts the key.
+        assert_eq!(
+            hash_query_answer("p", "m", Some("  ")),
+            hash_query_answer("p", "m", None)
+        );
+        assert_ne!(
+            hash_query_answer("p", "m", Some("low")),
+            hash_query_answer("p", "m", None)
+        );
+    }
 
     #[test]
     fn key_format_and_hash_pins() {

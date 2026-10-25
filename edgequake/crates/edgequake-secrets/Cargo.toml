@@ -7,11 +7,15 @@ description = "Envelope encryption and redacted secrets for EdgeQuake (SPEC-163)
 
 [dependencies]
 aes-gcm = "0.10"
+async-trait = { workspace = true }
 base64 = "0.22"
 hex = "0.4"
 rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
 zeroize = { version = "1.8", features = ["zeroize_derive"] }
 
 [dev-dependencies]

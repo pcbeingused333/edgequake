@@ -41,6 +41,7 @@ pub mod document_reingest;
 pub mod document_task_cleanup;
 pub mod document_tombstone;
 pub mod document_vector_storage;
+pub mod effective_usages;
 pub mod entity_graph_lookup;
 pub mod entity_merge;
 pub mod entity_name_normalize;
@@ -75,6 +76,9 @@ pub mod login_lockout;
 pub mod login_tokens;
 pub mod manuscript_verify;
 pub mod message_context_mapper;
+pub mod model_policy_catalog;
+pub mod model_policy_enforcement;
+pub mod model_policy_rows;
 pub mod multimodal;
 pub mod multimodal_admission;
 pub mod multimodal_context;
@@ -317,7 +321,8 @@ pub use query_context::{
 pub use query_execution::{
     execute_sota_query, execute_sota_query_stream, execute_sota_query_stream_with_auth_fallback,
     execute_sota_query_with_auth_fallback, is_llm_auth_failure, llm_override_from_request,
-    resolve_workspace_query_resources, validate_llm_override_pair, WorkspaceQueryResources,
+    reject_rerank_model, resolve_workspace_query_resources, validate_llm_override_pair,
+    WorkspaceQueryResources,
 };
 pub use query_generation::{execute_full_query, execute_legacy_query_response};
 pub use query_request_builder::{build_engine_request, QueryExecutionParams};

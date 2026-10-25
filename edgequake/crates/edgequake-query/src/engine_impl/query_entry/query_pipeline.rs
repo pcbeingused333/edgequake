@@ -933,11 +933,17 @@ impl QueryEngine {
                 Some(request.response_type_or_default()),
             );
             let mode_str = mode.as_str();
+            let answer_llm: &dyn crate::LLMProvider = providers
+                .answer_llm
+                .as_deref()
+                .unwrap_or(self.llm_provider.as_ref());
+            let answer_identity = crate::cache::answer_model_identity(answer_llm);
             let cache_key = crate::cache::llm_cache_storage_key(
                 mode_str,
                 crate::cache::LlmCacheType::Query,
-                &crate::cache::hash_query_prompt_with_effort(
+                &crate::cache::hash_query_answer(
                     &prompt,
+                    &answer_identity,
                     request.reasoning_effort.as_deref(),
                 ),
             );
@@ -974,7 +980,8 @@ impl QueryEngine {
                     }
                 } else if let Some(cache) = self.answer_cache.as_ref() {
                     // Legacy sync L1 path (tests that only call with_answer_cache pre-103).
-                    let legacy_key = crate::cache::answer_cache_key(&prompt);
+                    let legacy_key =
+                        crate::cache::answer_cache_key_for_model(&prompt, &answer_identity);
                     if let Some(cached) = cache.get(&legacy_key) {
                         let _stage = edgequake_observability::enter_pipeline_stage("answer-cache");
                         stats.generation_time_ms = gen_start.elapsed().as_millis() as u64;

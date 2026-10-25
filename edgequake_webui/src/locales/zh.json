@@ -1057,21 +1057,11 @@
       "defaultMode": "默认查询模式",
       "defaultModeDesc": "查询的默认检索模式",
       "enableStreaming": "启用流式传输",
-      "enableStreamingDesc": "在生成时显示响应",
-      "enableReranking": "启用重排序",
-      "enableRerankingDesc": "通过语义重排序提高检索精度",
-      "rerankTopK": "重排序 Top K",
-      "rerankTopKDesc": "重排序后的最大结果数"
+      "enableStreamingDesc": "在生成时显示响应"
     },
     "ingestion": {
       "title": "摄取设置",
-      "subtitle": "文档摄取质量的高级设置",
-      "enableGleaning": "启用拾穗",
-      "enableGleaningDesc": "多次提取以获得更高质量的实体",
-      "maxGleaning": "最大拾穗次数",
-      "maxGleaningDesc": "最大提取次数 (1-3)",
-      "llmSummarization": "LLM 摘要",
-      "llmSummarizationDesc": "使用 LLM 智能合并实体描述"
+      "subtitle": "文档摄取质量的高级设置"
     },
     "toasts": {
       "historyCleared": "查询历史记录已清除",

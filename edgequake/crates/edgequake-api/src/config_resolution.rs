@@ -512,6 +512,9 @@ pub fn build_effective_config(snapshot: &ServerConfigSnapshot) -> EffectiveConfi
         priority_rule: priority_rule(snapshot),
         priority_mode: snapshot.priority_mode.as_str().to_string(),
         server_config_available: snapshot.postgres_available,
+        workspace_id: None,
+        policy_mode: String::new(),
+        usages: Vec::new(),
     }
 }
 

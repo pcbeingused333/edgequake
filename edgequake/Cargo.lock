@@ -2228,12 +2228,15 @@ name = "edgequake-secrets"
 version = "0.38.0"
 dependencies = [
  "aes-gcm",
+ "async-trait",
  "base64 0.22.1",
  "hex",
  "rand 0.8.6",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+ "tokio",
  "zeroize",
 ]
 

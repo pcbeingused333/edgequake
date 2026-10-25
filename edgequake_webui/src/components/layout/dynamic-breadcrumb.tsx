@@ -16,6 +16,7 @@ import {
     resolveDocumentBreadcrumbLabel,
 } from '@/lib/layout/breadcrumb-document-label';
 import { useTenantStore } from '@/stores/use-tenant-store';
+import { settingsCrumbLabel } from '@/lib/settings/registry';
 import { useQuery } from '@tanstack/react-query';
 import {
   BookOpen,
@@ -91,6 +92,12 @@ export function DynamicBreadcrumb({ customSegments }: DynamicBreadcrumbProps) {
     currentPath += `/${segment}`;
     // Skip workspace-slug mount prefix `/w/:slug` — not a breadcrumb crumb.
     if (segments[0] === 'w' && (index === 0 || index === 1)) {
+      return;
+    }
+
+    const settingsLabel = settingsCrumbLabel(segments, index);
+    if (settingsLabel) {
+      items.push({ label: settingsLabel, href: currentPath });
       return;
     }
 

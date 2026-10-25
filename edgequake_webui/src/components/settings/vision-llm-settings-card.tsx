@@ -155,13 +155,9 @@ export function VisionLLMSettingsCard() {
                   <div className="font-medium truncate">
                     {hasOverride
                       ? workspace.vision_llm_model
-                      : t(
-                          'settings.vision.serverDefaultWithValue',
-                          'Server Default ({{value}})',
-                          { value: `${resolved.provider}/${resolved.model}` },
-                        )}
+                      : t('settings.vision.serverDefault', 'Server Default')}
                   </div>
-                  <div className="text-sm text-muted-foreground capitalize truncate">
+                  <div className="text-sm text-muted-foreground truncate">
                     {hasOverride
                       ? t('workspace.workspaceOverride', 'Workspace override')
                       : t('workspace.resolvesVia', 'Resolves via {{source}}', {
@@ -171,7 +167,7 @@ export function VisionLLMSettingsCard() {
                 </div>
                 <Badge
                   variant="outline"
-                  className="ml-auto font-mono text-xs"
+                  className="ml-auto max-w-[45%] shrink-0 truncate font-mono text-xs"
                   data-testid="settings-vision-resolves-to"
                   title={`source=${resolved.source}`}
                 >

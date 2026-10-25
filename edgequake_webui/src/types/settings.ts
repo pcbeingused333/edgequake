@@ -27,10 +27,6 @@ export interface QuerySettings {
   maxTokens: number;
   temperature: number;
   stream: boolean;
-  /** Enable reranking for improved retrieval precision */
-  enableRerank: boolean;
-  /** Top K results to keep after reranking */
-  rerankTopK: number;
   /**
    * LLM provider ID to use for queries (e.g., "openai", "ollama", "lmstudio").
    * @implements SPEC-032: Provider selection in query interface
@@ -73,19 +69,12 @@ export interface QuerySettings {
   fullChunkContent?: boolean;
 }
 
-export interface IngestionSettings {
-  /** Enable gleaning (multiple extraction passes) for higher quality entity extraction */
-  enableGleaning: boolean;
-  /** Maximum number of gleaning passes (1-3 recommended) */
-  maxGleaning: number;
-  /** Enable LLM-powered description summarization during merge */
-  useLLMSummarization: boolean;
-}
-
+/**
+ * SPEC-175: browser-local preferences. Theme is owned by next-themes and
+ * ingestion knobs (gleaning, summarization) were removed; see the settings store.
+ */
 export interface AppSettings {
-  theme: "light" | "dark" | "system";
   language: "en" | "zh" | "fr";
   graphSettings: GraphSettings;
   querySettings: QuerySettings;
-  ingestionSettings: IngestionSettings;
 }

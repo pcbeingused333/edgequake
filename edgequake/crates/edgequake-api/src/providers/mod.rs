@@ -57,11 +57,14 @@
 //! @implements OODA-226: Unified provider resolution module
 
 pub mod connection_factory;
+pub mod connection_shapes;
 pub mod connection_store;
 pub mod credentials;
 mod error;
 pub mod probe;
 mod resolver;
+#[cfg(feature = "postgres")]
+pub mod secret_manager;
 
 pub use credentials::{
     credential_kind_for, llm_provider_credentials_configured,

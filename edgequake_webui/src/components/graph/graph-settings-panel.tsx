@@ -186,7 +186,7 @@ export function GraphSettingsPanel({ onSettingsChange }: GraphSettingsPanelProps
         <div className="space-y-4">
           {/* Header */}
           <div className="flex items-center justify-between">
-            <h4 className="font-medium text-sm">Query Settings</h4>
+            <h4 className="font-medium text-sm">Graph window</h4>
             <Button
               variant="ghost"
               size="icon"

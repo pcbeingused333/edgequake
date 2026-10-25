@@ -140,7 +140,7 @@ Provider-specific details are in [Providers](../providers/index.md) and [Configu
 | `EDGEQUAKE_DEV_MODE` | `false` | Open API for local use. |
 | `JWT_SECRET` | insecure default | JWT HMAC secret, at least 32 bytes. Fatal at boot if weak and dev mode is off. |
 | `JWT_EXPIRY_SECONDS` | `900` | Access token lifetime. |
-| `EDGEQUAKE_SECRETS_KEY` | unset | 32-byte envelope key for stored connection secrets. |
+| `EDGEQUAKE_SECRETS_KEY` | unset | 32-byte envelope key for the database secret backend. The server boots without it. Saving a provider key is refused until it is set. Infisical is optional and is configured per tenant in Settings, not by an env var. |
 | `EDGEQUAKE_SETUP_TOKEN` | unset | Required header for `POST /api/v1/setup/initialize` when set. |
 | `EDGEQUAKE_CORS_ORIGINS` | unset | Comma-separated allowed origins. |
 | `EDGEQUAKE_RATE_LIMIT_ENABLED` | `false` | Turn on rate limiting. |

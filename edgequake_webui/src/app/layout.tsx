@@ -3,6 +3,7 @@
  */
 import { getRuntimeConfig } from '@/lib/runtime-config';
 import { resolveRuntimeApiUrlForInjection } from '@/lib/server/resolve-runtime-api-url';
+import { RememberAppPath } from '@/components/layout/remember-app-path';
 import { AppProviders } from '@/providers';
 import { GeistMono } from 'geist/font/mono';
 import { GeistSans } from 'geist/font/sans';
@@ -41,7 +42,10 @@ export default function RootLayout({
             __html: `window.__EDGEQUAKE_RUNTIME_CONFIG__ = ${JSON.stringify(runtimeConfig)};`,
           }}
         />
-        <AppProviders>{children}</AppProviders>
+        <AppProviders>
+          <RememberAppPath />
+          {children}
+        </AppProviders>
       </body>
     </html>
   );

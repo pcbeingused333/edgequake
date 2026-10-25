@@ -128,6 +128,7 @@ Read it from the top: the key is encrypted once on write and decrypted only insi
 - The fingerprint is a short, non-secret label (`eqk_` plus 16 hex digits) so you can tell keys apart. It is not a cryptographic hash.
 - The server decrypts with the single key in the environment. `EDGEQUAKE_SECRETS_KEY_ID` (default `v1`) only labels rows. Key rotation is not supported yet: changing the key makes old rows unreadable, and they are treated as having no key.
 - Keep other secrets (`JWT_SECRET`, `DATABASE_URL`, `OPENAI_API_KEY`) in your environment or a secret manager. Do not commit them to Git.
+- SPEC-176 stores new provider keys as a reference. The default backend encrypts them in `managed_secrets`. Infisical is optional, per tenant, and is never contacted at startup. If Infisical is unreachable, that tenant's save fails and the key is not copied into the database. The server boots and serves with no Infisical configuration and with `EDGEQUAKE_SECRETS_KEY` unset; only saving a key is refused.
 - Encrypt the database disk (LUKS or an encrypted cloud volume). Use `sslmode=require` or stronger in `DATABASE_URL` for remote databases.
 
 ## SSRF defense for provider URLs

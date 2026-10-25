@@ -27,6 +27,7 @@ use crate::services::context_bundle_mapper::{
     compute_retrieval_fingerprint, compute_retrieval_quality, map_engine_response_to_bundle,
     map_query_context_to_subgraph, DocumentMeta, MappingOptions,
 };
+use crate::services::model_policy_enforcement::ensure_pair_eligible;
 use crate::services::query_execution::{
     execute_sota_query_with_auth_fallback, resolve_workspace_query_resources,
     validate_llm_override_pair,
@@ -427,6 +428,14 @@ pub async fn resolve_query_llm_override(
     llm_model: Option<String>,
 ) -> ApiResult<Option<Arc<dyn LLMProvider>>> {
     validate_llm_override_pair(llm_provider.as_deref(), llm_model.as_deref())?;
+    ensure_pair_eligible(
+        state,
+        workspace,
+        edgequake_core::Usage::Query,
+        llm_provider.as_deref(),
+        llm_model.as_deref(),
+    )
+    .await?;
     let resolver = WorkspaceProviderResolver::from_app_state(state);
     let extra_headers = propagation.clone().merge_with(None);
     let llm_request = LlmResolutionRequest {

@@ -2,10 +2,18 @@
 
 pub use crate::provider_types::{AvailableProvidersResponse, ProviderStatusResponse};
 
-use axum::{extract::State, Json};
+use axum::{
+    extract::{Query, State},
+    Json,
+};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::handlers::auth::ApiAuthenticated;
+use crate::handlers::effective_usage_types::EffectiveUsageDto;
+use crate::handlers::me_settings_access::caller_scope;
+use crate::handlers::model_policy::{require_member, workspace_or_404};
+use crate::services::effective_usages;
 use crate::{error::ApiError, safety_limits::is_model_provider_mismatch, state::AppState};
 
 // ── Config Explainability Types ───────────────────────────────────────────
@@ -69,6 +77,15 @@ pub struct EffectiveConfigResponse {
     pub priority_mode: String,
     /// Whether PostgreSQL server_config persistence is available.
     pub server_config_available: bool,
+    /// SPEC-175: workspace the usages were resolved for (always set by the handler).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_id: Option<String>,
+    /// SPEC-175: `unconstrained` or `constrained` (tenant ceiling has rows).
+    #[serde(default)]
+    pub policy_mode: String,
+    /// SPEC-175: one resolved row per usage. New clients read this, not the legacy fields.
+    #[serde(default)]
+    pub usages: Vec<EffectiveUsageDto>,
 }
 
 /// SPEC-109: explainable reasoning effort for one LLM role.
@@ -195,41 +212,77 @@ pub async fn list_available_providers(
     Ok(Json(response))
 }
 
+async fn load_server_snapshot(
+    app_state: &AppState,
+) -> crate::server_config_store::ServerConfigSnapshot {
+    #[cfg(feature = "postgres")]
+    if let Some(pool) = app_state.optional_pg_pool() {
+        return app_state
+            .server_config
+            .snapshot_with_postgres(Some(pool))
+            .await;
+    }
+    app_state.server_config.snapshot().await
+}
+
+/// Query string for `GET /config/effective`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct EffectiveConfigQuery {
+    /// Required (SPEC-175). The usages are resolved for this workspace.
+    pub workspace_id: Option<uuid::Uuid>,
+}
+
 /// Get the full effective configuration with its resolution chain.
 ///
-/// `GET /api/v1/config/effective`
+/// `GET /api/v1/config/effective?workspace_id=`
 ///
-/// Returns the complete priority chain for LLM, Embedding, and Vision config:
-/// which level is active, where each value came from, and whether there are
-/// any provider/model mismatches that need operator attention.
-///
-/// This is the "source of truth" endpoint for diagnosing configuration issues.
-/// The frontend settings page uses this to render the Config Explainability panel.
+/// Returns the priority chain for LLM, Embedding, and Vision config, plus one
+/// resolved row per usage for the workspace (SPEC-175). Only a member of the
+/// workspace may read it. A missing `workspace_id` is 400.
 #[utoipa::path(
     get,
     path = "/api/v1/config/effective",
     tag = "Settings",
+    params(
+        ("workspace_id" = Option<uuid::Uuid>, Query, description = "Workspace to resolve the usages for (required)")
+    ),
     responses(
-        (status = 200, description = "Effective configuration chain", body = EffectiveConfigResponse)
+        (status = 200, description = "Effective configuration and usages", body = EffectiveConfigResponse),
+        (status = 400, description = "workspace_id is missing"),
+        (status = 403, description = "Caller is not a member of the workspace"),
+        (status = 404, description = "Workspace not found")
     )
 )]
 pub async fn get_effective_config(
     State(app_state): State<AppState>,
+    ApiAuthenticated(auth): ApiAuthenticated,
+    Query(query): Query<EffectiveConfigQuery>,
 ) -> Result<Json<EffectiveConfigResponse>, ApiError> {
-    #[cfg(feature = "postgres")]
-    let snapshot = if let Some(pool) = app_state.optional_pg_pool() {
-        app_state
-            .server_config
-            .snapshot_with_postgres(Some(pool))
-            .await
-    } else {
-        app_state.server_config.snapshot().await
-    };
+    let workspace_id = query
+        .workspace_id
+        .ok_or_else(|| ApiError::BadRequest("workspace_id is required".to_string()))?;
+    let workspace = workspace_or_404(&app_state, workspace_id).await?;
+    let scope = caller_scope(&app_state, &auth, workspace.tenant_id, Some(workspace_id)).await?;
+    require_member(scope)?;
 
-    #[cfg(not(feature = "postgres"))]
-    let snapshot = app_state.server_config.snapshot().await;
-
-    let response = crate::config_resolution::build_effective_config(&snapshot);
+    let snapshot = load_server_snapshot(&app_state).await;
+    let mut response = crate::config_resolution::build_effective_config(&snapshot);
+    let tenant = app_state
+        .workspace_service
+        .get_tenant(workspace.tenant_id)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let view = effective_usages::effective_view(
+        &app_state,
+        &workspace,
+        tenant.as_ref(),
+        &snapshot.llm_defaults,
+        snapshot.priority_mode,
+    )
+    .await?;
+    response.workspace_id = Some(workspace_id.to_string());
+    response.policy_mode = view.policy_mode.as_str().to_string();
+    response.usages = view.usages;
 
     tracing::debug!(
         llm_provider = %response.llm.effective_provider,

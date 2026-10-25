@@ -281,6 +281,7 @@ mod tests {
         let tenant_ctx = TenantContext::default();
 
         let request = StreamQueryRequest {
+            rerank_model: None,
             query: "What is Rust?".to_string(),
             mode: Some("naive".to_string()),
             system_prompt: None,
@@ -456,6 +457,7 @@ mod tests {
         let tenant_ctx = TenantContext::default();
 
         let request = StreamQueryRequest {
+            rerank_model: None,
             query: "".to_string(),
             mode: None,
             system_prompt: None,

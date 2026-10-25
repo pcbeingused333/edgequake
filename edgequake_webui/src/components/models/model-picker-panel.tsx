@@ -433,6 +433,8 @@ export function ModelPickerPanel({
 
   const modelDisabled = disabled || isLoading || !selectedProvider;
   const usingServerDefault = !value && !selectedProvider;
+  /** Empty triggers name what is in effect, matching the "Using …" chip below them. */
+  const inheritedLabel = allowServerDefault && usingServerDefault ? serverDefaultLabel : null;
 
   return (
     <div className={cn("space-y-3", className)} data-testid={testId}>
@@ -476,7 +478,7 @@ export function ModelPickerPanel({
                   ) : null}
                 </span>
               ) : (
-                <span className="text-muted-foreground">Select a provider…</span>
+                <span className="text-muted-foreground">{inheritedLabel ?? "Select a provider…"}</span>
               )}
               <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
             </Button>
@@ -569,7 +571,7 @@ export function ModelPickerPanel({
                   Loading models…
                 </span>
               ) : !selectedProvider ? (
-                <span className="text-muted-foreground">Select a provider first</span>
+                <span className="text-muted-foreground">{inheritedLabel ?? "Select a provider first"}</span>
               ) : value && selectedOption ? (
                 <span className="flex flex-col items-start truncate min-w-0 text-left">
                   <span className="truncate font-medium w-full">

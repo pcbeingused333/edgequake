@@ -27,7 +27,28 @@ pub enum SecretsError {
     Encrypt,
     #[error("decryption failed (wrong key or tampered ciphertext)")]
     Decrypt,
+    #[error("secret not found")]
+    NotFound,
+    #[error("secret belongs to a different backend")]
+    WrongBackend,
+    #[error("secret name must contain only letters, digits, dots, underscores and hyphens")]
+    InvalidName,
+    #[error("secret store failed: {0}")]
+    Store(String),
+    /// `message` is a short upstream status. It must never contain a secret value.
+    #[error("infisical request failed ({status}): {message}")]
+    Infisical { status: u16, message: String },
 }
+
+pub mod backend;
+pub mod database;
+pub mod infisical;
+
+pub use backend::{
+    probe_backend, validate_secret_name, SecretBackend, SecretMeta, SecretRef, KEY_REQUIRED_MESSAGE,
+};
+pub use database::{DatabaseSecretBackend, EnvelopeStore, MemoryEnvelopeStore};
+pub use infisical::{InfisicalConfig, InfisicalSecretBackend};
 
 /// Redacted secret. `Display`/`Debug` never print the value.
 #[derive(Clone, Zeroize, ZeroizeOnDrop)]

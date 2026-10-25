@@ -198,11 +198,14 @@ impl QueryEngine {
         // Blocking answers and successfully completed structured streams fill it.
         // Skip empty context / vision (no images here).
         let mode_str = mode.as_str();
+        let llm = llm_override.unwrap_or_else(|| self.llm_provider.clone());
+        let answer_identity = crate::cache::answer_model_identity(llm.as_ref());
         let cache_key = crate::cache::llm_cache_storage_key(
             mode_str,
             crate::cache::LlmCacheType::Query,
-            &crate::cache::hash_query_prompt_with_effort(
+            &crate::cache::hash_query_answer(
                 &prompt,
+                &answer_identity,
                 request.reasoning_effort.as_deref(),
             ),
         );
@@ -218,7 +221,8 @@ impl QueryEngine {
                     ));
                 }
             } else if let Some(cache) = self.answer_cache.as_ref() {
-                let legacy_key = crate::cache::answer_cache_key(&prompt);
+                let legacy_key =
+                    crate::cache::answer_cache_key_for_model(&prompt, &answer_identity);
                 if let Some(cached) = cache.get(&legacy_key) {
                     return Ok((
                         context,
@@ -229,7 +233,6 @@ impl QueryEngine {
             }
         }
 
-        let llm = llm_override.unwrap_or_else(|| self.llm_provider.clone());
         let llm_cache = self.llm_response_cache.clone();
         let answer_cache = self.answer_cache.clone();
         let prompt_for_cache = prompt.clone();

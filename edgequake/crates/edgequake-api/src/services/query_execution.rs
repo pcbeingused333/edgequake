@@ -288,6 +288,18 @@ pub fn validate_llm_override_pair(provider: Option<&str>, model: Option<&str>) -
     }
 }
 
+/// SPEC-175 EC-175-09: reranking is a deployment fact (`EDGEQUAKE_RERANKER*`). A per-request
+/// `rerank_model` is refused with a stable code until a later spec wires it.
+pub fn reject_rerank_model(rerank_model: Option<&str>) -> ApiResult<()> {
+    match rerank_model.map(str::trim).filter(|s| !s.is_empty()) {
+        None => Ok(()),
+        Some(_) => Err(ApiError::unprocessable_coded(
+            "rerank_model_rejected",
+            "rerank_model is not supported per request; reranking is configured at deployment level",
+        )),
+    }
+}
+
 /// Build LLM override from explicit provider/model request fields.
 pub fn llm_override_from_request(
     provider: Option<&str>,
@@ -312,6 +324,18 @@ pub fn llm_override_from_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reject_rerank_model_is_422_with_stable_code() {
+        assert!(reject_rerank_model(None).is_ok());
+        assert!(reject_rerank_model(Some("   ")).is_ok());
+        let err = reject_rerank_model(Some("bge-reranker")).unwrap_err();
+        assert_eq!(err.code(), "rerank_model_rejected");
+        assert_eq!(
+            err.status_code(),
+            axum::http::StatusCode::UNPROCESSABLE_ENTITY
+        );
+    }
 
     #[test]
     fn validate_llm_override_pair_rejects_partial() {

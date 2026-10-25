@@ -24,14 +24,16 @@ use crate::handlers::chat::build_sources;
 use crate::handlers::query::resolve_chunk_file_paths;
 use crate::middleware::TenantContext;
 use crate::providers::{LlmResolutionRequest, WorkspaceProviderResolver};
+use crate::services::model_policy_enforcement::ensure_pair_eligible;
 use crate::services::{
     build_engine_request, ensure_debug_granularity_allowed,
-    execute_sota_query_stream_with_auth_fallback, resolve_workspace_query_resources,
-    validate_llm_override_pair, QueryExecutionParams,
+    execute_sota_query_stream_with_auth_fallback, reject_rerank_model,
+    resolve_workspace_query_resources, validate_llm_override_pair, QueryExecutionParams,
 };
 use crate::state::AppState;
 use crate::streaming::{live_sse, StreamAccumulator};
 use crate::validation::validate_query;
+use edgequake_core::Usage;
 use edgequake_query::QueryMode;
 
 use super::workspace_resolve::resolve_query_workspace;
@@ -212,6 +214,15 @@ pub async fn stream_query(
         request.llm_provider.as_deref(),
         request.llm_model.as_deref(),
     )?;
+    reject_rerank_model(request.rerank_model.as_deref())?;
+    ensure_pair_eligible(
+        &state,
+        workspace.as_ref(),
+        Usage::Query,
+        request.llm_provider.as_deref(),
+        request.llm_model.as_deref(),
+    )
+    .await?;
 
     let workspace_id_str = tenant_ctx.workspace_id.clone();
     let resolver = WorkspaceProviderResolver::from_app_state(&state);

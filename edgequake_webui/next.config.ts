@@ -79,6 +79,13 @@ const nextConfig: NextConfig = {
     },
   },
 
+  // SPEC-175: bare `/settings` opens the first section. Declared here rather than as a server
+  // `redirect()` page: rendering a redirect-only RSC page trips a dev-only React timing error
+  // ("cannot have a negative time stamp") in the Next 16 overlay.
+  async redirects() {
+    return [{ source: "/settings", destination: "/settings/you/appearance", permanent: false }];
+  },
+
   // Dev proxy: browser uses relative /api/v1 (same origin as :3010 UI).
   // Avoids NEXT_PUBLIC_API_URL port drift when backend auto-selects :8081.
   async rewrites() {

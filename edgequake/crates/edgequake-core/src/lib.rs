@@ -48,6 +48,7 @@ pub mod extract_budget_metadata;
 pub mod graph_mapping;
 pub mod keyword_extractor;
 pub mod llm_roles;
+pub mod model_policy;
 pub mod model_resolution;
 #[cfg(feature = "pipeline")]
 pub mod orchestrator;
@@ -59,6 +60,8 @@ pub mod tenant_manager;
 pub mod token_budget;
 pub mod type_list;
 pub mod types;
+pub mod usage_layers;
+pub mod usage_resolution;
 pub mod utils;
 pub mod workspace_model_update;
 pub mod workspace_service;
@@ -106,6 +109,10 @@ pub use server_config_overrides::{
 // Re-export tenant manager
 #[cfg(feature = "pipeline")]
 pub use tenant_manager::{TenantConfig, TenantKBKey, TenantRAGManager, TenantService};
+pub use usage_resolution::{
+    resolve_usage, LeafOrder, ModelPair, PageClass, ResolutionLayer, ResolvedUsage, Usage,
+    UsageLayers, UsageLocks, CONFIGURABLE_USAGES,
+};
 
 // Re-export workspace service
 pub use workspace_service::{

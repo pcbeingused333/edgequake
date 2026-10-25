@@ -30,6 +30,9 @@ pub struct ConnectionView {
     pub timeout_secs: i32,
     pub allow_private_network: bool,
     pub source: String,
+    /// `database`, `infisical`, or `legacy`. Env rows leave this empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secret_backend: Option<String>,
     pub last_test_ok: Option<bool>,
     pub last_test_error: Option<String>,
 }
@@ -73,6 +76,7 @@ fn env_connections() -> Vec<ConnectionView> {
             timeout_secs: 120,
             allow_private_network: crate::locality::is_local_provider(slug),
             source: "env".into(),
+            secret_backend: None,
             last_test_ok: None,
             last_test_error: None,
         });
@@ -120,7 +124,9 @@ fn env_connections() -> Vec<ConnectionView> {
     out
 }
 
-fn scoped_tenant(ctx: &crate::middleware::TenantContext) -> Result<Option<Uuid>, ApiError> {
+pub(crate) fn scoped_tenant(
+    ctx: &crate::middleware::TenantContext,
+) -> Result<Option<Uuid>, ApiError> {
     match crate::middleware::resolve_tenant_header(ctx.tenant_id.as_deref()) {
         crate::middleware::ScopeHeader::Absent => Ok(None),
         crate::middleware::ScopeHeader::Resolved(id) => Ok(Some(id)),
@@ -128,6 +134,22 @@ fn scoped_tenant(ctx: &crate::middleware::TenantContext) -> Result<Option<Uuid>,
             "X-Tenant-ID must be a UUID or \"default\"".into(),
         )),
     }
+}
+
+#[utoipa::path(get, path = "/api/v1/connections/shapes", tag = "Providers")]
+pub async fn list_connection_shapes(_admin: ApiRequireAdmin) -> Json<Vec<serde_json::Value>> {
+    let shapes = crate::providers::connection_shapes::CONNECTION_SHAPES
+        .iter()
+        .map(|shape| {
+            serde_json::json!({
+                "id": shape.id,
+                "label": shape.label,
+                "default_base_url": shape.default_base_url,
+                "hint": shape.hint,
+            })
+        })
+        .collect();
+    Json(shapes)
 }
 
 #[utoipa::path(get, path = "/api/v1/connections", tag = "Providers")]
@@ -172,6 +194,7 @@ struct ConnectionRow {
     auth_scheme: String,
     key_fingerprint: Option<String>,
     key_configured: bool,
+    secret_backend: Option<String>,
     timeout_secs: i32,
     allow_private_network: bool,
     last_test_ok: Option<bool>,
@@ -192,6 +215,7 @@ impl ConnectionRow {
             auth_scheme: self.auth_scheme,
             key_fingerprint: self.key_fingerprint,
             key_configured: self.key_configured,
+            secret_backend: self.secret_backend,
             timeout_secs: self.timeout_secs,
             allow_private_network: self.allow_private_network,
             source: "db".into(),
@@ -242,25 +266,38 @@ pub async fn delete_connection(
                 retry_after_secs: 5,
             })?;
         let tenant = scoped_tenant(&tenant_ctx)?;
-        let n = if let Some(tenant_id) = tenant {
-            sqlx::query(
+        let found = if let Some(tenant_id) = tenant {
+            sqlx::query_as::<_, DeletedConnection>(
                 "DELETE FROM provider_connections \
-                 WHERE id = $1 AND (tenant_id IS NULL OR tenant_id = $2)",
+                 WHERE id = $1 AND (tenant_id IS NULL OR tenant_id = $2) \
+                 RETURNING tenant_id, secret_ref",
             )
             .bind(id)
             .bind(tenant_id)
-            .execute(pool)
+            .fetch_optional(pool)
             .await
         } else {
-            sqlx::query("DELETE FROM provider_connections WHERE id = $1")
-                .bind(id)
-                .execute(pool)
-                .await
+            sqlx::query_as::<_, DeletedConnection>(
+                "DELETE FROM provider_connections WHERE id = $1 RETURNING tenant_id, secret_ref",
+            )
+            .bind(id)
+            .fetch_optional(pool)
+            .await
         }
-        .map_err(map_sql)?
-        .rows_affected();
-        if n == 0 {
+        .map_err(map_sql)?;
+        let Some(found) = found else {
             return Err(ApiError::NotFound("connection not found".into()));
+        };
+        // Best effort: an unreachable Infisical must not trap the connection row.
+        if let Some(value) = found.secret_ref {
+            if let Ok(reference) = serde_json::from_value(value) {
+                if let Err(err) = crate::providers::secret_manager::SecretService::new(pool.clone())
+                    .delete_ref(found.tenant_id, &reference)
+                    .await
+                {
+                    tracing::warn!(error = %err, "connection deleted but its secret could not be removed");
+                }
+            }
         }
         Ok(StatusCode::NO_CONTENT)
     }
@@ -293,8 +330,8 @@ pub async fn test_stored_connection(
         let tenant = scoped_tenant(&tenant_ctx)?;
         let row = if let Some(tenant_id) = tenant {
             sqlx::query_as::<_, StoredProbeRow>(
-                "SELECT api_shape, base_url, auth_scheme, api_key_ciphertext, api_key_nonce, key_id, \
-                        allow_private_network \
+                "SELECT tenant_id, api_shape, base_url, auth_scheme, api_key_ciphertext, api_key_nonce, \
+                        key_id, secret_ref, allow_private_network \
                  FROM provider_connections \
                  WHERE id = $1 AND (tenant_id IS NULL OR tenant_id = $2)",
             )
@@ -304,8 +341,8 @@ pub async fn test_stored_connection(
             .await
         } else {
             sqlx::query_as::<_, StoredProbeRow>(
-                "SELECT api_shape, base_url, auth_scheme, api_key_ciphertext, api_key_nonce, key_id, \
-                        allow_private_network \
+                "SELECT tenant_id, api_shape, base_url, auth_scheme, api_key_ciphertext, api_key_nonce, \
+                        key_id, secret_ref, allow_private_network \
                  FROM provider_connections WHERE id = $1",
             )
             .bind(id)
@@ -315,19 +352,15 @@ pub async fn test_stored_connection(
         .map_err(map_sql)?
         .ok_or_else(|| ApiError::NotFound("connection not found".into()))?;
 
-        let api_key = match (row.api_key_ciphertext, row.api_key_nonce, row.key_id) {
-            (Some(ct), Some(nonce), Some(kid)) => {
-                let env = edgequake_secrets::Envelope {
-                    ciphertext: ct,
-                    nonce,
-                    key_id: kid,
-                };
-                edgequake_secrets::decrypt_string(&env)
-                    .ok()
-                    .map(|s| s.expose().to_string())
-            }
-            _ => None,
-        };
+        let api_key = crate::providers::secret_manager::reveal_connection_key(
+            pool,
+            row.tenant_id,
+            row.secret_ref,
+            row.api_key_ciphertext,
+            row.api_key_nonce,
+            row.key_id,
+        )
+        .await?;
         let probe = probe_provider(ProbeRequest {
             shape: row.api_shape,
             base_url: Some(row.base_url),
@@ -384,22 +417,47 @@ async fn upsert(
         .await
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
+    if !crate::providers::connection_shapes::accept_api_shape(&body.api_shape) {
+        return Err(ApiError::BadRequest(format!(
+            "unknown API shape '{}'. Choose OpenAI-compatible or Anthropic-compatible.",
+            body.api_shape
+        )));
+    }
+
+    let connection_id = id.unwrap_or_else(Uuid::new_v4);
     let mut fingerprint = None;
     let mut ciphertext: Option<Vec<u8>> = None;
     let mut nonce: Option<Vec<u8>> = None;
-    let mut key_id = None;
+    let mut key_id: Option<String> = None;
+    let mut secret_ref: Option<serde_json::Value> = None;
+    let mut replace_secret = false;
     if let Some(k) = body.api_key.as_deref().filter(|s| !s.is_empty()) {
-        if !edgequake_secrets::secrets_configured() {
-            return Err(ApiError::BadRequest(
-                "EDGEQUAKE_SECRETS_KEY is required to store API keys".into(),
-            ));
-        }
-        let env =
-            edgequake_secrets::encrypt_string(k).map_err(|e| ApiError::Internal(e.to_string()))?;
+        replace_secret = true;
         fingerprint = Some(edgequake_secrets::SecretString::new(k).fingerprint());
-        ciphertext = Some(env.ciphertext);
-        nonce = Some(env.nonce);
-        key_id = Some(env.key_id);
+        // New keys are a secret reference. The inline columns stay null.
+        #[cfg(feature = "postgres")]
+        {
+            let pool = state
+                .pg_pool
+                .clone()
+                .ok_or_else(|| ApiError::ServiceUnavailable {
+                    message: "PostgreSQL required".into(),
+                    retry_after_secs: 5,
+                })?;
+            let stored = crate::providers::secret_manager::SecretService::new(pool)
+                .put(tenant_id, &format!("eq-conn-{connection_id}"), k)
+                .await?;
+            secret_ref =
+                Some(serde_json::to_value(&stored).map_err(|e| ApiError::Internal(e.to_string()))?);
+        }
+        #[cfg(not(feature = "postgres"))]
+        {
+            let _ = (k, connection_id);
+            return Err(ApiError::ServiceUnavailable {
+                message: "PostgreSQL required".into(),
+                retry_after_secs: 5,
+            });
+        }
     }
 
     #[cfg(feature = "postgres")]
@@ -462,6 +520,8 @@ async fn upsert(
                     .bind(timeout)
                     .bind(allow_private)
                     .bind(tenant)
+                    .bind(replace_secret)
+                    .bind(&secret_ref)
                     .fetch_one(pool)
                     .await
             } else {
@@ -479,22 +539,28 @@ async fn upsert(
                     .bind(fingerprint.as_deref())
                     .bind(timeout)
                     .bind(allow_private)
+                    .bind(None::<Uuid>)
+                    .bind(replace_secret)
+                    .bind(&secret_ref)
                     .fetch_one(pool)
                     .await
             }
             .map_err(map_sql)?;
             updated
         } else {
-            sqlx::query_as::<_, ConnectionRow>(
+            let inserted = sqlx::query_as::<_, ConnectionRow>(
                 r#"INSERT INTO provider_connections (
-                    tenant_id, slug, display_name, api_shape, locality, base_url, auth_scheme,
+                    id, tenant_id, slug, display_name, api_shape, locality, base_url, auth_scheme,
                     api_key_ciphertext, api_key_nonce, key_id, key_fingerprint, timeout_secs,
-                    allow_private_network
-                   ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                    allow_private_network, secret_ref
+                   ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
                    RETURNING id, tenant_id, slug, display_name, api_shape, locality, base_url,
-                             auth_scheme, key_fingerprint, api_key_ciphertext IS NOT NULL AS key_configured,
+                             auth_scheme, key_fingerprint,
+                             (api_key_ciphertext IS NOT NULL OR secret_ref IS NOT NULL) AS key_configured,
+                             COALESCE(secret_ref->>'backend', CASE WHEN api_key_ciphertext IS NOT NULL THEN 'legacy' END) AS secret_backend,
                              timeout_secs, allow_private_network, last_test_ok, last_test_error"#,
             )
+            .bind(connection_id)
             .bind(tenant_id)
             .bind(&body.slug)
             .bind(&body.display_name)
@@ -508,15 +574,40 @@ async fn upsert(
             .bind(fingerprint.as_deref())
             .bind(timeout)
             .bind(allow_private)
+            .bind(&secret_ref)
             .fetch_one(pool)
-            .await
-            .map_err(map_sql)?
+            .await;
+            match inserted {
+                Ok(row) => row,
+                Err(err) => {
+                    if let Some(value) = secret_ref {
+                        if let Ok(reference) = serde_json::from_value(value) {
+                            let _ =
+                                crate::providers::secret_manager::SecretService::new(pool.clone())
+                                    .delete_ref(tenant_id, &reference)
+                                    .await;
+                        }
+                    }
+                    return Err(map_sql(err));
+                }
+            }
         };
         Ok(row.into_view())
     }
     #[cfg(not(feature = "postgres"))]
     {
-        let _ = (state, id, tenant_id, ciphertext, nonce, key_id, fingerprint);
+        let _ = (
+            state,
+            id,
+            tenant_id,
+            ciphertext,
+            nonce,
+            key_id,
+            fingerprint,
+            secret_ref,
+            replace_secret,
+            connection_id,
+        );
         Err(ApiError::ServiceUnavailable {
             message: "PostgreSQL required".into(),
             retry_after_secs: 5,
@@ -526,24 +617,35 @@ async fn upsert(
 
 #[cfg(feature = "postgres")]
 #[derive(sqlx::FromRow)]
+struct DeletedConnection {
+    tenant_id: Option<Uuid>,
+    secret_ref: Option<serde_json::Value>,
+}
+
+#[cfg(feature = "postgres")]
+#[derive(sqlx::FromRow)]
 struct StoredProbeRow {
+    tenant_id: Option<Uuid>,
     api_shape: String,
     base_url: String,
     auth_scheme: String,
     api_key_ciphertext: Option<Vec<u8>>,
     api_key_nonce: Option<Vec<u8>>,
     key_id: Option<String>,
+    secret_ref: Option<serde_json::Value>,
     allow_private_network: bool,
 }
 
 const CONNECTION_COLUMNS: &str =
     "id, tenant_id, slug, display_name, api_shape, locality, base_url, \
-     auth_scheme, key_fingerprint, api_key_ciphertext IS NOT NULL AS key_configured, \
+     auth_scheme, key_fingerprint, \
+     (api_key_ciphertext IS NOT NULL OR secret_ref IS NOT NULL) AS key_configured, \
+     COALESCE(secret_ref->>'backend', CASE WHEN api_key_ciphertext IS NOT NULL THEN 'legacy' END) AS secret_backend, \
      timeout_secs, allow_private_network, last_test_ok, last_test_error";
 
 const CONNECTION_PAGE_COLUMNS: &str =
     "id, tenant_id, slug, display_name, api_shape, locality, base_url, \
-     auth_scheme, key_fingerprint, key_configured, \
+     auth_scheme, key_fingerprint, key_configured, secret_backend, \
      timeout_secs, allow_private_network, last_test_ok, last_test_error";
 
 /// A generic plan cannot use `($1 IS NULL OR tenant_id IS NULL OR tenant_id = $1)`
@@ -567,20 +669,22 @@ pub fn connection_list_sql(scoped: bool) -> String {
     }
 }
 
-fn connection_update_sql(scoped: bool) -> String {
+pub fn connection_update_sql(scoped: bool) -> String {
     let tenant = if scoped {
         "AND (tenant_id IS NULL OR tenant_id = $14)"
     } else {
-        ""
+        // $14 stays in the statement so $15 and $16 keep their numbers.
+        "AND $14::uuid IS NULL"
     };
     format!(
         "UPDATE provider_connections SET \
             slug = $2, display_name = $3, api_shape = $4, locality = $5, base_url = $6, \
             auth_scheme = $7, \
-            api_key_ciphertext = COALESCE($8, api_key_ciphertext), \
-            api_key_nonce = COALESCE($9, api_key_nonce), \
-            key_id = COALESCE($10, key_id), \
-            key_fingerprint = COALESCE($11, key_fingerprint), \
+            api_key_ciphertext = CASE WHEN $15 THEN $8 ELSE COALESCE($8, api_key_ciphertext) END, \
+            api_key_nonce = CASE WHEN $15 THEN $9 ELSE COALESCE($9, api_key_nonce) END, \
+            key_id = CASE WHEN $15 THEN $10 ELSE COALESCE($10, key_id) END, \
+            key_fingerprint = CASE WHEN $15 THEN $11 ELSE COALESCE($11, key_fingerprint) END, \
+            secret_ref = CASE WHEN $15 THEN $16::jsonb ELSE secret_ref END, \
             timeout_secs = $12, allow_private_network = $13, \
             updated_at = now() \
          WHERE id = $1 {tenant} \
@@ -614,7 +718,8 @@ mod tests {
         assert!(open.contains("ORDER BY slug"));
         let update = connection_update_sql(true);
         assert!(update.contains("tenant_id IS NULL OR tenant_id = $14"));
+        assert!(update.contains("secret_ref"));
         assert!(!update.contains("$14::uuid IS NULL"));
-        assert!(!connection_update_sql(false).contains("$14"));
+        assert!(connection_update_sql(false).contains("$14::uuid IS NULL"));
     }
 }

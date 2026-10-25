@@ -1,0 +1,156 @@
+"use client";
+
+/**
+ * SPEC-175 W4/W5 — server state for the typed model editors.
+ *
+ * One query key object for every model-policy read, so writes invalidate exactly what they
+ * change. Mutations write the returned policy into the cache and refresh the effective usages
+ * the resolution ladder depends on.
+ */
+
+import {
+  fetchEffectiveUsages,
+  fetchEligibleModels,
+  fetchTenantModelCatalog,
+  getTenantModelPolicy,
+  getWorkspaceModelPolicy,
+  putTenantModelPolicy,
+  putWorkspaceModelPolicy,
+  type EligibleModel,
+  type PolicyRow,
+  type TenantPolicyResponse,
+  type UsageKey,
+  type WorkspacePolicyResponse,
+  USAGE_KEYS,
+} from "@/lib/api/edgequake/model-catalog";
+import { apiClient } from "@/lib/api/client";
+import { selectableConnections } from "@/lib/settings/connection-options";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+
+export const modelPolicyQueryKeys = {
+  effectiveRoot: ["effective-usages"] as const,
+  effective: (workspaceId: string) => ["effective-usages", workspaceId] as const,
+  eligibleRoot: ["eligible-models"] as const,
+  eligible: (workspaceId: string, usage: UsageKey) => ["eligible-models", workspaceId, usage] as const,
+  catalog: (tenantId: string) => ["tenant-model-catalog", tenantId] as const,
+  tenantPolicy: (tenantId: string) => ["tenant-model-policy", tenantId] as const,
+  workspacePolicy: (workspaceId: string) => ["workspace-model-policy", workspaceId] as const,
+  connections: ["connections"] as const,
+};
+
+/** Connections the workspace role editor can pick. A failed load yields an empty list. */
+export interface ConnectionOption {
+  id: string;
+  slug: string;
+  display_name: string;
+  source: string;
+}
+
+export function useConnectionOptions() {
+  return useQuery({
+    queryKey: modelPolicyQueryKeys.connections,
+    queryFn: async () => {
+      const data = await apiClient<ConnectionOption[]>("/connections");
+      return Array.isArray(data) ? data : [];
+    },
+    // `select` runs on the shared cache. The connections screen stores the full list under the same key.
+    select: (data) => selectableConnections(data),
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+export function useEffectiveUsages(workspaceId: string | null) {
+  return useQuery({
+    queryKey: modelPolicyQueryKeys.effective(workspaceId ?? ""),
+    queryFn: () => fetchEffectiveUsages(workspaceId as string),
+    enabled: !!workspaceId,
+    staleTime: 15_000,
+    retry: false,
+  });
+}
+
+export function useEligibleModels(workspaceId: string | null, usage: UsageKey) {
+  return useQuery({
+    queryKey: modelPolicyQueryKeys.eligible(workspaceId ?? "", usage),
+    queryFn: () => fetchEligibleModels(workspaceId as string, usage),
+    enabled: !!workspaceId,
+    staleTime: 15_000,
+    retry: false,
+  });
+}
+
+/** Eligible models for every usage, keyed by usage. Used by the narrowing editor. */
+export function useEligibleModelsByUsage(workspaceId: string | null) {
+  const results = useQueries({
+    queries: USAGE_KEYS.map((usage) => ({
+      queryKey: modelPolicyQueryKeys.eligible(workspaceId ?? "", usage),
+      queryFn: () => fetchEligibleModels(workspaceId as string, usage),
+      enabled: !!workspaceId,
+      staleTime: 15_000,
+      retry: false,
+    })),
+  });
+  const byUsage = {} as Record<UsageKey, EligibleModel[]>;
+  USAGE_KEYS.forEach((usage, i) => {
+    byUsage[usage] = results[i]?.data?.models ?? [];
+  });
+  return { byUsage, loading: results.some((r) => r.isPending && r.fetchStatus !== "idle") };
+}
+
+export function useTenantModelCatalog(tenantId: string | null) {
+  return useQuery({
+    queryKey: modelPolicyQueryKeys.catalog(tenantId ?? ""),
+    queryFn: () => fetchTenantModelCatalog(tenantId as string),
+    enabled: !!tenantId,
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
+export function useTenantModelPolicy(tenantId: string | null) {
+  return useQuery({
+    queryKey: modelPolicyQueryKeys.tenantPolicy(tenantId ?? ""),
+    queryFn: () => getTenantModelPolicy(tenantId as string),
+    enabled: !!tenantId,
+    staleTime: 15_000,
+    retry: false,
+  });
+}
+
+export function useWorkspaceModelPolicy(workspaceId: string | null) {
+  return useQuery({
+    queryKey: modelPolicyQueryKeys.workspacePolicy(workspaceId ?? ""),
+    queryFn: () => getWorkspaceModelPolicy(workspaceId as string),
+    enabled: !!workspaceId,
+    staleTime: 15_000,
+    retry: false,
+  });
+}
+
+/** Full-replace save of the tenant ceiling. The server returns the new policy. */
+export function useSaveTenantModelPolicy(tenantId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (rows: PolicyRow[]) => putTenantModelPolicy(tenantId, rows),
+    onSuccess: (policy: TenantPolicyResponse) => {
+      queryClient.setQueryData(modelPolicyQueryKeys.tenantPolicy(tenantId), policy);
+      // A ceiling change moves every workspace's eligible models and resolved usages.
+      void queryClient.invalidateQueries({ queryKey: modelPolicyQueryKeys.effectiveRoot });
+      void queryClient.invalidateQueries({ queryKey: modelPolicyQueryKeys.eligibleRoot });
+    },
+  });
+}
+
+/** Full-replace save of one workspace's narrowing rows. */
+export function useSaveWorkspaceModelPolicy(workspaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (rows: PolicyRow[]) => putWorkspaceModelPolicy(workspaceId, rows),
+    onSuccess: (policy: WorkspacePolicyResponse) => {
+      queryClient.setQueryData(modelPolicyQueryKeys.workspacePolicy(workspaceId), policy);
+      void queryClient.invalidateQueries({ queryKey: modelPolicyQueryKeys.effective(workspaceId) });
+      void queryClient.invalidateQueries({ queryKey: modelPolicyQueryKeys.eligibleRoot });
+    },
+  });
+}

@@ -74,12 +74,18 @@ pub fn collect() -> DoctorReport {
 
     checks.push(DoctorCheck {
         id: "secrets_key".into(),
-        ok: edgequake_secrets::secrets_configured() || std::env::var("EDGEQUAKE_DEV_MODE").is_ok(),
+        // A missing key does not fail doctor. The server boots; saving a key is refused.
+        ok: true,
         message: if edgequake_secrets::secrets_configured() {
             "EDGEQUAKE_SECRETS_KEY configured".into()
         } else {
-            "EDGEQUAKE_SECRETS_KEY missing (cannot store connection keys)".into()
+            "EDGEQUAKE_SECRETS_KEY missing — the server runs, but saving a provider key is refused until it is set".into()
         },
+    });
+    checks.push(DoctorCheck {
+        id: "infisical".into(),
+        ok: true,
+        message: "Infisical is optional. The database secret backend is the default and needs no Infisical configuration.".into(),
     });
 
     let jwt = std::env::var("JWT_SECRET").unwrap_or_default();
@@ -121,5 +127,19 @@ mod tests {
         std::env::remove_var("DATABASE_URL");
         let r = collect();
         assert!(r.checks.iter().any(|c| c.id == "database" && !c.ok));
+    }
+
+    #[test]
+    fn a_missing_secrets_key_does_not_fail_the_check_and_infisical_stays_optional() {
+        let report = collect();
+        let secrets = report
+            .checks
+            .iter()
+            .find(|c| c.id == "secrets_key")
+            .unwrap();
+        assert!(secrets.ok);
+        let infisical = report.checks.iter().find(|c| c.id == "infisical").unwrap();
+        assert!(infisical.ok);
+        assert!(infisical.message.contains("optional"));
     }
 }

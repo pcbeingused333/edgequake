@@ -8,6 +8,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { languages, type LanguageCode } from '@/lib/i18n';
+import { useSettingsStore } from '@/stores/use-settings-store';
 import { Globe } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -19,8 +20,10 @@ export function LanguageSelector() {
       (lang) => lang.code === (i18n.language?.split("-")[0] ?? "en"),
     ) || languages[0];
 
+  // SPEC-175 LAW-175-7: the settings store is the single language writer.
+  const setLanguage = useSettingsStore((s) => s.setLanguage);
   const handleLanguageChange = (code: LanguageCode) => {
-    i18n.changeLanguage(code);
+    setLanguage(code);
   };
 
   return (

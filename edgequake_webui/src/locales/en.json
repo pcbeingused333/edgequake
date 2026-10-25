@@ -1102,21 +1102,11 @@
       "defaultMode": "Default Query Mode",
       "defaultModeDesc": "Default retrieval mode for queries",
       "enableStreaming": "Enable Streaming",
-      "enableStreamingDesc": "Show responses as they are generated",
-      "enableReranking": "Enable Reranking",
-      "enableRerankingDesc": "Improve retrieval precision with semantic reranking",
-      "rerankTopK": "Rerank Top K",
-      "rerankTopKDesc": "Number of top results after reranking"
+      "enableStreamingDesc": "Show responses as they are generated"
     },
     "ingestion": {
       "title": "Ingestion Settings",
-      "subtitle": "Advanced settings for document ingestion quality",
-      "enableGleaning": "Enable Gleaning",
-      "enableGleaningDesc": "Multiple extraction passes for higher quality entities",
-      "maxGleaning": "Max Gleaning Passes",
-      "maxGleaningDesc": "Maximum number of extraction passes (1-3)",
-      "llmSummarization": "LLM Summarization",
-      "llmSummarizationDesc": "Use LLM to merge entity descriptions intelligently"
+      "subtitle": "Advanced settings for document ingestion quality"
     },
     "toasts": {
       "historyCleared": "Query history cleared",

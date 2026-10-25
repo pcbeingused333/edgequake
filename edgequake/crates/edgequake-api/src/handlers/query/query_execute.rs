@@ -21,14 +21,16 @@ use crate::error::{ApiError, ApiResult};
 use crate::handlers::auth::OptionalAuth;
 use crate::middleware::TenantContext;
 use crate::providers::{LlmResolutionRequest, WorkspaceProviderResolver};
+use crate::services::model_policy_enforcement::ensure_pair_eligible;
 use crate::services::{
     build_engine_request, build_legacy_query_response, build_legacy_query_sources,
     ensure_debug_granularity_allowed, execute_sota_query_with_auth_fallback, record_audit,
-    resolve_workspace_query_resources, validate_llm_override_pair, with_request_context,
-    QueryExecutionParams,
+    reject_rerank_model, resolve_workspace_query_resources, validate_llm_override_pair,
+    with_request_context, QueryExecutionParams,
 };
 use crate::state::AppState;
 use crate::validation::validate_query;
+use edgequake_core::Usage;
 use edgequake_query::QueryMode;
 
 use super::workspace_resolve::{get_workspace_llm_info, resolve_query_workspace};
@@ -133,6 +135,15 @@ pub async fn execute_query(
         request.llm_provider.as_deref(),
         request.llm_model.as_deref(),
     )?;
+    reject_rerank_model(request.rerank_model.as_deref())?;
+    ensure_pair_eligible(
+        &state,
+        workspace.as_ref(),
+        Usage::Query,
+        request.llm_provider.as_deref(),
+        request.llm_model.as_deref(),
+    )
+    .await?;
 
     let resolver = WorkspaceProviderResolver::from_app_state(&state);
     let extra_headers = propagation.merge_with(request.extra_headers.clone());

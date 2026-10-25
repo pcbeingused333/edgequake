@@ -11,6 +11,7 @@ use crate::handlers::auth::OptionalAuth;
 use crate::handlers::query::{resolve_chunk_file_paths, resolve_query_workspace};
 use crate::middleware::TenantContext;
 use crate::providers::{LlmResolutionRequest, WorkspaceProviderResolver};
+use crate::services::model_policy_enforcement::ensure_pair_eligible;
 use crate::services::{
     build_message_context_from_engine, ensure_debug_granularity_allowed,
     execute_sota_query_with_auth_fallback, resolve_workspace_query_resources,
@@ -19,6 +20,7 @@ use crate::state::AppState;
 use edgequake_core::types::{
     CreateConversationRequest, CreateMessageRequest, MessageRole, UpdateMessageRequest,
 };
+use edgequake_core::Usage;
 use edgequake_query::QueryRequest as EngineQueryRequest;
 
 use super::{
@@ -245,6 +247,16 @@ pub async fn chat_completion(
         .await
     {
         Ok(Some(resolved)) => {
+            if llm_request.has_explicit_provider() {
+                ensure_pair_eligible(
+                    &state,
+                    workspace.as_ref(),
+                    Usage::Query,
+                    Some(&resolved.provider_name),
+                    Some(&resolved.model_name),
+                )
+                .await?;
+            }
             debug!(
                 provider = %resolved.provider_name,
                 model = %resolved.model_name,

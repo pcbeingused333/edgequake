@@ -10,8 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiClient } from '@/lib/api/client';
+import { useQuery } from '@tanstack/react-query';
 import { Check, Copy, ExternalLink, RefreshCw, X } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 export type LangfuseRequirement = {
@@ -50,26 +50,25 @@ function statusLabel(data: LangfuseSettingsResponse | null): {
   return { text: 'Not configured', variant: 'outline' };
 }
 
+/** Status is read through React Query: a failed read shows an error, never a stuck loader. */
+function useLangfuseStatus() {
+  return useQuery({
+    queryKey: ['settings', 'langfuse'],
+    queryFn: () => apiClient<LangfuseSettingsResponse>('/settings/langfuse'),
+    retry: false,
+  });
+}
+
+function errorMessage(error: unknown): string | null {
+  if (!error) return null;
+  return error instanceof Error ? error.message : 'Failed to load Langfuse status';
+}
+
 export function LangfuseObservabilityCard() {
-  const [data, setData] = useState<LangfuseSettingsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchStatus = useCallback(async () => {
-    try {
-      const res = await apiClient<LangfuseSettingsResponse>('/settings/langfuse');
-      setData(res);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load Langfuse status');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchStatus();
-  }, [fetchStatus]);
+  const query = useLangfuseStatus();
+  const data = query.data ?? null;
+  const error = errorMessage(query.error);
+  const loading = query.isPending || query.isFetching;
 
   const copySnippet = () => {
     const text = data?.env_snippet ?? '';
@@ -99,10 +98,7 @@ export function LangfuseObservabilityCard() {
             variant="ghost"
             size="icon"
             aria-label="Refresh Langfuse status"
-            onClick={() => {
-              setLoading(true);
-              void fetchStatus();
-            }}
+            onClick={() => void query.refetch()}
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
@@ -167,7 +163,7 @@ export function LangfuseObservabilityCard() {
             ) : null}
 
             <pre className="rounded-md bg-muted p-3 text-xs overflow-x-auto whitespace-pre-wrap">
-              {data?.env_snippet ?? 'Loading…'}
+              {data?.env_snippet ?? (loading ? 'Loading…' : 'No snippet available. Refresh to try again.')}
             </pre>
 
             <div className="flex flex-wrap gap-2">

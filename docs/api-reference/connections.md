@@ -21,7 +21,7 @@ A Connection is a named provider endpoint stored in PostgreSQL (migration 169, t
 | `base_url` | Provider base URL (http or https) |
 | `locality` | `local` or `cloud`. Default: derived from the host in `base_url`. |
 | `auth_scheme` | `none`, `bearer` or `x_api_key` (default `none`) |
-| `api_key` | Write-only. Never returned. Requires `EDGEQUAKE_SECRETS_KEY`. |
+| `api_key` | Write-only. Never returned. A new key is stored through the tenant secret backend (database by default, Infisical if that tenant selected it). The database backend requires `EDGEQUAKE_SECRETS_KEY`. |
 | `timeout_secs` | Default 120 |
 | `allow_private_network` | Allow loopback and private IPs. Defaults to true when `locality` is `local`. |
 
@@ -33,6 +33,10 @@ Response view (never includes the key): `id`, `tenant_id`, `slug`, `display_name
 
 | Method | Path | Success |
 |--------|------|---------|
+| GET | `/api/v1/connections/shapes` | 200 presets: `openai_chat`, `anthropic_messages`, `ollama` |
+| GET | `/api/v1/secret-backend` | 200 `{ kind, secrets_key_configured, infisical }`. No secret values. |
+| PUT | `/api/v1/secret-backend` | 200. `kind` is `database` (default) or `infisical`. |
+| POST | `/api/v1/secret-backend/test` | 200 `{ ok: true }` after a throwaway write, read and delete. |
 | GET | `/api/v1/connections` | 200 array of Connection views |
 | POST | `/api/v1/connections` | 201 created view |
 | PUT | `/api/v1/connections/{id}` | 200 updated view |

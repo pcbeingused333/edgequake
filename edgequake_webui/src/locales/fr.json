@@ -1057,21 +1057,11 @@
       "defaultMode": "Mode de requête par défaut",
       "defaultModeDesc": "Mode de récupération par défaut pour les requêtes",
       "enableStreaming": "Activer le streaming",
-      "enableStreamingDesc": "Afficher les réponses au fur et à mesure de leur génération",
-      "enableReranking": "Activer le reclassement",
-      "enableRerankingDesc": "Améliorer la précision de récupération avec le reclassement sémantique",
-      "rerankTopK": "Top K après reclassement",
-      "rerankTopKDesc": "Nombre de meilleurs résultats après reclassement"
+      "enableStreamingDesc": "Afficher les réponses au fur et à mesure de leur génération"
     },
     "ingestion": {
       "title": "Paramètres d'ingestion",
-      "subtitle": "Paramètres avancés pour la qualité de l'ingestion de documents",
-      "enableGleaning": "Activer le glanage",
-      "enableGleaningDesc": "Plusieurs passes d'extraction pour des entités de meilleure qualité",
-      "maxGleaning": "Nombre max de passes",
-      "maxGleaningDesc": "Nombre maximum de passes d'extraction (1-3)",
-      "llmSummarization": "Résumé LLM",
-      "llmSummarizationDesc": "Utiliser le LLM pour fusionner intelligemment les descriptions d'entités"
+      "subtitle": "Paramètres avancés pour la qualité de l'ingestion de documents"
     },
     "toasts": {
       "historyCleared": "Historique des requêtes effacé",

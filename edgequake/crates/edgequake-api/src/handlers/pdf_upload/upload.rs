@@ -10,6 +10,7 @@ use super::helpers::{
 use super::progress_identity::seed_pdf_job_progress;
 use super::types::*;
 use edgequake_audit::{AuditEventType, AuditResult};
+use edgequake_core::Usage;
 
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::documents::upload::{
@@ -19,6 +20,7 @@ use crate::middleware::TenantContext;
 use crate::multipart_upload::{
     ensure_batch_file_cap, stream_field_to_tempfile, StreamedUploadFile,
 };
+use crate::services::model_policy_enforcement::ensure_pair_eligible;
 use crate::services::{
     record_compliance_event, recycle_orphan_workspace_pdf, workspace_has_visible_document_for_pdf,
 };
@@ -569,6 +571,18 @@ async fn process_pdf_upload_parts(
         .get_workspace(workspace_id)
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
+    // SPEC-175: a vision pair the client sent must be selectable before workspace
+    // defaults are applied. Workspace defaults themselves are not re-checked here.
+    if options.enable_vision {
+        ensure_pair_eligible(
+            state,
+            workspace.as_ref(),
+            Usage::Vlm,
+            options.vision_provider.as_deref(),
+            options.vision_model.as_deref(),
+        )
+        .await?;
+    }
     if let Some(ref ws) = workspace {
         options.apply_workspace(ws);
     }

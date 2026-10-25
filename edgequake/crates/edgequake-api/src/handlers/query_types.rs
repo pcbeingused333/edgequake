@@ -299,6 +299,10 @@ pub struct StreamQueryRequest {
     #[serde(default)]
     pub reasoning_effort: Option<String>,
 
+    /// SPEC-175 EC-175-09: rejected with 422 `rerank_model_rejected`. Rerank is deployment-level.
+    #[serde(default)]
+    pub rerank_model: Option<String>,
+
     /// Stream format version: "v1" (raw text) or "v2" (structured JSON events, default).
     /// @implements SPEC-006: Backward compatibility
     #[serde(default)]
