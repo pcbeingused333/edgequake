@@ -7,7 +7,7 @@ description: "Release and continuous-delivery runbook."
 
 This runbook covers cutting a product release: the local quality gates, the tag-triggered Docker publish, and the checks after publish. Workspace crates are **not** published to crates.io. Product delivery is GHCR Docker images, built when you push a `vX.Y.Z` tag.
 
-> **Product: v0.38.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.38.1** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 >
 > Upgrade: [upgrade-to-0.38.0.md](upgrade-to-0.38.0.md) (signed MCP upload; schema **219**). Previous: [upgrade-to-0.37.0.md](upgrade-to-0.37.0.md) (original bytes in a private bucket; schema **218**), [upgrade-to-0.36.0.md](upgrade-to-0.36.0.md) (members, invitations, access links, and query migrations 208–212; schema **214**), [upgrade-to-0.35.7.md](upgrade-to-0.35.7.md) (admin organization switch and plain-graph search without Apache AGE; schema **207**), [upgrade-to-0.35.5.md](upgrade-to-0.35.5.md) (Postgres images without Apache AGE; schema **207**), [upgrade-to-0.35.0.md](upgrade-to-0.35.0.md) (SPEC-164 plain graph; schema **206**).
 >

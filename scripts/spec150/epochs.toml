@@ -3,12 +3,13 @@
 # v0.35.1 owns schema 207. v0.35.2 through v0.35.7 serve that migration set.
 # v0.36.0 owns schema 214.
 # v0.37.0 owns schema 218.
-# v0.38.0 owns schema 219. Unreleased HEAD continues through 223.
+# v0.38.0 owns schema 219. v0.38.1 owns schema 224
+# (SPEC-174 clearance through SPEC-179 provider refresh).
 
 [unreleased]
-hash = "610dec2f23613f06"
-max = 223
-files = 221
+hash = "73af5a1576afcbd3"
+max = 224
+files = 222
 
 [[epoch]]
 tag = "v0.2.0"
@@ -353,3 +354,12 @@ key = true
 replay = true
 # max mig 219 (SPEC-173 MCP upload sessions)
 # hash 708f2a8ae446c71a (217 numbered migration files)
+
+[[epoch]]
+tag = "v0.38.1"
+mode = "image"
+pg_majors = [16,17,18]
+key = true
+replay = true
+# max mig 224 (SPEC-179 provider refresh; migrations 220–224)
+# hash 73af5a1576afcbd3 (222 numbered migration files)
