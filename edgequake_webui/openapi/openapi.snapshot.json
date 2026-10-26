@@ -3162,6 +3162,49 @@
         ]
       }
     },
+    "/api/v1/deployment/providers/{slug}/impact": {
+      "get": {
+        "tags": [
+          "Providers"
+        ],
+        "operationId": "get_provider_impact",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Provider slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Assignments that name this provider",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderImpactResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
     "/api/v1/deployment/providers/{slug}/models": {
       "put": {
         "tags": [
@@ -3192,6 +3235,50 @@
         "responses": {
           "204": {
             "description": "Models replaced"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/deployment/providers/{slug}/refresh": {
+      "post": {
+        "tags": [
+          "Providers"
+        ],
+        "summary": "Ask one provider for its model list and store the diff. A failed call\nkeeps the previous cache.",
+        "operationId": "refresh_deployment_provider",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Provider slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Refresh result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderRefreshResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4148,8 +4235,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "recover_stuck"
+        "x-edgequake-v2-job-type": "recover_stuck",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/documents/reprocess": {
@@ -4206,8 +4293,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reprocess_failed",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reprocess_failed"
       }
     },
     "/api/v1/documents/scan": {
@@ -7461,17 +7548,37 @@
         "tags": [
           "Models"
         ],
-        "summary": "`GET /api/v1/models/eligible?workspace_id=&usage=`: models a member may pick.",
+        "summary": "`GET /api/v1/models/eligible`: models a caller may pick for one scope and usage.",
+        "description": "Exactly one of `workspace_id`, `tenant_id`, or `scope=deployment`.",
         "operationId": "get_eligible_models",
         "parameters": [
           {
             "name": "workspace_id",
             "in": "query",
-            "description": "Workspace id",
-            "required": true,
+            "description": "Workspace scope",
+            "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          },
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "description": "Tenant scope",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "description": "deployment for the fleet offer",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           },
           {
@@ -7495,8 +7602,11 @@
               }
             }
           },
+          "400": {
+            "description": "Zero or two scopes"
+          },
           "403": {
-            "description": "Not a member of this workspace"
+            "description": "Caller cannot read this scope"
           },
           "422": {
             "description": "Unknown usage or rerank"
@@ -7592,9 +7702,18 @@
         "tags": [
           "Models"
         ],
-        "summary": "List LLM models only.",
-        "description": "# Implements\n\n- **FEAT0470**: Models Configuration API\n\n# Returns\n\nAll LLM and multimodal models across all enabled providers.",
         "operationId": "list_llm_models",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "query",
+            "description": "Keep models for this provider slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "List of LLM models",
@@ -12465,8 +12584,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "rebuild_knowledge_graph"
+        "x-edgequake-v2-job-type": "rebuild_knowledge_graph",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/workspaces/{workspace_id}/reprocess-documents": {
@@ -13140,8 +13259,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-transport": "websocket",
-        "x-edgequake-upgrade": "RFC6455"
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
       }
     },
     "/ws/progress/{track_id}": {
@@ -15547,6 +15666,13 @@
           "id"
         ],
         "properties": {
+          "embedding_dimension": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
           "id": {
             "type": "string"
           },
@@ -15561,6 +15687,7 @@
           }
         },
         "example": {
+          "embedding_dimension": {},
           "id": {},
           "supports_chat": {},
           "supports_embedding": {},
@@ -18275,6 +18402,17 @@
           "probe": {
             "type": "string"
           },
+          "refresh": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProviderRefreshState",
+                "description": "Last per-provider refresh (SPEC-179). Absent until the first refresh."
+              }
+            ]
+          },
           "slug": {
             "type": "string"
           },
@@ -18290,6 +18428,7 @@
           "offered": {},
           "origin": {},
           "probe": {},
+          "refresh": {},
           "slug": {},
           "withdrawn": {}
         }
@@ -19621,11 +19760,19 @@
           "provider_display_name",
           "model",
           "display_name",
-          "supports_vision"
+          "supports_vision",
+          "supports_streaming"
         ],
         "properties": {
           "display_name": {
             "type": "string"
+          },
+          "embedding_dimension": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
           },
           "model": {
             "type": "string"
@@ -19636,15 +19783,20 @@
           "provider_display_name": {
             "type": "string"
           },
+          "supports_streaming": {
+            "type": "boolean"
+          },
           "supports_vision": {
             "type": "boolean"
           }
         },
         "example": {
           "display_name": {},
+          "embedding_dimension": {},
           "model": {},
           "provider": {},
           "provider_display_name": {},
+          "supports_streaming": {},
           "supports_vision": {}
         }
       },
@@ -19652,7 +19804,9 @@
         "type": "object",
         "required": [
           "usage",
+          "scope",
           "policy_mode",
+          "offer_mode",
           "models"
         ],
         "properties": {
@@ -19662,9 +19816,17 @@
               "$ref": "#/components/schemas/EligibleModelDto"
             }
           },
+          "offer_mode": {
+            "type": "string",
+            "description": "`constrained` when this scope has narrowed its parent offer."
+          },
           "policy_mode": {
             "type": "string",
             "description": "`constrained` when the tenant ceiling restricts this usage."
+          },
+          "scope": {
+            "type": "string",
+            "description": "`workspace`, `tenant`, or `deployment`."
           },
           "usage": {
             "type": "string"
@@ -19672,7 +19834,9 @@
         },
         "example": {
           "models": [],
+          "offer_mode": {},
           "policy_mode": {},
+          "scope": {},
           "usage": {}
         }
       },
@@ -25759,6 +25923,13 @@
           "usages"
         ],
         "properties": {
+          "embedding_dimension": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
           "id": {
             "type": "string"
           },
@@ -25770,6 +25941,7 @@
           }
         },
         "example": {
+          "embedding_dimension": {},
           "id": {},
           "usages": []
         }
@@ -28932,6 +29104,47 @@
           "latency_ms": {}
         }
       },
+      "ProviderImpactResponse": {
+        "type": "object",
+        "required": [
+          "assignments"
+        ],
+        "properties": {
+          "assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderImpactRow"
+            }
+          }
+        },
+        "example": {
+          "assignments": []
+        }
+      },
+      "ProviderImpactRow": {
+        "type": "object",
+        "required": [
+          "scope",
+          "id",
+          "field"
+        ],
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "field": {},
+          "id": {},
+          "scope": {}
+        }
+      },
       "ProviderInfo": {
         "type": "object",
         "description": "Information about a single provider",
@@ -28970,6 +29183,10 @@
           "name": {
             "type": "string",
             "description": "Human-readable provider name"
+          },
+          "refreshable": {
+            "type": "boolean",
+            "description": "Live discovery can refresh this slug (Dynamic or Hybrid). Static-only is false."
           }
         },
         "example": {
@@ -28978,7 +29195,8 @@
           "default_models": {},
           "description": {},
           "id": {},
-          "name": {}
+          "name": {},
+          "refreshable": {}
         }
       },
       "ProviderOfferResponse": {
@@ -28990,7 +29208,8 @@
           "enabled_count",
           "can_manage",
           "providers",
-          "legacy"
+          "legacy",
+          "revision"
         ],
         "properties": {
           "can_manage": {
@@ -29019,6 +29238,10 @@
               "$ref": "#/components/schemas/OfferProviderDto"
             }
           },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
           "tenant_id": {
             "type": "string"
           },
@@ -29036,8 +29259,89 @@
           "offer_mode": {},
           "parent_count": {},
           "providers": [],
+          "revision": {},
           "tenant_id": {},
           "workspace_id": {}
+        }
+      },
+      "ProviderRefreshResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "added",
+          "removed",
+          "refreshed_at"
+        ],
+        "properties": {
+          "added": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "refreshed_at": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "added": [],
+          "error": {},
+          "refreshed_at": {},
+          "removed": [],
+          "status": {}
+        }
+      },
+      "ProviderRefreshState": {
+        "type": "object",
+        "required": [
+          "refreshed_at",
+          "status",
+          "added",
+          "removed"
+        ],
+        "properties": {
+          "added": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "refreshed_at": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "added": {},
+          "error": {},
+          "refreshed_at": {},
+          "removed": {},
+          "status": {}
         }
       },
       "ProviderResponse": {
@@ -36807,6 +37111,10 @@
                 "type": "string",
                 "description": "Embedding provider (openai, ollama, lmstudio)."
               },
+              "embedding_rebuild_required": {
+                "type": "boolean",
+                "description": "Set on a workspace update when the resolved embedding model, provider, or dimension\nchanged. Stored vectors came from the previous embedder and need a rebuild (SPEC-178)."
+              },
               "embedding_resolution_source": {
                 "type": [
                   "string",
@@ -36930,6 +37238,14 @@
                     "description": "Default PDF parser backend for this workspace\n(`vision` | `edgeparse` | `edgeparse-ocr` | `auto`; None means server default)."
                   }
                 ]
+              },
+              "previous_embedding_dimension": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "Resolved embedding dimension before the update; set only when a rebuild is required.",
+                "minimum": 0
               },
               "relation_edges": {
                 "type": [

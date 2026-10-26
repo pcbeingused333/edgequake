@@ -37,7 +37,7 @@ pub async fn resolve_workspace_query_resources(
     state: &AppState,
     workspace_id: Option<&str>,
 ) -> ApiResult<WorkspaceQueryResources> {
-    let keyword_llm = resolve_keyword_llm(state, workspace_id).await;
+    let keyword_llm = resolve_keyword_llm(state, workspace_id).await?;
     let Some(workspace_id) = workspace_id else {
         return Ok(WorkspaceQueryResources {
             keyword_llm,
@@ -92,23 +92,37 @@ fn env_keyword_llm_cached() -> Option<Arc<dyn LLMProvider>> {
 async fn resolve_keyword_llm(
     state: &AppState,
     workspace_id: Option<&str>,
-) -> Option<Arc<dyn LLMProvider>> {
+) -> ApiResult<Option<Arc<dyn LLMProvider>>> {
     if let Some(llm) = env_keyword_llm_cached() {
-        return Some(llm);
+        return Ok(Some(llm));
     }
 
-    let workspace_id = workspace_id?;
-    let ws_uuid = crate::middleware::resolve_workspace_uuid(Some(workspace_id))?;
-    let ws = state
-        .workspace_service
-        .get_workspace(ws_uuid)
-        .await
-        .ok()
-        .flatten()?;
+    let Some(workspace_id) = workspace_id else {
+        return Ok(None);
+    };
+    let Some(ws_uuid) = crate::middleware::resolve_workspace_uuid(Some(workspace_id)) else {
+        return Ok(None);
+    };
+    let Ok(Some(ws)) = state.workspace_service.get_workspace(ws_uuid).await else {
+        return Ok(None);
+    };
     // Only override when workspace metadata explicitly configures keyword role
-    // (avoid doubling Query LLM when roles are unset).
-    let _cfg = edgequake_core::role_config_from_workspace(&ws, edgequake_core::LlmRole::Keyword)?;
+    // (avoid doubling Query LLM when roles are unset). An ineligible role fails
+    // the query. It does not borrow the query model.
+    let Some(_cfg) =
+        edgequake_core::role_config_from_workspace(&ws, edgequake_core::LlmRole::Keyword)
+    else {
+        return Ok(None);
+    };
     let role = edgequake_core::resolve_role_llm(&ws, edgequake_core::LlmRole::Keyword);
+    crate::services::model_gate::judge_running_pair(
+        state,
+        &ws,
+        edgequake_core::Usage::Keyword,
+        &role.provider,
+        &role.model,
+    )
+    .await?;
     #[cfg(feature = "postgres")]
     if let Some(pool) = state.pg_pool.as_ref() {
         if let Some(connected) = crate::providers::connection_store::llm_from_workspace_role(
@@ -118,10 +132,17 @@ async fn resolve_keyword_llm(
         )
         .await
         {
-            return Some(connected);
+            return Ok(Some(connected));
         }
     }
-    crate::safety_limits::create_safe_llm_provider(&role.provider, &role.model).ok()
+    crate::safety_limits::create_safe_llm_provider(&role.provider, &role.model)
+        .map(Some)
+        .map_err(|_| {
+            ApiError::unprocessable_coded(
+                "credential_missing",
+                "the keyword model has no credential",
+            )
+        })
 }
 
 type OptionalLlm = Option<Arc<dyn LLMProvider>>;

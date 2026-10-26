@@ -838,6 +838,8 @@ impl DocumentTaskProcessor {
                     let stored_vision_model = pdf.vision_model.clone();
 
                     // RESUME: apply multimodal analyze stage (LightRAG parity — was skipped before 4d).
+                    self.refuse_ineligible_usage(data.workspace_id, edgequake_core::Usage::Vlm)
+                        .await?;
                     let mm_asset_base = crate::services::multimodal_asset_base_dir(
                         &early_doc_id,
                         data.multimodal_process_options.as_deref(),
@@ -1987,6 +1989,8 @@ impl DocumentTaskProcessor {
             }
             // SPEC-134: scope the resolved page modality so Pass-B suppression
             // sees the same modality as the conversion profile (LAW-134-16).
+            self.refuse_ineligible_usage(data.workspace_id, edgequake_core::Usage::Vlm)
+                .await?;
             let mm_outcome = crate::services::with_page_modality_ctx(
                 page_modality,
                 edgequake_pipeline::with_optional_document_language(

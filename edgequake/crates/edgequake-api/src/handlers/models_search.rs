@@ -243,6 +243,7 @@ mod tests {
 )]
 pub async fn refresh_model_discovery(
     State(state): State<AppState>,
+    _admin: crate::handlers::auth::ApiRequireAdmin,
 ) -> ApiResult<Json<serde_json::Value>> {
     state.query.model_catalog.invalidate_all_caches().await;
     Ok(Json(serde_json::json!({

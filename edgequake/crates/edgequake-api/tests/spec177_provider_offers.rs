@@ -243,7 +243,7 @@ async fn replace_connection_models_requires_a_passing_probe() {
     let err = edgequake_api::services::provider_offer_rows::replace_connection_models(
         &pool,
         "spec177-models",
-        &[("local".into(), true, false, false)],
+        &[("local".into(), true, false, false, None)],
     )
     .await
     .unwrap_err();
@@ -257,8 +257,8 @@ async fn replace_connection_models_requires_a_passing_probe() {
         &pool,
         "spec177-models",
         &[
-            ("local".into(), true, false, false),
-            ("embed".into(), false, false, true),
+            ("local".into(), true, false, false, None),
+            ("embed".into(), false, false, true, Some(768)),
         ],
     )
     .await

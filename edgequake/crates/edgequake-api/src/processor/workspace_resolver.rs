@@ -135,6 +135,12 @@ impl DocumentTaskProcessor {
             ));
         };
 
+        if let Some(state) = self.app_state.as_ref() {
+            if let Err(err) = crate::services::model_gate::judge_ingest(state, workspace_id).await {
+                return Err(crate::services::model_gate::failure_message(&err));
+            }
+        }
+
         let factory = self.pipeline_factory(workspace_service, cancel);
         factory
             .resolve_for_ingestion(workspace_id, policy, options)
@@ -167,6 +173,12 @@ impl DocumentTaskProcessor {
                 workspace_id
             ));
         };
+
+        if let Some(state) = self.app_state.as_ref() {
+            if let Err(err) = crate::services::model_gate::judge_ingest(state, workspace_id).await {
+                return Err(crate::services::model_gate::failure_message(&err));
+            }
+        }
 
         let factory = self.pipeline_factory(workspace_service, CancellationToken::new());
         factory
@@ -275,5 +287,19 @@ impl DocumentTaskProcessor {
             }
             _ => default_lineage,
         }
+    }
+
+    /// Fail the task when the usage this step will run is outside the offer.
+    pub(super) async fn refuse_ineligible_usage(
+        &self,
+        workspace_id: uuid::Uuid,
+        usage: edgequake_core::Usage,
+    ) -> TaskResult<()> {
+        let Some(state) = self.app_state.as_ref() else {
+            return Ok(());
+        };
+        crate::services::model_gate::judge_workspace_usage(state, workspace_id, usage)
+            .await
+            .map_err(|err| TaskError::Process(crate::services::model_gate::failure_message(&err)))
     }
 }

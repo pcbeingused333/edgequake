@@ -110,7 +110,7 @@ pub async fn run_parse(
             .model
             .clone()
             .unwrap_or_else(|| "gemma3:latest".into());
-        match edgequake_llm::ProviderFactory::create_llm_provider(&resolved.provider, &model) {
+        match crate::safety_limits::create_safe_llm_provider(&resolved.provider, &model) {
             Ok(provider) => assets.attach_figure_filter_if_enabled(Some(provider)),
             Err(e) => warn!(error = %e, "SPEC-128 parse: figure filter provider unavailable"),
         }

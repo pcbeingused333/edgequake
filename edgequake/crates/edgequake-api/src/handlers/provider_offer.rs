@@ -2,8 +2,8 @@
 
 use std::collections::{BTreeSet, HashSet};
 
-use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::extract::{Path, Query, State};
+use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use edgequake_core::provider_offer::parse_slug;
 use serde::{Deserialize, Serialize};
@@ -17,8 +17,8 @@ use crate::handlers::model_policy::workspace_or_404;
 use crate::handlers::workspaces::tenant_access::{require_tenant_access, TenantAccess};
 use crate::services::model_policy_catalog::load_catalog;
 use crate::services::provider_offer_rows::{
-    load_global_offer, load_tenant_offer, load_workspace_offer, replace_offer, set_withdrawn,
-    ScopeOffer,
+    load_global_offer, load_tenant_offer, load_workspace_offer, offer_hash,
+    provider_assignment_count, replace_offer, set_withdrawn, write_provider_audit, ScopeOffer,
 };
 use crate::state::AppState;
 
@@ -26,6 +26,8 @@ use crate::state::AppState;
 pub struct OfferModelDto {
     pub id: String,
     pub usages: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_dimension: Option<i32>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -39,6 +41,19 @@ pub struct DeploymentProviderDto {
     pub probe: String,
     pub key_configured: bool,
     pub models: Vec<OfferModelDto>,
+    /// Last per-provider refresh (SPEC-179). Absent until the first refresh.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh: Option<ProviderRefreshState>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ProviderRefreshState {
+    pub refreshed_at: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    pub added: i32,
+    pub removed: i32,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -71,6 +86,25 @@ pub struct ProviderOfferResponse {
     pub can_manage: bool,
     pub providers: Vec<OfferProviderDto>,
     pub legacy: Vec<LegacyConnectionDto>,
+    pub revision: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ConfirmQuery {
+    #[serde(default)]
+    pub confirm: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ProviderImpactRow {
+    pub scope: String,
+    pub id: String,
+    pub field: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ProviderImpactResponse {
+    pub assignments: Vec<ProviderImpactRow>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -118,6 +152,7 @@ pub async fn get_deployment_providers(
             withdrawn,
             probe: "ok".into(),
             key_configured: row.key_configured,
+            refresh: None,
         });
     }
     // The offered flag above used the slug before move. Recompute from the set.
@@ -164,9 +199,11 @@ pub async fn get_deployment_providers(
                 api_shape,
                 probe: probe.into(),
                 key_configured,
+                refresh: None,
             });
         }
     }
+    attach_refresh_state(&state, &mut providers).await;
     providers.sort_by(|a, b| a.slug.cmp(&b.slug));
     Ok(Json(DeploymentProvidersResponse { providers }))
 }
@@ -183,6 +220,7 @@ pub async fn put_deployment_provider(
     State(state): State<AppState>,
     _admin: ApiRequireAdmin,
     Path(slug): Path<String>,
+    Query(confirm): Query<ConfirmQuery>,
     Json(body): Json<WithdrawRequest>,
 ) -> ApiResult<Json<DeploymentProviderDto>> {
     let slug = parse_slug(&slug).ok_or_else(|| {
@@ -198,7 +236,19 @@ pub async fn put_deployment_provider(
     if !known {
         return Err(ApiError::NotFound(format!("provider {slug}")));
     }
+    if body.withdrawn {
+        require_confirm(&state, &slug, confirm.confirm).await?;
+    }
     set_withdrawn(&state, &slug, body.withdrawn).await?;
+    write_provider_audit(
+        &state,
+        None,
+        "withdraw",
+        "deployment",
+        &slug,
+        &offer_hash(&[body.withdrawn.to_string()]),
+    )
+    .await;
     let list = get_deployment_providers(State(state), _admin).await?;
     list.0
         .providers
@@ -241,12 +291,30 @@ pub async fn put_tenant_provider_offer(
     State(state): State<AppState>,
     ApiAuthenticated(auth): ApiAuthenticated,
     Path(tenant_id): Path<Uuid>,
+    headers: HeaderMap,
     Json(body): Json<PutOfferRequest>,
 ) -> ApiResult<Json<ProviderOfferResponse>> {
     require_tenant_access(&state, &auth, tenant_id, TenantAccess::Manage).await?;
     let parent = load_global_offer(&state).await?;
     let (constrained, slugs) = parse_put(&body, &parent)?;
-    replace_offer(&state, tenant_id, None, constrained, &slugs).await?;
+    replace_offer(
+        &state,
+        tenant_id,
+        None,
+        constrained,
+        &slugs,
+        expected_if_match(&headers)?,
+    )
+    .await?;
+    write_provider_audit(
+        &state,
+        Uuid::parse_str(&auth.user_id).ok(),
+        "replace_offer",
+        "tenant",
+        &tenant_id.to_string(),
+        &offer_hash(&slugs),
+    )
+    .await;
     get_tenant_provider_offer(State(state), ApiAuthenticated(auth), Path(tenant_id)).await
 }
 
@@ -301,6 +369,7 @@ pub async fn put_workspace_provider_offer(
     State(state): State<AppState>,
     ApiAuthenticated(auth): ApiAuthenticated,
     Path(workspace_id): Path<Uuid>,
+    headers: HeaderMap,
     Json(body): Json<PutOfferRequest>,
 ) -> ApiResult<Json<ProviderOfferResponse>> {
     let workspace = workspace_or_404(&state, workspace_id).await?;
@@ -322,8 +391,18 @@ pub async fn put_workspace_provider_offer(
         Some(workspace_id),
         constrained,
         &slugs,
+        expected_if_match(&headers)?,
     )
     .await?;
+    write_provider_audit(
+        &state,
+        Uuid::parse_str(&auth.user_id).ok(),
+        "replace_offer",
+        "workspace",
+        &workspace_id.to_string(),
+        &offer_hash(&slugs),
+    )
+    .await;
     get_workspace_provider_offer(State(state), ApiAuthenticated(auth), Path(workspace_id)).await
 }
 
@@ -336,6 +415,8 @@ pub struct ConnectionModelBody {
     pub supports_vision: bool,
     #[serde(default)]
     pub supports_embedding: bool,
+    #[serde(default)]
+    pub embedding_dimension: Option<i32>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -375,18 +456,23 @@ pub async fn put_connection_models(
         let pool = state
             .optional_pg_pool()
             .ok_or_else(|| ApiError::Internal("PostgreSQL is required".into()))?;
-        let models: Vec<(String, bool, bool, bool)> = body
+        let models: Vec<(String, bool, bool, bool, Option<i32>)> = body
             .models
             .into_iter()
             .map(|model| {
-                (
+                crate::services::model_gate::require_embedding_dimension(
+                    model.supports_embedding,
+                    model.embedding_dimension,
+                )?;
+                Ok((
                     model.id,
                     model.supports_chat,
                     model.supports_vision,
                     model.supports_embedding,
-                )
+                    model.embedding_dimension,
+                ))
             })
-            .collect();
+            .collect::<ApiResult<Vec<_>>>()?;
         crate::services::provider_offer_rows::replace_connection_models(pool, &slug, &models)
             .await?;
         Ok(StatusCode::NO_CONTENT)
@@ -431,6 +517,190 @@ fn parse_put(body: &PutOfferRequest, parent: &BTreeSet<String>) -> ApiResult<(bo
     }
 }
 
+/// Last refresh per provider. A missing table or query error leaves the card without a time.
+async fn attach_refresh_state(state: &AppState, providers: &mut [DeploymentProviderDto]) {
+    #[cfg(feature = "postgres")]
+    {
+        let Some(pool) = state.optional_pg_pool() else {
+            return;
+        };
+        let rows: Vec<(String, String, String, Option<String>, i32, i32)> = match sqlx::query_as(
+            "SELECT provider_slug, to_char(last_refreshed_at AT TIME ZONE 'UTC', \
+                    'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'), status, error, added_count, removed_count \
+             FROM provider_refresh_state",
+        )
+        .fetch_all(pool)
+        .await
+        {
+            Ok(rows) => rows,
+            Err(err) => {
+                tracing::warn!(error = %err, "provider refresh state unavailable");
+                return;
+            }
+        };
+        for (slug, refreshed_at, status, error, added, removed) in rows {
+            if let Some(provider) = providers.iter_mut().find(|row| row.slug == slug) {
+                provider.refresh = Some(ProviderRefreshState {
+                    refreshed_at,
+                    status,
+                    error,
+                    added,
+                    removed,
+                });
+            }
+        }
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = (state, providers);
+    }
+}
+
+pub(crate) fn expected_if_match(headers: &HeaderMap) -> ApiResult<Option<i64>> {
+    let Some(raw) = headers
+        .get(axum::http::header::IF_MATCH)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return Ok(None);
+    };
+    raw.trim()
+        .trim_matches('"')
+        .parse()
+        .map(Some)
+        .map_err(|_| ApiError::Coded {
+            code: "stale_revision",
+            message: "If-Match is not a revision".into(),
+            status: StatusCode::CONFLICT,
+        })
+}
+
+async fn require_confirm(state: &AppState, slug: &str, confirm: bool) -> ApiResult<()> {
+    if confirm {
+        return Ok(());
+    }
+    let count = provider_assignment_count(state, slug).await?;
+    if count > 0 {
+        return Err(ApiError::Coded {
+            code: "confirm_required",
+            message: format!("{count} assignments still use {slug}."),
+            status: StatusCode::CONFLICT,
+        });
+    }
+    Ok(())
+}
+
+async fn offer_revision(state: &AppState, tenant_id: Uuid, workspace_id: Option<Uuid>) -> i64 {
+    #[cfg(feature = "postgres")]
+    {
+        let Some(pool) = state.optional_pg_pool() else {
+            return 1;
+        };
+        let (sql, id) = if let Some(workspace_id) = workspace_id {
+            (
+                "SELECT provider_offer_revision FROM workspaces WHERE workspace_id = $1",
+                workspace_id,
+            )
+        } else {
+            (
+                "SELECT provider_offer_revision FROM tenants WHERE tenant_id = $1",
+                tenant_id,
+            )
+        };
+        if let Ok(Some(value)) = sqlx::query_scalar::<_, i32>(sql)
+            .bind(id)
+            .fetch_optional(pool)
+            .await
+        {
+            return i64::from(value);
+        }
+    }
+    let _ = (state, tenant_id, workspace_id);
+    1
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/deployment/providers/{slug}/impact",
+    tag = "Providers",
+    params(("slug" = String, Path, description = "Provider slug")),
+    responses((status = 200, description = "Assignments that name this provider", body = ProviderImpactResponse))
+)]
+pub async fn get_provider_impact(
+    State(state): State<AppState>,
+    _admin: ApiRequireAdmin,
+    Path(slug): Path<String>,
+) -> ApiResult<Json<ProviderImpactResponse>> {
+    let slug = parse_slug(&slug).ok_or_else(|| {
+        ApiError::unprocessable_coded("slug_invalid", "provider slug is not valid")
+    })?;
+    let mut assignments = Vec::new();
+    #[cfg(feature = "postgres")]
+    if let Some(pool) = state.optional_pg_pool() {
+        let offers: Vec<(Uuid, Option<Uuid>)> = sqlx::query_as(
+            "SELECT tenant_id, workspace_id FROM provider_offers \
+             WHERE provider_slug = $1 AND enabled",
+        )
+        .bind(&slug)
+        .fetch_all(pool)
+        .await
+        .map_err(|err| ApiError::Internal(err.to_string()))?;
+        for (tenant_id, workspace_id) in offers {
+            if let Some(workspace_id) = workspace_id {
+                assignments.push(ProviderImpactRow {
+                    scope: "workspace".into(),
+                    id: workspace_id.to_string(),
+                    field: "offer".into(),
+                });
+            } else {
+                assignments.push(ProviderImpactRow {
+                    scope: "tenant".into(),
+                    id: tenant_id.to_string(),
+                    field: "offer".into(),
+                });
+            }
+        }
+        let columns: Vec<(Uuid, String, String, Option<String>)> = sqlx::query_as(
+            "SELECT workspace_id, llm_provider, embedding_provider, vision_llm_provider \
+             FROM workspaces \
+             WHERE lower(llm_provider) = $1 \
+                OR lower(embedding_provider) = $1 \
+                OR lower(coalesce(vision_llm_provider, '')) = $1",
+        )
+        .bind(&slug)
+        .fetch_all(pool)
+        .await
+        .map_err(|err| ApiError::Internal(err.to_string()))?;
+        for (id, llm, embedding, vision) in columns {
+            if llm.eq_ignore_ascii_case(&slug) {
+                assignments.push(ProviderImpactRow {
+                    scope: "workspace".into(),
+                    id: id.to_string(),
+                    field: "llm".into(),
+                });
+            }
+            if embedding.eq_ignore_ascii_case(&slug) {
+                assignments.push(ProviderImpactRow {
+                    scope: "workspace".into(),
+                    id: id.to_string(),
+                    field: "embedding".into(),
+                });
+            }
+            if vision
+                .as_deref()
+                .is_some_and(|value| value.eq_ignore_ascii_case(&slug))
+            {
+                assignments.push(ProviderImpactRow {
+                    scope: "workspace".into(),
+                    id: id.to_string(),
+                    field: "vlm".into(),
+                });
+            }
+        }
+    }
+    let _ = &state;
+    Ok(Json(ProviderImpactResponse { assignments }))
+}
+
 async fn offer_body(
     state: &AppState,
     tenant_id: Uuid,
@@ -466,6 +736,7 @@ async fn offer_body(
         can_manage,
         providers,
         legacy,
+        revision: offer_revision(state, tenant_id, workspace_id).await,
     })
 }
 
@@ -479,6 +750,7 @@ fn models_for(
         .map(|item| OfferModelDto {
             id: item.entry.model.clone(),
             usages: usage_names(&item.entry.facts),
+            embedding_dimension: item.embedding_dimension,
         })
         .collect()
 }
@@ -540,6 +812,164 @@ async fn legacy_for_tenant(
     _tenant: Uuid,
 ) -> ApiResult<Vec<LegacyConnectionDto>> {
     Ok(Vec::new())
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ProviderRefreshResponse {
+    pub status: String,
+    pub error: Option<String>,
+    pub added: Vec<String>,
+    pub removed: Vec<String>,
+    pub refreshed_at: String,
+}
+
+/// Ask one provider for its model list and store the diff. A failed call
+/// keeps the previous cache.
+#[utoipa::path(
+    post,
+    path = "/api/v1/deployment/providers/{slug}/refresh",
+    tag = "Providers",
+    params(("slug" = String, Path, description = "Provider slug")),
+    responses((status = 200, description = "Refresh result", body = ProviderRefreshResponse))
+)]
+pub async fn refresh_deployment_provider(
+    State(state): State<AppState>,
+    _admin: ApiRequireAdmin,
+    Path(slug): Path<String>,
+) -> ApiResult<Json<ProviderRefreshResponse>> {
+    let slug = parse_slug(&slug).ok_or_else(|| {
+        ApiError::unprocessable_coded("slug_invalid", "provider slug is not valid")
+    })?;
+    state.query.model_catalog.invalidate_all_caches().await;
+    #[cfg(feature = "postgres")]
+    {
+        let pool = state
+            .optional_pg_pool()
+            .ok_or_else(|| ApiError::Internal("PostgreSQL is required".into()))?;
+        let previous: Vec<String> = sqlx::query_scalar(
+            "SELECT model FROM provider_model_cache WHERE provider_slug = $1 ORDER BY model",
+        )
+        .bind(&slug)
+        .fetch_all(pool)
+        .await
+        .map_err(|err| ApiError::Internal(err.to_string()))?;
+        let (ok, listed, error) = refresh_listing(pool, &slug).await;
+        let plan = crate::services::model_gate::refresh_plan(&previous, &listed, ok);
+        if plan.replace {
+            let mut tx = pool
+                .begin()
+                .await
+                .map_err(|err| ApiError::Internal(err.to_string()))?;
+            sqlx::query("DELETE FROM provider_model_cache WHERE provider_slug = $1")
+                .bind(&slug)
+                .execute(&mut *tx)
+                .await
+                .map_err(|err| ApiError::Internal(err.to_string()))?;
+            for model in &listed {
+                sqlx::query(
+                    "INSERT INTO provider_model_cache (provider_slug, model, supports_chat, source) \
+                     VALUES ($1, $2, true, 'refresh')",
+                )
+                .bind(&slug)
+                .bind(model)
+                .execute(&mut *tx)
+                .await
+                .map_err(|err| ApiError::Internal(err.to_string()))?;
+            }
+            tx.commit()
+                .await
+                .map_err(|err| ApiError::Internal(err.to_string()))?;
+        }
+        sqlx::query(
+            "INSERT INTO provider_refresh_state \
+             (provider_slug, last_refreshed_at, status, error, added_count, removed_count) \
+             VALUES ($1, now(), $2, $3, $4, $5) \
+             ON CONFLICT (provider_slug) DO UPDATE SET \
+                last_refreshed_at = now(), status = EXCLUDED.status, error = EXCLUDED.error, \
+                added_count = EXCLUDED.added_count, removed_count = EXCLUDED.removed_count",
+        )
+        .bind(&slug)
+        .bind(if ok { "ok" } else { "error" })
+        .bind(&error)
+        .bind(plan.added.len() as i32)
+        .bind(plan.removed.len() as i32)
+        .execute(pool)
+        .await
+        .map_err(|err| ApiError::Internal(err.to_string()))?;
+        Ok(Json(ProviderRefreshResponse {
+            status: if ok { "ok" } else { "error" }.into(),
+            error,
+            added: plan.added,
+            removed: plan.removed,
+            refreshed_at: chrono_now(),
+        }))
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = slug;
+        Ok(Json(ProviderRefreshResponse {
+            status: "ok".into(),
+            error: None,
+            added: Vec::new(),
+            removed: Vec::new(),
+            refreshed_at: chrono_now(),
+        }))
+    }
+}
+
+fn chrono_now() -> String {
+    chrono::Utc::now().to_rfc3339()
+}
+
+#[cfg(feature = "postgres")]
+type ConnectionRefreshRow = (
+    String,
+    String,
+    Option<serde_json::Value>,
+    Option<Vec<u8>>,
+    Option<Vec<u8>>,
+    Option<String>,
+    Option<Uuid>,
+    bool,
+);
+
+#[cfg(feature = "postgres")]
+async fn refresh_listing(pool: &sqlx::PgPool, slug: &str) -> (bool, Vec<String>, Option<String>) {
+    let row: Option<ConnectionRefreshRow> = sqlx::query_as(
+        "SELECT api_shape, base_url, secret_ref, api_key_ciphertext, api_key_nonce, key_id, tenant_id, allow_private_network \
+         FROM provider_connections WHERE tenant_id IS NULL AND slug = $1",
+    )
+    .bind(slug)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+    let Some((shape, base_url, secret_ref, cipher, nonce, key_id, tenant_id, allow_private)) = row
+    else {
+        return (true, Vec::new(), None);
+    };
+    let api_key = crate::providers::secret_manager::reveal_connection_key(
+        pool, tenant_id, secret_ref, cipher, nonce, key_id,
+    )
+    .await
+    .ok()
+    .flatten();
+    let probe = crate::providers::probe::probe_provider(crate::providers::probe::ProbeRequest {
+        shape,
+        base_url: Some(base_url),
+        model: None,
+        embedding_model: None,
+        api_key,
+        auth_scheme: None,
+        allow_private_network: Some(allow_private),
+        expected_dimension: None,
+    })
+    .await;
+    if probe.ok {
+        (true, probe.models, None)
+    } else {
+        (false, Vec::new(), Some(probe.message))
+    }
 }
 
 #[cfg(test)]
@@ -624,6 +1054,7 @@ mod tests {
             can_manage: true,
             providers: vec![],
             legacy: vec![],
+            revision: 1,
         })
         .unwrap();
         assert!(!body.contains("api_key"));

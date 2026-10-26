@@ -90,6 +90,14 @@ async fn resolve_image_upload(
     raw_ext: &str,
 ) -> ApiResult<ResolvedUploadContent> {
     let mime = image_mime_type(raw_ext).unwrap_or("image/png");
+    if let Some(workspace_id) = workspace_id {
+        crate::services::model_gate::judge_workspace_usage(
+            state,
+            workspace_id,
+            edgequake_core::Usage::Vlm,
+        )
+        .await?;
+    }
     let llm = resolve_vlm_provider(state, workspace_id).await;
     let outcome = analyze_standalone_image(content, mime, filename, llm.as_ref()).await;
 

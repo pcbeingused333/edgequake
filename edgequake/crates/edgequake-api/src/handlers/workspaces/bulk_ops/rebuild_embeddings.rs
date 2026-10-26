@@ -217,6 +217,18 @@ pub(crate) async fn run_rebuild_embeddings(
     if config_changed {
         use edgequake_core::UpdateWorkspaceRequest;
 
+        crate::services::model_policy_enforcement::ensure_workspace_choice(
+            &state,
+            &workspace,
+            crate::services::model_policy_enforcement::WorkspaceChoiceFields {
+                embedding_provider: Some(new_provider.as_str()),
+                embedding_model: Some(new_model.as_str()),
+                embedding_dimension: Some(new_dimension),
+                ..Default::default()
+            },
+        )
+        .await?;
+
         let update_request = UpdateWorkspaceRequest {
             embedding_model: Some(new_model.clone()),
             embedding_provider: Some(new_provider.clone()),

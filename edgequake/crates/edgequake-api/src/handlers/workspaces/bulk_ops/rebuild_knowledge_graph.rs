@@ -184,6 +184,17 @@ pub(crate) async fn run_rebuild_knowledge_graph(
     if config_changed {
         use edgequake_core::UpdateWorkspaceRequest;
 
+        crate::services::model_policy_enforcement::ensure_workspace_choice(
+            &state,
+            &workspace,
+            crate::services::model_policy_enforcement::WorkspaceChoiceFields {
+                llm_provider: Some(new_llm_provider.as_str()),
+                llm_model: Some(new_llm_model.as_str()),
+                ..Default::default()
+            },
+        )
+        .await?;
+
         let update_request = UpdateWorkspaceRequest {
             llm_model: Some(new_llm_model.clone()),
             llm_provider: Some(new_llm_provider.clone()),

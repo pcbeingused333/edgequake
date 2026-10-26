@@ -98,6 +98,38 @@ async fn dispatch_parse(
         &default_provider,
         default_concurrency,
     )?;
+    if let (Some(provider), Some(model)) = (
+        intake.options.provider.as_deref(),
+        intake.options.model.as_deref(),
+    ) {
+        let provider = provider.trim();
+        let model = model.trim();
+        if !provider.is_empty() && !model.is_empty() && !provider.eq_ignore_ascii_case("mock") {
+            if resolved.backend == PdfParserBackend::Vision {
+                crate::services::model_policy_enforcement::ensure_deployment_choice(
+                    state,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(provider),
+                    Some(model),
+                )
+                .await?;
+            } else {
+                crate::services::model_policy_enforcement::ensure_deployment_choice(
+                    state,
+                    Some(provider),
+                    Some(model),
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+                .await?;
+            }
+        }
+    }
 
     let limits = ParseLimits::from_env();
     let bytes_len = intake.bytes.len() as u64;

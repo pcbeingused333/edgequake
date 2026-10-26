@@ -109,6 +109,17 @@ pub async fn get_workspace_embedding_provider(
         .await
         .map_err(ApiError::from)?;
 
+    if result.is_some() {
+        if let Some(workspace) = get_workspace(state, workspace_id).await? {
+            crate::services::model_gate::judge_workspace_usage(
+                state,
+                workspace.workspace_id,
+                edgequake_core::Usage::Embedding,
+            )
+            .await?;
+        }
+    }
+
     // Extract just the Arc<dyn EmbeddingProvider> from ResolvedEmbeddingProvider
     Ok(result.map(|resolved| resolved.provider))
 }

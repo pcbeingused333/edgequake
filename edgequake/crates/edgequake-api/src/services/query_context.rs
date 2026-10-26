@@ -433,6 +433,22 @@ pub async fn resolve_query_llm_override(
         llm_model.as_deref(),
     )
     .await?;
+    if let Some(ws) = workspace {
+        let request_set = llm_provider
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+            && llm_model
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty());
+        if !request_set {
+            crate::services::model_gate::judge_workspace_usage(
+                state,
+                ws.workspace_id,
+                edgequake_core::Usage::Query,
+            )
+            .await?;
+        }
+    }
     let resolver = WorkspaceProviderResolver::from_app_state(state);
     let extra_headers = propagation.clone().merge_with(None);
     let llm_request = LlmResolutionRequest {

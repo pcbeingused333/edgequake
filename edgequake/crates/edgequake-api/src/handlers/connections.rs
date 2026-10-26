@@ -1,7 +1,7 @@
 //! SPEC-163 provider connections CRUD.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
@@ -11,7 +11,9 @@ use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::auth::ApiRequireAdmin;
-use crate::providers::probe::{probe_provider, ProbeRequest, ProbeResponse};
+use crate::providers::probe::ProbeResponse;
+#[cfg(feature = "postgres")]
+use crate::providers::probe::{probe_provider, ProbeRequest};
 use crate::ssrf::{validate_provider_url, SsrfPolicy};
 use crate::state::AppState;
 use edgequake_core::provider_offer::parse_slug;
@@ -125,6 +127,58 @@ pub(crate) fn env_connections() -> Vec<ConnectionView> {
     }
     if let Some(url) = non_empty("MTPLX_HOST") {
         push("mtplx", "openai_chat", &url);
+    }
+    // SPEC-179: a native provider with a key is offered. The default URL is
+    // the vendor's public endpoint; a *_BASE_URL env replaces it.
+    const NATIVE: &[(&str, &str, &str, &str, &str)] = &[
+        (
+            "GEMINI_API_KEY",
+            "GEMINI_BASE_URL",
+            "gemini",
+            "openai_chat",
+            "https://generativelanguage.googleapis.com/v1beta/openai",
+        ),
+        (
+            "MISTRAL_API_KEY",
+            "MISTRAL_BASE_URL",
+            "mistral",
+            "openai_chat",
+            "https://api.mistral.ai/v1",
+        ),
+        (
+            "XAI_API_KEY",
+            "XAI_BASE_URL",
+            "xai",
+            "openai_chat",
+            "https://api.x.ai/v1",
+        ),
+        (
+            "OPENROUTER_API_KEY",
+            "OPENROUTER_BASE_URL",
+            "openrouter",
+            "openai_chat",
+            "https://openrouter.ai/api/v1",
+        ),
+        (
+            "AZURE_OPENAI_API_KEY",
+            "AZURE_OPENAI_ENDPOINT",
+            "azure",
+            "openai_chat",
+            "https://example.openai.azure.com",
+        ),
+        (
+            "NVIDIA_API_KEY",
+            "NVIDIA_BASE_URL",
+            "nvidia",
+            "openai_chat",
+            "https://integrate.api.nvidia.com/v1",
+        ),
+    ];
+    for (key, url_key, slug, shape, default_url) in NATIVE {
+        if non_empty(key).is_some() {
+            let url = non_empty(url_key).unwrap_or_else(|| (*default_url).to_string());
+            push(slug, shape, &url);
+        }
     }
     out
 }
@@ -290,11 +344,18 @@ pub async fn update_connection(
     Ok(Json(upsert(&state, Some(id), header, body).await?))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct DeleteConfirm {
+    #[serde(default)]
+    pub confirm: bool,
+}
+
 #[utoipa::path(delete, path = "/api/v1/connections/{id}", tag = "Providers")]
 pub async fn delete_connection(
     State(state): State<AppState>,
     _admin: ApiRequireAdmin,
     tenant_ctx: crate::middleware::TenantContext,
+    Query(confirm): Query<DeleteConfirm>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
     #[cfg(feature = "postgres")]
@@ -306,11 +367,51 @@ pub async fn delete_connection(
                 message: "PostgreSQL required".into(),
                 retry_after_secs: 5,
             })?;
+        if !confirm.confirm {
+            let slug: Option<String> =
+                sqlx::query_scalar("SELECT slug FROM provider_connections WHERE id = $1")
+                    .bind(id)
+                    .fetch_optional(pool)
+                    .await
+                    .map_err(map_sql)?;
+            if let Some(slug) = slug {
+                let count =
+                    crate::services::provider_offer_rows::provider_assignment_count(&state, &slug)
+                        .await?;
+                if count > 0 {
+                    return Err(ApiError::Coded {
+                        code: "confirm_required",
+                        message: format!("{count} assignments still use {slug}."),
+                        status: StatusCode::CONFLICT,
+                    });
+                }
+            }
+        }
         let tenant = scoped_tenant(&tenant_ctx)?;
         let found = if let Some(tenant_id) = tenant {
+            let owner: Option<Option<Uuid>> = sqlx::query_scalar(
+                "SELECT tenant_id FROM provider_connections WHERE id = $1",
+            )
+            .bind(id)
+            .fetch_optional(pool)
+            .await
+            .map_err(map_sql)?;
+            match owner {
+                None => return Err(ApiError::NotFound("connection not found".into())),
+                Some(None) => {
+                    return Err(ApiError::unprocessable_coded(
+                        "connection_scope_global",
+                        "fleet connections are deleted from the deployment",
+                    ));
+                }
+                Some(Some(owner_id)) if owner_id != tenant_id => {
+                    return Err(ApiError::NotFound("connection not found".into()));
+                }
+                Some(Some(_)) => {}
+            }
             sqlx::query_as::<_, DeletedConnection>(
                 "DELETE FROM provider_connections \
-                 WHERE id = $1 AND (tenant_id IS NULL OR tenant_id = $2) \
+                 WHERE id = $1 AND tenant_id = $2 \
                  RETURNING tenant_id, secret_ref, slug",
             )
             .bind(id)
@@ -373,11 +474,31 @@ pub async fn test_stored_connection(
             })?;
         let tenant = scoped_tenant(&tenant_ctx)?;
         let row = if let Some(tenant_id) = tenant {
+            let owner: Option<Option<Uuid>> = sqlx::query_scalar(
+                "SELECT tenant_id FROM provider_connections WHERE id = $1",
+            )
+            .bind(id)
+            .fetch_optional(pool)
+            .await
+            .map_err(map_sql)?;
+            match owner {
+                Some(None) => {
+                    return Err(ApiError::unprocessable_coded(
+                        "connection_scope_global",
+                        "fleet connections are tested from the deployment",
+                    ));
+                }
+                Some(Some(owner_id)) if owner_id != tenant_id => {
+                    return Err(ApiError::NotFound("connection not found".into()));
+                }
+                None => return Err(ApiError::NotFound("connection not found".into())),
+                Some(Some(_)) => {}
+            }
             sqlx::query_as::<_, StoredProbeRow>(
                 "SELECT tenant_id, api_shape, base_url, auth_scheme, api_key_ciphertext, api_key_nonce, \
                         key_id, secret_ref, allow_private_network \
                  FROM provider_connections \
-                 WHERE id = $1 AND (tenant_id IS NULL OR tenant_id = $2)",
+                 WHERE id = $1 AND tenant_id = $2",
             )
             .bind(id)
             .bind(tenant_id)
@@ -455,8 +576,12 @@ async fn upsert(
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| crate::locality::locality_for_url(&body.base_url).to_string());
     let allow_private = body.allow_private_network.unwrap_or(locality == "local");
-    validate_provider_url(&body.base_url, SsrfPolicy { allow_private })
-        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    validate_provider_url(&body.base_url, SsrfPolicy { allow_private }).map_err(|e| match e {
+        crate::ssrf::SsrfError::CredentialsInUrl => {
+            ApiError::unprocessable_coded("url_rejected", e.to_string())
+        }
+        other => ApiError::BadRequest(other.to_string()),
+    })?;
     crate::ssrf::enforce_resolved_addresses(&body.base_url, SsrfPolicy { allow_private })
         .await
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
@@ -468,7 +593,76 @@ async fn upsert(
         )));
     }
 
+    let slug = parse_slug(&body.slug).ok_or_else(|| {
+        ApiError::unprocessable_coded("slug_invalid", "provider slug is not valid")
+    })?;
     let connection_id = id.unwrap_or_else(Uuid::new_v4);
+    // Reject a duplicate before storing a secret, so a 409 does not leave an orphan key.
+    #[cfg(feature = "postgres")]
+    {
+        let pool = state
+            .pg_pool
+            .as_ref()
+            .ok_or_else(|| ApiError::ServiceUnavailable {
+                message: "PostgreSQL required".into(),
+                retry_after_secs: 5,
+            })?;
+        let duplicate: bool = if let Some(existing) = id {
+            sqlx::query_scalar(
+                "SELECT EXISTS( \
+                     SELECT 1 FROM provider_connections \
+                     WHERE slug = $1 \
+                       AND tenant_id IS NOT DISTINCT FROM $2::uuid \
+                       AND id <> $3 \
+                 )",
+            )
+            .bind(&slug)
+            .bind(tenant_id)
+            .bind(existing)
+            .fetch_one(pool)
+            .await
+        } else {
+            sqlx::query_scalar(
+                "SELECT EXISTS( \
+                     SELECT 1 FROM provider_connections \
+                     WHERE slug = $1 AND tenant_id IS NOT DISTINCT FROM $2::uuid \
+                 )",
+            )
+            .bind(&slug)
+            .bind(tenant_id)
+            .fetch_one(pool)
+            .await
+        }
+        .map_err(map_sql)?;
+        if duplicate {
+            return Err(ApiError::Conflict(
+                "a connection with this slug already exists".into(),
+            ));
+        }
+        if let Some(existing) = id {
+            let old: Option<String> =
+                sqlx::query_scalar("SELECT slug FROM provider_connections WHERE id = $1")
+                    .bind(existing)
+                    .fetch_optional(pool)
+                    .await
+                    .map_err(map_sql)?;
+            if old.as_deref() != Some(slug.as_str()) {
+                let refs: i64 = sqlx::query_scalar(
+                    "SELECT COUNT(*) FROM provider_offers WHERE provider_slug = $1",
+                )
+                .bind(old.as_deref().unwrap_or(""))
+                .fetch_one(pool)
+                .await
+                .map_err(map_sql)?;
+                if refs > 0 {
+                    return Err(ApiError::unprocessable_coded(
+                        "slug_rename",
+                        "withdraw the provider before renaming it",
+                    ));
+                }
+            }
+        }
+    }
     let mut fingerprint = None;
     let ciphertext: Option<Vec<u8>> = None;
     let nonce: Option<Vec<u8>> = None;
@@ -524,7 +718,7 @@ async fn upsert(
                        AND id <> $3 \
                  )",
             )
-            .bind(&body.slug)
+            .bind(&slug)
             .bind(tenant_id)
             .bind(existing)
             .fetch_one(pool)
@@ -536,7 +730,7 @@ async fn upsert(
                      WHERE slug = $1 AND tenant_id IS NOT DISTINCT FROM $2::uuid \
                  )",
             )
-            .bind(&body.slug)
+            .bind(&slug)
             .bind(tenant_id)
             .fetch_one(pool)
             .await
@@ -551,7 +745,7 @@ async fn upsert(
             let updated = if let Some(tenant) = tenant_id {
                 sqlx::query_as::<_, ConnectionRow>(&connection_update_sql(true))
                     .bind(existing)
-                    .bind(&body.slug)
+                    .bind(&slug)
                     .bind(&body.display_name)
                     .bind(&body.api_shape)
                     .bind(&locality)
@@ -571,7 +765,7 @@ async fn upsert(
             } else {
                 sqlx::query_as::<_, ConnectionRow>(&connection_update_sql(false))
                     .bind(existing)
-                    .bind(&body.slug)
+                    .bind(&slug)
                     .bind(&body.display_name)
                     .bind(&body.api_shape)
                     .bind(&locality)
@@ -606,7 +800,7 @@ async fn upsert(
             )
             .bind(connection_id)
             .bind(tenant_id)
-            .bind(&body.slug)
+            .bind(&slug)
             .bind(&body.display_name)
             .bind(&body.api_shape)
             .bind(&locality)
@@ -731,6 +925,8 @@ pub fn connection_update_sql(scoped: bool) -> String {
             key_fingerprint = CASE WHEN $15 THEN $11 ELSE COALESCE($11, key_fingerprint) END, \
             secret_ref = CASE WHEN $15 THEN $16::jsonb ELSE secret_ref END, \
             timeout_secs = $12, allow_private_network = $13, \
+            last_test_ok = CASE WHEN base_url IS DISTINCT FROM $6 OR api_shape IS DISTINCT FROM $4 OR $15 THEN NULL ELSE last_test_ok END, \
+            last_test_error = CASE WHEN base_url IS DISTINCT FROM $6 OR api_shape IS DISTINCT FROM $4 OR $15 THEN NULL ELSE last_test_error END, \
             updated_at = now() \
          WHERE id = $1 {tenant} \
          RETURNING {CONNECTION_COLUMNS}"

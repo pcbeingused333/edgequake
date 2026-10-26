@@ -908,6 +908,14 @@ fn api_v1_routes(state: AppState) -> Router<AppState> {
             "/deployment/providers/{slug}/models",
             put(handlers::put_connection_models),
         )
+        .route(
+            "/deployment/providers/{slug}/refresh",
+            post(handlers::refresh_deployment_provider),
+        )
+        .route(
+            "/deployment/providers/{slug}/impact",
+            get(handlers::get_provider_impact),
+        )
         .route("/models/embedding", get(handlers::list_embedding_models))
         .route("/models/health", get(handlers::check_providers_health))
         .route("/providers/test", post(handlers::test_provider))

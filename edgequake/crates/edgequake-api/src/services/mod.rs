@@ -76,6 +76,7 @@ pub mod login_lockout;
 pub mod login_tokens;
 pub mod manuscript_verify;
 pub mod message_context_mapper;
+pub mod model_gate;
 pub mod model_policy_catalog;
 pub mod model_policy_enforcement;
 pub mod model_policy_rows;

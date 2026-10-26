@@ -9,6 +9,7 @@
 use std::collections::{BTreeSet, HashMap};
 
 use axum::extract::{Path, Query, State};
+use axum::http::HeaderMap;
 use axum::Json;
 use edgequake_core::model_policy::{
     eligible_models, policy_mode, usages_left_empty, widening_rows, CatalogEntry, PolicyRow,
@@ -98,9 +99,17 @@ pub async fn put_tenant_model_policy(
     State(state): State<AppState>,
     ApiAuthenticated(auth): ApiAuthenticated,
     Path(tenant_id): Path<Uuid>,
+    headers: HeaderMap,
     Json(body): Json<PutPolicyRequest>,
 ) -> ApiResult<Json<TenantPolicyResponse>> {
     require_tenant_access(&state, &auth, tenant_id, TenantAccess::Manage).await?;
+    crate::services::provider_offer_rows::touch_scope_revision(
+        &state,
+        tenant_id,
+        None,
+        crate::handlers::provider_offer::expected_if_match(&headers)?,
+    )
+    .await?;
     let rows = parse_policy_rows(&body.rows)?;
     let offer = crate::services::provider_offer_rows::load_global_offer(&state).await?;
     ensure_in_offer(&rows, &offer)?;
@@ -165,6 +174,7 @@ pub async fn put_workspace_model_policy(
     State(state): State<AppState>,
     ApiAuthenticated(auth): ApiAuthenticated,
     Path(workspace_id): Path<Uuid>,
+    headers: HeaderMap,
     Json(body): Json<PutPolicyRequest>,
 ) -> ApiResult<Json<WorkspacePolicyResponse>> {
     let workspace = workspace_or_404(&state, workspace_id).await?;
@@ -186,6 +196,13 @@ pub async fn put_workspace_model_policy(
             .await?;
     ensure_in_offer(&rows, &offer.slugs)?;
     ensure_usable(&rows, &catalog, &ceiling, &rows, Some(&offer.slugs))?;
+    crate::services::provider_offer_rows::touch_scope_revision(
+        &state,
+        workspace.tenant_id,
+        Some(workspace_id),
+        crate::handlers::provider_offer::expected_if_match(&headers)?,
+    )
+    .await?;
     replace_rows(&state, workspace.tenant_id, Some(workspace_id), &rows).await?;
     Ok(Json(workspace_view(workspace_id, scope, &rows)))
 }

@@ -67,6 +67,17 @@ impl DocumentTaskProcessor {
             ws_svc.get_workspace(uuid).await.ok().flatten()
         }
         .await;
+        if let (Some(state), Some(ws)) = (self.app_state.as_ref(), summary_ws.as_ref()) {
+            crate::services::model_gate::judge_workspace_usage(
+                state,
+                ws.workspace_id,
+                edgequake_core::Usage::Summary,
+            )
+            .await
+            .map_err(|err| {
+                TaskError::Process(crate::services::model_gate::failure_message(&err))
+            })?;
+        }
         let persist_llm = crate::services::resolve_summary_llm_or_fallback(
             summary_ws.as_ref(),
             self.llm_provider.clone(),
@@ -74,7 +85,8 @@ impl DocumentTaskProcessor {
                 crate::safety_limits::create_safe_llm_provider(provider, model)
                     .map_err(|e| e.to_string())
             },
-        );
+        )
+        .map_err(TaskError::Process)?;
 
         match run_injection_pipeline(
             persist_llm,

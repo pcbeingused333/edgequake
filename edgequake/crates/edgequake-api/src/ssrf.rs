@@ -18,6 +18,8 @@ pub enum SsrfError {
     PrivateDenied,
     #[error("provider host did not resolve ({0})")]
     DnsFailed(String),
+    #[error("provider URL must not include a username, password, or query")]
+    CredentialsInUrl,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -40,6 +42,9 @@ pub fn validate_provider_url(raw: &str, policy: SsrfPolicy) -> Result<Url, SsrfE
     let url = Url::parse(raw).map_err(|e| SsrfError::InvalidUrl(e.to_string()))?;
     if url.scheme() != "http" && url.scheme() != "https" {
         return Err(SsrfError::BadScheme);
+    }
+    if !url.username().is_empty() || url.password().is_some() || url.query().is_some() {
+        return Err(SsrfError::CredentialsInUrl);
     }
     let host = url
         .host_str()

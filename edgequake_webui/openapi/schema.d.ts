@@ -1176,6 +1176,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/deployment/providers/{slug}/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_provider_impact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/deployment/providers/{slug}/models": {
         parameters: {
             query?: never;
@@ -1186,6 +1202,26 @@ export interface paths {
         get?: never;
         put: operations["put_connection_models"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/deployment/providers/{slug}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask one provider for its model list and store the diff. A failed call
+         *     keeps the previous cache.
+         */
+        post: operations["refresh_deployment_provider"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2683,7 +2719,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** `GET /api/v1/models/eligible?workspace_id=&usage=`: models a member may pick. */
+        /**
+         * `GET /api/v1/models/eligible`: models a caller may pick for one scope and usage.
+         * @description Exactly one of `workspace_id`, `tenant_id`, or `scope=deployment`.
+         */
         get: operations["get_eligible_models"];
         put?: never;
         post?: never;
@@ -2758,16 +2797,6 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * List LLM models only.
-         * @description # Implements
-         *
-         *     - **FEAT0470**: Models Configuration API
-         *
-         *     # Returns
-         *
-         *     All LLM and multimodal models across all enabled providers.
-         */
         get: operations["list_llm_models"];
         put?: never;
         post?: never;
@@ -5694,6 +5723,7 @@ export interface components {
         };
         /**
          * @example {
+         *       "embedding_dimension": {},
          *       "id": {},
          *       "supports_chat": {},
          *       "supports_embedding": {},
@@ -5701,6 +5731,8 @@ export interface components {
          *     }
          */
         ConnectionModelBody: {
+            /** Format: int32 */
+            embedding_dimension?: number | null;
             id: string;
             supports_chat?: boolean;
             supports_embedding?: boolean;
@@ -7070,6 +7102,7 @@ export interface components {
          *       "offered": {},
          *       "origin": {},
          *       "probe": {},
+         *       "refresh": {},
          *       "slug": {},
          *       "withdrawn": {}
          *     }
@@ -7082,6 +7115,7 @@ export interface components {
             offered: boolean;
             origin: string;
             probe: string;
+            refresh?: null | components["schemas"]["ProviderRefreshState"];
             slug: string;
             withdrawn: boolean;
         };
@@ -7683,14 +7717,17 @@ export interface components {
         /**
          * @example {
          *       "display_name": {},
+         *       "embedding_dimension": {},
          *       "model": {},
          *       "provider": {},
          *       "provider_display_name": {},
+         *       "supports_streaming": {},
          *       "supports_vision": {}
          *     }
          */
         EligibleModelDto: {
             display_name: string;
+            /** Format: int32 */
             embedding_dimension?: number | null;
             model: string;
             provider: string;
@@ -7709,7 +7746,7 @@ export interface components {
          */
         EligibleModelsResponse: {
             models: components["schemas"]["EligibleModelDto"][];
-            /** @description `constrained` when this scope narrowed its parent offer. */
+            /** @description `constrained` when this scope has narrowed its parent offer. */
             offer_mode: string;
             /** @description `constrained` when the tenant ceiling restricts this usage. */
             policy_mode: string;
@@ -10774,11 +10811,14 @@ export interface components {
         };
         /**
          * @example {
+         *       "embedding_dimension": {},
          *       "id": {},
          *       "usages": []
          *     }
          */
         OfferModelDto: {
+            /** Format: int32 */
+            embedding_dimension?: number | null;
             id: string;
             usages: string[];
         };
@@ -12412,6 +12452,26 @@ export interface components {
             latency_ms: number;
         };
         /**
+         * @example {
+         *       "assignments": []
+         *     }
+         */
+        ProviderImpactResponse: {
+            assignments: components["schemas"]["ProviderImpactRow"][];
+        };
+        /**
+         * @example {
+         *       "field": {},
+         *       "id": {},
+         *       "scope": {}
+         *     }
+         */
+        ProviderImpactRow: {
+            field: string;
+            id: string;
+            scope: string;
+        };
+        /**
          * @description Information about a single provider
          * @example {
          *       "available": {},
@@ -12419,7 +12479,8 @@ export interface components {
          *       "default_models": {},
          *       "description": {},
          *       "id": {},
-         *       "name": {}
+         *       "name": {},
+         *       "refreshable": {}
          *     }
          */
         ProviderInfo: {
@@ -12435,6 +12496,8 @@ export interface components {
             id: string;
             /** @description Human-readable provider name */
             name: string;
+            /** @description Live discovery can refresh this slug (Dynamic or Hybrid). Static-only is false. */
+            refreshable?: boolean;
         };
         /**
          * @example {
@@ -12444,6 +12507,7 @@ export interface components {
          *       "offer_mode": {},
          *       "parent_count": {},
          *       "providers": [],
+         *       "revision": {},
          *       "tenant_id": {},
          *       "workspace_id": {}
          *     }
@@ -12455,8 +12519,44 @@ export interface components {
             offer_mode: string;
             parent_count: number;
             providers: components["schemas"]["OfferProviderDto"][];
+            /** Format: int64 */
+            revision: number;
             tenant_id: string;
             workspace_id?: string | null;
+        };
+        /**
+         * @example {
+         *       "added": [],
+         *       "error": {},
+         *       "refreshed_at": {},
+         *       "removed": [],
+         *       "status": {}
+         *     }
+         */
+        ProviderRefreshResponse: {
+            added: string[];
+            error?: string | null;
+            refreshed_at: string;
+            removed: string[];
+            status: string;
+        };
+        /**
+         * @example {
+         *       "added": {},
+         *       "error": {},
+         *       "refreshed_at": {},
+         *       "removed": {},
+         *       "status": {}
+         *     }
+         */
+        ProviderRefreshState: {
+            /** Format: int32 */
+            added: number;
+            error?: string | null;
+            refreshed_at: string;
+            /** Format: int32 */
+            removed: number;
+            status: string;
         };
         /**
          * @description Provider information with models.
@@ -16291,6 +16391,11 @@ export interface components {
             embedding_model: string;
             /** @description Embedding provider (openai, ollama, lmstudio). */
             embedding_provider: string;
+            /**
+             * @description Set on a workspace update when the resolved embedding model, provider, or dimension
+             *     changed. Stored vectors came from the previous embedder and need a rebuild (SPEC-178).
+             */
+            embedding_rebuild_required?: boolean;
             embedding_resolution_source?: string | null;
             /** @description Custom entity-type → hex color map for graph visualization (SPEC-102). */
             entity_type_colors?: {
@@ -16338,6 +16443,8 @@ export interface components {
             /** @description Workspace name. */
             name: string;
             pdf_parser_backend?: null | components["schemas"]["PdfParserBackendName"];
+            /** @description Resolved embedding dimension before the update; set only when a rebuild is required. */
+            previous_embedding_dimension?: number | null;
             /** @description Typed edge constraints (SPEC-114b). Absent/empty ⇒ unconstrained endpoints. */
             relation_edges?: components["schemas"]["RelationEdgeDto"][] | null;
             /** @description Relation type allow-list (SPEC-114). None/empty means free-form relations. */
@@ -18647,6 +18754,29 @@ export interface operations {
             };
         };
     };
+    get_provider_impact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Provider slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Assignments that name this provider */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderImpactResponse"];
+                };
+            };
+        };
+    };
     put_connection_models: {
         parameters: {
             query?: never;
@@ -18669,6 +18799,29 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    refresh_deployment_provider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Provider slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Refresh result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderRefreshResponse"];
+                };
             };
         };
     };
@@ -21345,14 +21498,14 @@ export interface operations {
     get_eligible_models: {
         parameters: {
             query: {
-                /** @description `deployment` for the fleet offer */
-                scope?: string;
-                /** @description Tenant scope */
-                tenant_id?: string;
-                /** @description extract | query | summary | vlm | keyword | embedding | decision */
-                usage: string;
                 /** @description Workspace scope */
                 workspace_id?: string;
+                /** @description Tenant scope */
+                tenant_id?: string;
+                /** @description deployment for the fleet offer */
+                scope?: string;
+                /** @description extract | query | summary | vlm | keyword | embedding | decision */
+                usage: string;
             };
             header?: never;
             path?: never;
@@ -21369,7 +21522,14 @@ export interface operations {
                     "application/json": components["schemas"]["EligibleModelsResponse"];
                 };
             };
-            /** @description Not a member of this workspace */
+            /** @description Zero or two scopes */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Caller cannot read this scope */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -21427,7 +21587,10 @@ export interface operations {
     };
     list_llm_models: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Keep models for this provider slug */
+                provider?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;

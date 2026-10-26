@@ -408,17 +408,26 @@ pub async fn ensure_deployment_choice(
         return Ok(());
     }
     let slugs = crate::services::provider_offer_rows::load_global_offer(state).await?;
+    let llm = named_pair(llm_provider, llm_model)?;
+    let embedding = named_pair(embedding_provider, embedding_model)?;
+    let vision = named_pair(vision_provider, vision_model)?;
     if slugs.is_empty() {
+        if llm.is_some() || embedding.is_some() || vision.is_some() {
+            return Err(ApiError::unprocessable_coded(
+                "model_not_eligible",
+                "no provider is offered",
+            ));
+        }
         return Ok(());
     }
     let mut catalog = load_catalog(state).await;
     crate::services::model_policy_catalog::append_connection_models(state, &mut catalog).await?;
     let entries: Vec<CatalogEntry> = catalog.into_iter().map(|item| item.entry).collect();
     let offered = Some(&slugs);
-    if let Some((provider, model)) = named_pair(llm_provider, llm_model)? {
+    if let Some((provider, model)) = llm {
         ensure_family(&entries, &[], &[], offered, provider, model)?;
     }
-    if let Some((provider, model)) = named_pair(embedding_provider, embedding_model)? {
+    if let Some((provider, model)) = embedding {
         check_pair(
             Usage::Embedding,
             provider,
@@ -429,7 +438,7 @@ pub async fn ensure_deployment_choice(
             offered,
         )?;
     }
-    if let Some((provider, model)) = named_pair(vision_provider, vision_model)? {
+    if let Some((provider, model)) = vision {
         check_pair(Usage::Vlm, provider, model, &entries, &[], &[], offered)?;
     }
     Ok(())

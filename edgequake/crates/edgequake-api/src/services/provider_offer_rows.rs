@@ -187,9 +187,30 @@ pub async fn replace_offer(
     workspace: Option<Uuid>,
     constrained: bool,
     slugs: &[String],
+    expected_revision: Option<i64>,
 ) -> ApiResult<()> {
     let pool = pool(state)?;
     let mut tx = pool.begin().await.map_err(internal)?;
+    let id_for_revision = workspace.unwrap_or(tenant);
+    if let Some(expected) = expected_revision {
+        let current_sql = if workspace.is_some() {
+            "SELECT provider_offer_revision FROM workspaces WHERE workspace_id = $1"
+        } else {
+            "SELECT provider_offer_revision FROM tenants WHERE tenant_id = $1"
+        };
+        let current: i64 = sqlx::query_scalar(current_sql)
+            .bind(id_for_revision)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(internal)?;
+        if current != expected {
+            return Err(ApiError::Coded {
+                code: "stale_revision",
+                message: "the offer changed; reload and try again".into(),
+                status: axum::http::StatusCode::CONFLICT,
+            });
+        }
+    }
     let flag_sql = if workspace.is_some() {
         "UPDATE workspaces SET provider_offer_constrained = $2 WHERE workspace_id = $1"
     } else {
@@ -199,6 +220,16 @@ pub async fn replace_offer(
     sqlx::query(flag_sql)
         .bind(id)
         .bind(constrained)
+        .execute(&mut *tx)
+        .await
+        .map_err(internal)?;
+    let bump_sql = if workspace.is_some() {
+        "UPDATE workspaces SET provider_offer_revision = provider_offer_revision + 1 WHERE workspace_id = $1"
+    } else {
+        "UPDATE tenants SET provider_offer_revision = provider_offer_revision + 1 WHERE tenant_id = $1"
+    };
+    sqlx::query(bump_sql)
+        .bind(id_for_revision)
         .execute(&mut *tx)
         .await
         .map_err(internal)?;
@@ -235,6 +266,7 @@ pub async fn replace_offer(
     _workspace: Option<Uuid>,
     _constrained: bool,
     _slugs: &[String],
+    _expected_revision: Option<i64>,
 ) -> ApiResult<()> {
     Err(ApiError::Internal("PostgreSQL is required".into()))
 }
@@ -255,7 +287,7 @@ pub async fn remove_offers_for_slug(pool: &sqlx::PgPool, slug: &str) -> ApiResul
 pub async fn replace_connection_models(
     pool: &sqlx::PgPool,
     slug: &str,
-    models: &[(String, bool, bool, bool)],
+    models: &[(String, bool, bool, bool, Option<i32>)],
 ) -> ApiResult<()> {
     let found: Option<(uuid::Uuid, Option<bool>)> = sqlx::query_as(
         "SELECT id, last_test_ok FROM provider_connections WHERE tenant_id IS NULL AND slug = $1",
@@ -279,16 +311,18 @@ pub async fn replace_connection_models(
         .execute(&mut *tx)
         .await
         .map_err(internal)?;
-    for (model, chat, vision, embedding) in models {
+    for (model, chat, vision, embedding, dimension) in models {
         sqlx::query(
-            "INSERT INTO connection_models (connection_id, model, supports_chat, supports_vision, supports_embedding) \
-             VALUES ($1, $2, $3, $4, $5)",
+            "INSERT INTO connection_models \
+             (connection_id, model, supports_chat, supports_vision, supports_embedding, embedding_dimension) \
+             VALUES ($1, $2, $3, $4, $5, $6)",
         )
         .bind(id)
         .bind(model)
         .bind(chat)
         .bind(vision)
         .bind(embedding)
+        .bind(dimension)
         .execute(&mut *tx)
         .await
         .map_err(internal)?;
@@ -316,4 +350,132 @@ pub async fn set_withdrawn(state: &AppState, slug: &str, withdrawn: bool) -> Api
 #[cfg(not(feature = "postgres"))]
 pub async fn set_withdrawn(_state: &AppState, _slug: &str, _withdrawn: bool) -> ApiResult<()> {
     Err(ApiError::Internal("PostgreSQL is required".into()))
+}
+
+/// How many saved offers or workspace columns still name this slug.
+pub async fn provider_assignment_count(state: &AppState, slug: &str) -> ApiResult<i64> {
+    #[cfg(feature = "postgres")]
+    {
+        let Some(pool) = state.optional_pg_pool() else {
+            return Ok(0);
+        };
+        let offers: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*)::bigint FROM provider_offers WHERE provider_slug = $1 AND enabled",
+        )
+        .bind(slug)
+        .fetch_one(pool)
+        .await
+        .map_err(internal)?;
+        let columns: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*)::bigint FROM workspaces \
+             WHERE lower(llm_provider) = $1 \
+                OR lower(embedding_provider) = $1 \
+                OR lower(coalesce(vision_llm_provider, '')) = $1",
+        )
+        .bind(slug)
+        .fetch_one(pool)
+        .await
+        .map_err(internal)?;
+        Ok(offers + columns)
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = (state, slug);
+        Ok(0)
+    }
+}
+
+/// Compare `If-Match` and advance the scope revision. Absent header proceeds.
+pub async fn touch_scope_revision(
+    state: &AppState,
+    tenant: Uuid,
+    workspace: Option<Uuid>,
+    expected: Option<i64>,
+) -> ApiResult<()> {
+    #[cfg(feature = "postgres")]
+    {
+        let pool = pool(state)?;
+        let id = workspace.unwrap_or(tenant);
+        if let Some(expected) = expected {
+            let current_sql = if workspace.is_some() {
+                "SELECT provider_offer_revision FROM workspaces WHERE workspace_id = $1"
+            } else {
+                "SELECT provider_offer_revision FROM tenants WHERE tenant_id = $1"
+            };
+            let current: i32 = sqlx::query_scalar(current_sql)
+                .bind(id)
+                .fetch_one(pool)
+                .await
+                .map_err(internal)?;
+            if i64::from(current) != expected {
+                return Err(ApiError::Coded {
+                    code: "stale_revision",
+                    message: "the offer changed; reload and try again".into(),
+                    status: axum::http::StatusCode::CONFLICT,
+                });
+            }
+        }
+        let bump_sql = if workspace.is_some() {
+            "UPDATE workspaces SET provider_offer_revision = provider_offer_revision + 1 WHERE workspace_id = $1"
+        } else {
+            "UPDATE tenants SET provider_offer_revision = provider_offer_revision + 1 WHERE tenant_id = $1"
+        };
+        sqlx::query(bump_sql)
+            .bind(id)
+            .execute(pool)
+            .await
+            .map_err(internal)?;
+        Ok(())
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = (state, tenant, workspace, expected);
+        Ok(())
+    }
+}
+
+pub fn offer_hash(slugs: &[String]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    for slug in slugs {
+        hasher.update(slug.as_bytes());
+        hasher.update(b"\n");
+    }
+    format!("{:x}", hasher.finalize())
+}
+
+/// Audit row with hashes only. A missing table does not fail the save.
+pub async fn write_provider_audit(
+    state: &AppState,
+    actor_id: Option<Uuid>,
+    action: &str,
+    scope: &str,
+    subject: &str,
+    after_hash: &str,
+) {
+    #[cfg(feature = "postgres")]
+    {
+        let Some(pool) = state.optional_pg_pool() else {
+            return;
+        };
+        if let Err(err) = sqlx::query(
+            "INSERT INTO provider_config_audit \
+             (actor_id, action, scope, subject, after_hash) \
+             VALUES ($1, $2, $3, $4, $5)",
+        )
+        .bind(actor_id)
+        .bind(action)
+        .bind(scope)
+        .bind(subject)
+        .bind(after_hash)
+        .execute(pool)
+        .await
+        {
+            tracing::warn!(error = %err, "provider audit insert skipped");
+        }
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = (state, actor_id, action, scope, subject, after_hash);
+    }
 }

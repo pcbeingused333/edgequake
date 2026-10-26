@@ -359,13 +359,17 @@ async fn requeue_one_failed_pdf(
         .await
     {
         Ok(Some(ws)) => {
-            let vp = ws
-                .vision_llm_provider
-                .as_deref()
-                .filter(|p| !p.is_empty())
-                .unwrap_or("ollama")
-                .to_string();
-            let vm = ws.vision_llm_model.clone().filter(|m| !m.is_empty());
+            let role = edgequake_core::resolve_role_llm(&ws, edgequake_core::LlmRole::Vlm);
+            crate::services::model_gate::judge_running_pair(
+                state,
+                &ws,
+                edgequake_core::Usage::Vlm,
+                &role.provider,
+                &role.model,
+            )
+            .await?;
+            let vp = role.provider;
+            let vm = Some(role.model).filter(|model| !model.is_empty());
             let backend = ws.resolved_pdf_parser_backend();
             (vp, vm, backend, Some(ws))
         }

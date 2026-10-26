@@ -13,18 +13,16 @@ pub fn resolve_summary_llm_or_fallback(
     workspace: Option<&Workspace>,
     fallback: Arc<dyn LLMProvider>,
     create: impl FnOnce(&str, &str) -> Result<Arc<dyn LLMProvider>, String>,
-) -> Arc<dyn LLMProvider> {
+) -> Result<Arc<dyn LLMProvider>, String> {
     let Some(ws) = workspace else {
-        return fallback;
+        return Ok(fallback);
     };
     if role_config_from_workspace(ws, LlmRole::Summary).is_none() {
-        return fallback;
+        return Ok(fallback);
     }
     let role = resolve_role_llm(ws, LlmRole::Summary);
-    match create(&role.provider, &role.model) {
-        Ok(llm) => llm,
-        Err(_) => fallback,
-    }
+    create(&role.provider, &role.model)
+        .map_err(|err| format!("credential_missing: {err}. Fix this under Workspace → Models."))
 }
 
 #[cfg(test)]
@@ -72,7 +70,8 @@ mod tests {
         let _ = resolve_summary_llm_or_fallback(Some(&ws), fallback, |p, m| {
             used_summary = p == "mock" && m == "mock-summary";
             Ok(Arc::new(MockProvider::new()) as Arc<dyn LLMProvider>)
-        });
+        })
+        .expect("summary role");
         assert!(used_summary);
     }
 
@@ -85,7 +84,8 @@ mod tests {
         let out = resolve_summary_llm_or_fallback(Some(&ws), fallback.clone(), |_, _| {
             create_called = true;
             Ok(Arc::new(MockProvider::new()) as Arc<dyn LLMProvider>)
-        });
+        })
+        .expect("unset summary inherits");
         assert!(!create_called);
         assert!(Arc::ptr_eq(&out, &fallback));
     }
