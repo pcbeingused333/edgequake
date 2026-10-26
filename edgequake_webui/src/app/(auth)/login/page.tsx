@@ -8,6 +8,7 @@ import { useSetupStatus } from '@/hooks/use-setup-status';
 import { SsoButtons } from '@/components/auth/sso-buttons';
 import { useSsoProviders } from '@/hooks/use-sso-providers';
 import { login, safeRedirectPath } from '@/lib/api/edgequake';
+import { followAuthRedirect } from '@/lib/auth/auth-return';
 import { getRuntimeConfig } from '@/lib/runtime-config';
 import { useAuthStore } from '@/stores/use-auth-store';
 import { AlertCircle, Eye, EyeOff, Loader2, Network } from 'lucide-react';
@@ -87,7 +88,7 @@ function LoginPageInner() {
     try {
       const response = await login({ username, password });
       authLogin(response);
-      router.push(postLoginPath);
+      followAuthRedirect((href) => router.push(href), postLoginPath);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Login failed';
       // Single error surface — no toast + alert (SPEC-155 F-155-P12)
@@ -98,7 +99,7 @@ function LoginPageInner() {
   };
 
   const handleSkipLogin = () => {
-    router.push(postLoginPath);
+    followAuthRedirect((href) => router.push(href), postLoginPath);
   };
 
   return (

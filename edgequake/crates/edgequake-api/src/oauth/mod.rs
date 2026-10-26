@@ -10,6 +10,7 @@ pub mod pkce;
 pub mod register;
 pub mod revoke;
 pub mod scopes;
+pub mod session_cookie;
 pub mod store;
 pub mod token;
 pub mod types;

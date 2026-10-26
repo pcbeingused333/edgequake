@@ -31,6 +31,7 @@ use crate::services::record_compliance_event_runtime;
 use crate::state::{AppState, ComplianceRuntime, PostgresRuntime};
 
 use super::refresh_cookie::{cookie_secure_from_headers, set_refresh_cookie_header};
+use crate::oauth::session_cookie::set_oauth_session_cookie_header;
 
 const LOGIN_ATTEMPT_TTL_MINUTES: i64 = 10;
 
@@ -336,11 +337,18 @@ async fn handoff_redirect(
     url.query_pairs_mut().append_pair("code", &code);
 
     let mut response = Redirect::to(url.as_str()).into_response();
-    response.headers_mut().insert(
+    let secure = cookie_secure_from_headers(headers);
+    let set_cookie = response.headers_mut();
+    set_cookie.insert(
         header::SET_COOKIE,
-        set_refresh_cookie_header(
-            &done.session.refresh_token,
-            cookie_secure_from_headers(headers),
+        set_refresh_cookie_header(&done.session.refresh_token, secure),
+    );
+    set_cookie.append(
+        header::SET_COOKIE,
+        set_oauth_session_cookie_header(
+            &done.session.access_token,
+            done.session.expires_in,
+            secure,
         ),
     );
     Ok(response)

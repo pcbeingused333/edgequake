@@ -3,6 +3,7 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { buildSsoLoginUrl } from '@/lib/api/edgequake/sso';
+import { followAuthRedirect } from '@/lib/auth/auth-return';
 import { completeSsoLogin } from '@/lib/auth/complete-sso-login';
 import { ambiguousOrgAliases, ssoErrorKey } from '@/lib/auth/sso-errors';
 import { AlertCircle, Loader2 } from 'lucide-react';
@@ -27,7 +28,7 @@ function SsoCallbackInner() {
     if (!code || redeemed.current) return;
     redeemed.current = true; // React strict-mode double effect must not burn the code twice
     completeSsoLogin(code)
-      .then(({ redirectTo }) => router.replace(redirectTo))
+      .then(({ redirectTo }) => followAuthRedirect((href) => router.replace(href), redirectTo))
       .catch(() => setFailure('invalid_handoff'));
   }, [code, router]);
 

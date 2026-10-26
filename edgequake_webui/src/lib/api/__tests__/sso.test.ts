@@ -4,6 +4,9 @@ import { buildSsoLoginUrl, safeRedirectPath } from "../edgequake/sso";
 describe("SPEC-158 sso api helpers", () => {
   it("safeRedirectPath keeps same-origin paths only", () => {
     expect(safeRedirectPath("/documents?x=1")).toBe("/documents?x=1");
+    expect(
+      safeRedirectPath("/oauth/authorize?redirect_uri=https://client.example/cb&state=s1"),
+    ).toBe("/oauth/authorize?redirect_uri=https://client.example/cb&state=s1");
     for (const bad of ["//evil.com", "https://evil.com", "/a://b", "/a\\b", "", null, undefined, "relative"]) {
       expect(safeRedirectPath(bad as string | null | undefined), String(bad)).toBeNull();
     }

@@ -60,6 +60,15 @@ ingress:
         - path: /api
           pathType: Prefix
           service: api
+        - path: /oauth
+          pathType: Prefix
+          service: api
+        - path: /mcp
+          pathType: Prefix
+          service: api
+        - path: /.well-known
+          pathType: Prefix
+          service: api
 
 networkPolicy:
   enabled: false

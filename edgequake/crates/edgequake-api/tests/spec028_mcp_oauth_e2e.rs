@@ -125,6 +125,119 @@ async fn ec_mcp_dcr_redirect_uri_mismatch_rejected() {
 }
 
 #[tokio::test]
+async fn ec_mcp_authorize_browser_session_is_oauth_cookie_not_refresh() {
+    use axum::body::Body;
+    use axum::http::{header, Request};
+    use edgequake_auth::{Claims, Role};
+
+    let state = auth_enabled_mcp_state().await;
+    let app = build_mcp_app(state.clone());
+
+    let register = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/oauth/register")
+                .header("Content-Type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "redirect_uris": ["http://127.0.0.1:54321/callback"],
+                        "client_name": "browser-session",
+                        "token_endpoint_auth_method": "none"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(register.status(), StatusCode::CREATED);
+    let client_id = parse_json(register).await["client_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let authorize_uri = format!(
+        "/oauth/authorize?response_type=code&client_id={}&redirect_uri={}&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256&resource={}",
+        urlencoding::encode(&client_id),
+        urlencoding::encode("http://127.0.0.1:54321/callback"),
+        urlencoding::encode("http://127.0.0.1:8080/mcp"),
+    );
+
+    let anonymous = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(&authorize_uri)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(anonymous.status(), StatusCode::SEE_OTHER);
+    let location = anonymous
+        .headers()
+        .get(header::LOCATION)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert!(
+        location.contains("/login?redirect="),
+        "anonymous authorize must return to login: {location}"
+    );
+    assert!(
+        location.contains("%2Foauth%2Fauthorize"),
+        "login redirect must preserve the authorize request: {location}"
+    );
+
+    // `eq_refresh` is Path=/api/v1/auth and is not a substitute for the OAuth session.
+    let refresh_only = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(&authorize_uri)
+                .header(header::COOKIE, "eq_refresh=not-a-session")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(refresh_only.status(), StatusCode::SEE_OTHER);
+
+    let session = Claims::new(
+        edgequake_api::middleware::default_user_uuid(),
+        Role::User,
+        3600,
+    );
+    let session_jwt = state.auth.jwt.generate_token_with_claims(session).unwrap();
+    let consent = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(&authorize_uri)
+                .header(header::COOKIE, format!("eq_oauth_session={session_jwt}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(consent.status(), StatusCode::OK);
+    let html = String::from_utf8(
+        axum::body::to_bytes(consent.into_body(), usize::MAX)
+            .await
+            .unwrap()
+            .to_vec(),
+    )
+    .unwrap();
+    assert!(
+        html.contains("Authorize MCP access"),
+        "oauth session cookie must reach the consent page"
+    );
+}
+
+#[tokio::test]
 async fn ec_mcp_prm_returns_authorization_servers() {
     let app = default_mcp_app();
     let response = app

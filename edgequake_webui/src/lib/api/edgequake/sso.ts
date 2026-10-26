@@ -24,10 +24,24 @@ export interface SsoHandoffResponse extends LoginResponse {
   redirect_after?: string | null;
 }
 
-/** Same-origin relative path only (blocks open redirects). Shared by login + callback. */
+/**
+ * Same-origin relative path only (blocks open redirects). Shared by login + callback.
+ *
+ * The query string may contain an OAuth `redirect_uri` (`https://…`). That URL stays on
+ * this origin until `/oauth/authorize` validates it, so `://` is rejected on the path
+ * only — not on the whole string.
+ */
 export function safeRedirectPath(raw: string | null | undefined): string | null {
   if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return null;
-  if (raw.includes("://") || raw.includes("\\")) return null;
+  const pathOnly = raw.split("?")[0]?.split("#")[0] ?? raw;
+  if (
+    pathOnly.includes("://") ||
+    pathOnly.includes("\\") ||
+    pathOnly.includes("//") ||
+    pathOnly.includes("..")
+  ) {
+    return null;
+  }
   return raw;
 }
 

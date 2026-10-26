@@ -126,6 +126,17 @@ ingress:
         - path: /api
           pathType: Prefix
           service: api
+        # MCP OAuth (same split as deploy/gcp/compose/snippets.caddy). `/` alone
+        # would send /oauth/authorize to the WebUI and the login return would 404.
+        - path: /oauth
+          pathType: Prefix
+          service: api
+        - path: /mcp
+          pathType: Prefix
+          service: api
+        - path: /.well-known
+          pathType: Prefix
+          service: api
   tls: []
 
 networkPolicy:

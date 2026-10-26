@@ -95,6 +95,9 @@ const nextConfig: NextConfig = {
     const backend = resolveDevProxyBackend();
     return [
       { source: "/api/:path*", destination: `${backend}/api/:path*` },
+      { source: "/oauth/:path*", destination: `${backend}/oauth/:path*` },
+      { source: "/mcp", destination: `${backend}/mcp` },
+      { source: "/.well-known/:path*", destination: `${backend}/.well-known/:path*` },
       { source: "/api-docs/:path*", destination: `${backend}/api-docs/:path*` },
       { source: "/health", destination: `${backend}/health` },
       { source: "/ready", destination: `${backend}/ready` },

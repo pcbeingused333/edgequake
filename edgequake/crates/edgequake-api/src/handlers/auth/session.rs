@@ -37,6 +37,9 @@ use super::{find_user_by_login, get_record_by_id, get_user_by_id, UserRecord};
 pub use crate::handlers::auth_types::{
     GetMeResponse, LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse, UserInfo,
 };
+use crate::oauth::session_cookie::{
+    clear_oauth_session_cookie_header, set_oauth_session_cookie_header,
+};
 
 /// Login endpoint.
 ///
@@ -201,16 +204,19 @@ pub(crate) async fn open_session(
     )
     .await?;
 
-    Ok(with_refresh_cookie(
+    let secure = cookie_secure_from_headers(headers);
+    Ok(with_session_cookies(
         LoginResponse {
-            access_token: issued.access_token,
+            access_token: issued.access_token.clone(),
             token_type: "Bearer".to_string(),
             expires_in: issued.expires_in,
             refresh_token: refresh_token_for_json_body(headers, &issued.refresh_token),
             user: UserInfo::from(record),
         },
+        &issued.access_token,
+        issued.expires_in,
         &issued.refresh_token,
-        cookie_secure_from_headers(headers),
+        secure,
     ))
 }
 
@@ -317,15 +323,18 @@ pub async fn refresh_token(
         .await?;
     }
 
-    Ok(with_refresh_cookie(
+    let secure = cookie_secure_from_headers(&headers);
+    Ok(with_session_cookies(
         RefreshTokenResponse {
-            access_token,
+            access_token: access_token.clone(),
             token_type: "Bearer".to_string(),
             expires_in,
             refresh_token: refresh_token_for_json_body(&headers, &new_refresh),
         },
+        &access_token,
+        expires_in,
         &new_refresh,
-        cookie_secure_from_headers(&headers),
+        secure,
     ))
 }
 
@@ -414,9 +423,9 @@ pub async fn logout(
 
     let secure = cookie_secure_from_headers(&headers);
     let mut response = StatusCode::NO_CONTENT.into_response();
-    response
-        .headers_mut()
-        .insert(SET_COOKIE, clear_refresh_cookie_header(secure));
+    let response_headers = response.headers_mut();
+    response_headers.insert(SET_COOKIE, clear_refresh_cookie_header(secure));
+    response_headers.append(SET_COOKIE, clear_oauth_session_cookie_header(secure));
     Ok(response)
 }
 
@@ -446,15 +455,21 @@ async fn refresh_scope(
     Ok((scope, role))
 }
 
-fn with_refresh_cookie<T: serde::Serialize>(
+fn with_session_cookies<T: serde::Serialize>(
     body: T,
+    access_token: &str,
+    expires_in: i64,
     refresh_token: &str,
     secure: bool,
 ) -> Response {
     let mut response = Json(body).into_response();
-    response
-        .headers_mut()
-        .insert(SET_COOKIE, set_refresh_cookie_header(refresh_token, secure));
+    let headers = response.headers_mut();
+    // Refresh first so callers that read a single Set-Cookie still see `eq_refresh`.
+    headers.insert(SET_COOKIE, set_refresh_cookie_header(refresh_token, secure));
+    headers.append(
+        SET_COOKIE,
+        set_oauth_session_cookie_header(access_token, expires_in, secure),
+    );
     response
 }
 

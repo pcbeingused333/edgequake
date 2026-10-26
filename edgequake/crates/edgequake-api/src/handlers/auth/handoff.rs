@@ -1,7 +1,10 @@
 //! SPA session handoff (SPEC-158 LAW-158-4): redeem the single-use `code` the OIDC callback put
-//! in the redirect URL. The refresh token already travels in the HttpOnly `eq_refresh` cookie;
-//! this endpoint only mints the short-lived access token (never persisted, never in a URL).
+//! in the redirect URL. The refresh token already travels in the HttpOnly `eq_refresh` cookie.
+//! This endpoint mints the short-lived access token (never in a URL) and mirrors it into the
+//! HttpOnly `eq_oauth_session` cookie so a following `/oauth/authorize` navigation is signed in.
 
+use axum::http::{header, HeaderMap};
+use axum::response::{IntoResponse, Response};
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -17,6 +20,8 @@ use crate::state::{AppState, PostgresRuntime};
 use axum::extract::FromRef;
 
 use super::get_record_by_id;
+use super::refresh_cookie::cookie_secure_from_headers;
+use crate::oauth::session_cookie::set_oauth_session_cookie_header;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct HandoffRequest {
@@ -51,8 +56,9 @@ pub struct HandoffResponse {
 )]
 pub async fn redeem_sso_handoff(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(request): Json<HandoffRequest>,
-) -> Result<Json<HandoffResponse>, ApiError> {
+) -> Result<Response, ApiError> {
     let invalid = || ApiError::auth_unauthorized("handoff", "code_invalid", None);
     let record = redeem_handoff(&state.auth.federation, request.code.trim())
         .await?
@@ -99,13 +105,23 @@ pub async fn redeem_sso_handoff(
     )
     .await?;
 
-    Ok(Json(HandoffResponse {
-        access_token,
+    let mut response = Json(HandoffResponse {
+        access_token: access_token.clone(),
         token_type: "Bearer".into(),
         expires_in,
         user: UserInfo::from(&user),
         tenant_id: scope.tenant_id.to_string(),
         workspace_id: scope.workspace_id.map(|w| w.to_string()),
         redirect_after: record.redirect_after,
-    }))
+    })
+    .into_response();
+    response.headers_mut().append(
+        header::SET_COOKIE,
+        set_oauth_session_cookie_header(
+            &access_token,
+            expires_in,
+            cookie_secure_from_headers(&headers),
+        ),
+    );
+    Ok(response)
 }

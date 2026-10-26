@@ -17,10 +17,12 @@ use crate::state::AppState;
 
 use super::cimd::{redirect_uri_allowed, resolve_client};
 use super::scopes::normalize_requested_scopes;
+use super::session_cookie::OAUTH_SESSION_COOKIE;
 use super::store;
 use super::types::OAuthAuthorizationCode;
 
-const AUTH_COOKIE: &str = "edgequake_access_token";
+/// Pre-SPEC-154 mirror. Still accepted so existing clients and tests keep working.
+const LEGACY_AUTH_COOKIE: &str = "edgequake_access_token";
 const CODE_TTL_SECS: i64 = 600;
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
@@ -195,32 +197,41 @@ async fn validate_authorize_request(
     })
 }
 
-fn session_from_cookie(state: &AppState, headers: &HeaderMap) -> Result<Option<Claims>, ApiError> {
-    let from_cookie = headers
+fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
+    let prefix = format!("{name}=");
+    headers
         .get(header::COOKIE)
         .and_then(|v| v.to_str().ok())
         .and_then(|cookie_header| {
             cookie_header.split(';').find_map(|part| {
                 let part = part.trim();
-                part.strip_prefix(&format!("{AUTH_COOKIE}=")).map(|v| {
+                part.strip_prefix(&prefix).map(|v| {
                     urlencoding::decode(v)
                         .map(|c| c.into_owned())
                         .unwrap_or_else(|_| v.to_string())
                 })
             })
-        });
-    let from_bearer = headers
-        .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-        .map(str::to_string);
-    let Some(token) = from_cookie.or(from_bearer).filter(|t| !t.is_empty()) else {
-        return Ok(None);
-    };
-    match state.auth.jwt.verify_token(&token) {
-        Ok(claims) => Ok(Some(claims)),
-        Err(_) => Ok(None),
+        })
+        .filter(|v| !v.is_empty())
+}
+
+fn session_from_cookie(state: &AppState, headers: &HeaderMap) -> Result<Option<Claims>, ApiError> {
+    let candidates = [
+        cookie_value(headers, OAUTH_SESSION_COOKIE),
+        cookie_value(headers, LEGACY_AUTH_COOKIE),
+        headers
+            .get(header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer "))
+            .map(str::to_string)
+            .filter(|t| !t.is_empty()),
+    ];
+    for token in candidates.into_iter().flatten() {
+        if let Ok(claims) = state.auth.jwt.verify_token(&token) {
+            return Ok(Some(claims));
+        }
     }
+    Ok(None)
 }
 
 fn login_redirect(headers: &HeaderMap, q: &AuthorizeQuery) -> Result<Redirect, ApiError> {
