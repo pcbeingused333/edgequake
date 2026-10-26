@@ -47,4 +47,16 @@ describe('sanitizeQueryModelSelection', () => {
       model: undefined,
     });
   });
+
+  it('keeps a pair while the eligible list has not loaded', () => {
+    expect(
+      sanitizeQueryModelSelection({ provider: 'openai', model: 'gpt-4o-mini' }, undefined, undefined, false),
+    ).toEqual({ provider: 'openai', model: 'gpt-4o-mini' });
+  });
+
+  it('clears a pair that the loaded eligible list omits', () => {
+    expect(
+      sanitizeQueryModelSelection({ provider: 'openai', model: 'inventory-only' }, models, undefined, true),
+    ).toEqual({ provider: undefined, model: undefined });
+  });
 });

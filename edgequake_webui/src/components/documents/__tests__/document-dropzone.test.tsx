@@ -10,6 +10,9 @@ import {
   type DocumentDropzoneProps,
 } from "../document-dropzone";
 
+vi.mock("@/hooks/use-llm-capability-models", () => ({
+  useLlmCapabilityModels: () => undefined,
+}));
 vi.mock("@/hooks/use-providers", () => ({
   useLlmModels: () => ({ data: undefined }),
 }));

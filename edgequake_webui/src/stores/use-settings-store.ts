@@ -74,6 +74,10 @@ export interface SettingsState {
   language: Language;
   graphSettings: GraphSettings;
   querySettings: QuerySettings;
+  /** Query chip pair, keyed by workspace id. */
+  queryModelsByWorkspace: Record<string, { provider?: string; model?: string }>;
+  /** A legacy global pair has already been copied onto one workspace. */
+  queryModelLegacyAdopted: boolean;
   sidebarCollapsed: boolean;
   /** Tracks if store has been hydrated from localStorage */
   _hasHydrated: boolean;
@@ -83,6 +87,11 @@ interface SettingsActions {
   setLanguage: (language: Language) => void;
   setGraphSettings: (settings: Partial<GraphSettings>) => void;
   setQuerySettings: (settings: Partial<QuerySettings>) => void;
+  setWorkspaceQueryModel: (
+    workspaceId: string,
+    pair: { provider?: string; model?: string },
+  ) => void;
+  adoptLegacyQueryModel: (workspaceId: string) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   toggleSidebar: () => void;
   resetSettings: () => void;
@@ -104,9 +113,49 @@ const initialState: SettingsState = {
   language: "en",
   graphSettings: defaultGraphSettings,
   querySettings: defaultQuerySettings,
+  queryModelsByWorkspace: {},
+  queryModelLegacyAdopted: false,
   sidebarCollapsed: false,
   _hasHydrated: false,
 };
+
+export interface QueryModelPair {
+  provider?: string;
+  model?: string;
+}
+
+/**
+ * Copies a pre-SPEC-178 global pair onto the workspace that is open, once.
+ * Later workspaces keep their own slots.
+ */
+export function adoptLegacyQueryModel(input: {
+  map: Record<string, QueryModelPair>;
+  legacy?: QueryModelPair;
+  workspaceId: string | null;
+  adopted: boolean;
+}): { map: Record<string, QueryModelPair>; adopted: boolean; wrote: boolean } {
+  if (input.adopted || !input.workspaceId) {
+    return { map: input.map, adopted: input.adopted, wrote: false };
+  }
+  if (input.map[input.workspaceId]) {
+    return { map: input.map, adopted: true, wrote: true };
+  }
+  const provider = input.legacy?.provider?.trim();
+  const model = input.legacy?.model?.trim();
+  if (!provider || !model) {
+    return { map: input.map, adopted: true, wrote: true };
+  }
+  return {
+    map: { ...input.map, [input.workspaceId]: { provider, model } },
+    adopted: true,
+    wrote: true,
+  };
+}
+
+/** Models the choice menu may show. The mock provider is never a choice. */
+export function visibleChoiceModels<T extends { provider: string }>(models: T[]): T[] {
+  return models.filter((entry) => entry.provider !== "mock");
+}
 
 /** Removes keys that no reader uses anymore. Pure, so it is unit-tested. */
 export function dropRetiredSettingsKeys(persisted: Record<string, unknown>): Record<string, unknown> {
@@ -158,6 +207,30 @@ export const useSettingsStore = create<SettingsStore>()(
         set((state) => ({
           querySettings: { ...state.querySettings, ...settings },
         })),
+
+      setWorkspaceQueryModel: (workspaceId, pair) =>
+        set((state) => ({
+          queryModelsByWorkspace: { ...state.queryModelsByWorkspace, [workspaceId]: pair },
+          querySettings: { ...state.querySettings, ...pair },
+        })),
+
+      adoptLegacyQueryModel: (workspaceId) =>
+        set((state) => {
+          const next = adoptLegacyQueryModel({
+            map: state.queryModelsByWorkspace,
+            legacy: {
+              provider: state.querySettings.provider,
+              model: state.querySettings.model,
+            },
+            workspaceId,
+            adopted: state.queryModelLegacyAdopted,
+          });
+          if (!next.wrote) return state;
+          return {
+            queryModelLegacyAdopted: next.adopted,
+            queryModelsByWorkspace: next.map,
+          };
+        }),
 
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
 
@@ -211,6 +284,8 @@ export const useSettingsStore = create<SettingsStore>()(
         language: state.language,
         graphSettings: state.graphSettings,
         querySettings: state.querySettings,
+        queryModelsByWorkspace: state.queryModelsByWorkspace,
+        queryModelLegacyAdopted: state.queryModelLegacyAdopted,
         sidebarCollapsed: state.sidebarCollapsed,
       }),
       /** v1 persisted theme, gleaning and rerank. v2 drops them (EC-175-23). */
@@ -237,6 +312,8 @@ export const useSettingsStore = create<SettingsStore>()(
             ...defaultQuerySettings,
             ...(persisted.querySettings || {}),
           },
+          queryModelsByWorkspace: persisted.queryModelsByWorkspace ?? {},
+          queryModelLegacyAdopted: persisted.queryModelLegacyAdopted ?? false,
         };
       },
       onRehydrateStorage: () => {

@@ -209,18 +209,91 @@ fn workspace_has_embedding_override(workspace: &Workspace) -> bool {
         || metadata_has_nonempty(&workspace.metadata, "embedding_provider")
 }
 
+/// Deliberate `llm_roles.vlm` choice (SPEC-163): the canonical workspace vision source.
+///
+/// Returns the provider and/or model the role names; a missing half falls through to later
+/// layers. `None` when the role names neither.
+fn role_vlm_override(ws: &Workspace) -> Option<(Option<String>, Option<String>)> {
+    let vlm = ws.metadata.get("llm_roles")?.get("vlm")?;
+    let field = |key: &str| {
+        vlm.get(key)
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    let (provider, model) = (field("provider"), field("model"));
+    (provider.is_some() || model.is_some()).then_some((provider, model))
+}
+
+/// Legacy workspace vision override: only the metadata keys are a deliberate choice.
+///
+/// LAW-123-8 / EC-175-22: struct `Option` fields alone are painted from metadata or defaults
+/// and must not count as a workspace choice.
 fn workspace_has_vision_override(workspace: &Workspace) -> bool {
-    // Deliberate: metadata keys and/or Option fields set by user (never inherit-paint).
     metadata_has_nonempty(&workspace.metadata, "vision_llm_model")
         || metadata_has_nonempty(&workspace.metadata, "vision_llm_provider")
-        || workspace
-            .vision_llm_provider
-            .as_ref()
-            .is_some_and(|s| !s.trim().is_empty())
-        || workspace
-            .vision_llm_model
-            .as_ref()
-            .is_some_and(|s| !s.trim().is_empty())
+}
+
+/// Which workspace model groups the caller actually sent on create (LAW-123-8).
+///
+/// Only sent groups become workspace overrides. Omitted groups stay inherited
+/// (tenant → env → default), so a later tenant change still reaches the workspace.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SentModelChoice {
+    pub llm: bool,
+    pub embedding: bool,
+}
+
+fn has_text(value: Option<&str>) -> bool {
+    non_empty(value).is_some()
+}
+
+impl SentModelChoice {
+    /// Derive the sent flags from the raw create-request fields.
+    pub fn from_create_fields(
+        llm_model: Option<&str>,
+        llm_provider: Option<&str>,
+        embedding_model: Option<&str>,
+        embedding_provider: Option<&str>,
+    ) -> Self {
+        Self {
+            llm: has_text(llm_model) || has_text(llm_provider),
+            embedding: has_text(embedding_model) || has_text(embedding_provider),
+        }
+    }
+}
+
+/// Write override metadata only for the groups the caller sent.
+///
+/// The keys written here are exactly the ones [`resolve_llm_choice`] and
+/// [`resolve_embedding_choice`] read as deliberate workspace overrides.
+pub fn write_sent_model_choice_metadata(
+    metadata: &mut std::collections::HashMap<String, serde_json::Value>,
+    workspace: &Workspace,
+    sent: SentModelChoice,
+) {
+    if sent.llm {
+        metadata.insert("llm_model".into(), serde_json::json!(workspace.llm_model));
+        metadata.insert(
+            "llm_provider".into(),
+            serde_json::json!(workspace.llm_provider),
+        );
+    }
+    if sent.embedding {
+        metadata.insert(
+            "embedding_model".into(),
+            serde_json::json!(workspace.embedding_model),
+        );
+        metadata.insert(
+            "embedding_provider".into(),
+            serde_json::json!(workspace.embedding_provider),
+        );
+        metadata.insert(
+            "embedding_dimension".into(),
+            serde_json::json!(workspace.embedding_dimension),
+        );
+    }
 }
 
 /// Resolve LLM provider/model: Request → Workspace → Tenant → Env → Default.
@@ -378,11 +451,19 @@ pub fn resolve_vision_llm_choice(
     let env_p = env_vision_provider();
     let env_m = env_vision_model();
 
+    // `llm_roles.vlm` is canonical (SPEC-163); the legacy vision_llm_* fields follow it.
+    let role_vlm = workspace.and_then(role_vlm_override);
+    let (role_p, role_m) = match &role_vlm {
+        Some((provider, model)) => (provider.as_deref(), model.as_deref()),
+        None => (None, None),
+    };
+
     let layers = [
         (
             (upload_provider, upload_model),
             ModelResolutionSource::Request,
         ),
+        ((role_p, role_m), ModelResolutionSource::Workspace),
         ((ws_vision_p, ws_vision_m), ModelResolutionSource::Workspace),
         // Tenant vision before workspace LLM fallback (SPEC-041 / SPEC-123).
         ((ten_p, ten_m), ModelResolutionSource::Tenant),
@@ -407,6 +488,134 @@ pub fn resolve_vision_llm_choice(
 mod tests {
     use super::*;
     use uuid::Uuid;
+
+    #[test]
+    fn vlm_role_is_canonical_over_legacy_vision_fields() {
+        let mut ws = Workspace::new(Uuid::nil(), "ws", "ws");
+        ws.metadata
+            .insert("vision_llm_provider".into(), serde_json::json!("openai"));
+        ws.metadata
+            .insert("vision_llm_model".into(), serde_json::json!("gpt-4o"));
+        ws.metadata.insert(
+            "llm_roles".into(),
+            serde_json::json!({"vlm": {"provider": "mistral", "model": "pixtral-large-latest"}}),
+        );
+        let resolved = resolve_vision_llm_choice(None, None, Some(&ws), None);
+        assert_eq!(resolved.provider, "mistral");
+        assert_eq!(resolved.model, "pixtral-large-latest");
+        assert_eq!(resolved.source, ModelResolutionSource::Workspace);
+    }
+
+    #[test]
+    fn legacy_vision_metadata_still_resolves_without_a_vlm_role() {
+        let mut ws = Workspace::new(Uuid::nil(), "ws", "ws");
+        ws.metadata
+            .insert("vision_llm_provider".into(), serde_json::json!("openai"));
+        ws.metadata
+            .insert("vision_llm_model".into(), serde_json::json!("gpt-4o"));
+        ws.vision_llm_provider = Some("openai".into());
+        ws.vision_llm_model = Some("gpt-4o".into());
+        let resolved = resolve_vision_llm_choice(None, None, Some(&ws), None);
+        assert_eq!(resolved.provider, "openai");
+        assert_eq!(resolved.model, "gpt-4o");
+    }
+
+    #[test]
+    fn struct_only_vision_fields_are_not_a_workspace_choice() {
+        // EC-175-22: painted struct fields without metadata keys must not win over tenant.
+        let mut ws = Workspace::new(Uuid::nil(), "ws", "ws");
+        ws.vision_llm_provider = Some("openai".into());
+        ws.vision_llm_model = Some("gpt-4o".into());
+        let mut tenant = Tenant::new("t", "t");
+        tenant.default_vision_llm_provider = Some("mistral".into());
+        tenant.default_vision_llm_model = Some("pixtral-large-latest".into());
+        let resolved = resolve_vision_llm_choice(None, None, Some(&ws), Some(&tenant));
+        assert_eq!(resolved.provider, "mistral");
+        assert_eq!(resolved.source, ModelResolutionSource::Tenant);
+    }
+
+    #[test]
+    fn sent_flags_ignore_blank_and_absent_fields() {
+        let none = SentModelChoice::from_create_fields(None, None, None, None);
+        assert_eq!(none, SentModelChoice::default());
+
+        let blank = SentModelChoice::from_create_fields(Some("  "), Some(""), None, None);
+        assert!(!blank.llm, "blank strings are not a deliberate choice");
+
+        let llm = SentModelChoice::from_create_fields(None, Some("ollama"), None, None);
+        assert!(llm.llm && !llm.embedding);
+
+        let emb = SentModelChoice::from_create_fields(None, None, Some("mistral-embed"), None);
+        assert!(emb.embedding && !emb.llm);
+    }
+
+    #[test]
+    fn omitted_choice_writes_no_override_metadata() {
+        let ws = Workspace::new(Uuid::nil(), "ws", "ws");
+        let mut metadata = std::collections::HashMap::new();
+        write_sent_model_choice_metadata(&mut metadata, &ws, SentModelChoice::default());
+        assert!(
+            metadata.is_empty(),
+            "inherited values must not be snapshotted"
+        );
+    }
+
+    #[test]
+    fn inherited_workspace_follows_later_tenant_change() {
+        // Create path with nothing sent: no override keys are written.
+        let ws = Workspace::new(Uuid::nil(), "ws", "ws");
+        let mut tenant = Tenant::new("t", "t");
+        tenant.default_llm_provider = "ollama".into();
+        tenant.default_llm_model = "gemma4:latest".into();
+        let first = resolve_llm_choice(None, None, Some(&ws), Some(&tenant));
+        assert_eq!(first.model, "gemma4:latest");
+        assert_eq!(first.source, ModelResolutionSource::Tenant);
+
+        tenant.default_llm_provider = "mistral".into();
+        tenant.default_llm_model = "mistral-small-latest".into();
+        let second = resolve_llm_choice(None, None, Some(&ws), Some(&tenant));
+        assert_eq!(second.model, "mistral-small-latest");
+        assert_eq!(second.source, ModelResolutionSource::Tenant);
+    }
+
+    #[test]
+    fn sent_llm_choice_becomes_workspace_override_and_wins() {
+        let mut ws = Workspace::new(Uuid::nil(), "ws", "ws").with_llm_model("gemma4:latest");
+        let mut metadata = std::collections::HashMap::new();
+        let sent = SentModelChoice {
+            llm: true,
+            embedding: false,
+        };
+        write_sent_model_choice_metadata(&mut metadata, &ws, sent);
+        ws.metadata = metadata;
+        assert!(ws.metadata.contains_key("llm_model"));
+        assert!(!ws.metadata.contains_key("embedding_model"));
+
+        let mut tenant = Tenant::new("t", "t");
+        tenant.default_llm_provider = "mistral".into();
+        tenant.default_llm_model = "mistral-small-latest".into();
+        let resolved = resolve_llm_choice(None, None, Some(&ws), Some(&tenant));
+        assert_eq!(resolved.model, "gemma4:latest");
+        assert_eq!(resolved.source, ModelResolutionSource::Workspace);
+    }
+
+    #[test]
+    fn sent_embedding_choice_writes_dimension_with_model() {
+        let ws = Workspace::new(Uuid::nil(), "ws", "ws").with_embedding_config(
+            "mistral-embed",
+            "mistral",
+            1024,
+        );
+        let mut metadata = std::collections::HashMap::new();
+        let sent = SentModelChoice {
+            llm: false,
+            embedding: true,
+        };
+        write_sent_model_choice_metadata(&mut metadata, &ws, sent);
+        assert_eq!(metadata["embedding_model"], "mistral-embed");
+        assert_eq!(metadata["embedding_dimension"], 1024);
+        assert!(!metadata.contains_key("llm_model"));
+    }
 
     #[test]
     fn llm_request_wins_over_workspace_tenant_env() {

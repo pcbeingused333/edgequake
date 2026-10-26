@@ -229,6 +229,7 @@ export function ReconfigureWorkspaceWizard({
         llm,
         embedding,
         vision,
+        savedLlmRoles: workspace.llm_roles,
         pdfParserBackend: draft.pdfParserBackend,
         visionExtractImages: draft.visionExtractImages,
         visionExtractCharts: draft.visionExtractCharts,
@@ -260,6 +261,21 @@ export function ReconfigureWorkspaceWizard({
         changedKeys: impact.changedKeys,
       });
       const updated = await updateWorkspace(tenantId, workspace.id, payload);
+      if (updated.embedding_rebuild_required) {
+        toast.warning(
+          t('workspace.embeddingRebuildRequired', 'Embeddings must be rebuilt'),
+          {
+            description: t(
+              'workspace.embeddingRebuildDescription',
+              'The embedding model changed (dimension {{from}} → {{to}}). Rebuild embeddings to re-index documents.',
+              {
+                from: updated.previous_embedding_dimension ?? '?',
+                to: updated.resolved_embedding_dimension ?? '?',
+              },
+            ),
+          },
+        );
+      }
       const pendingRebuild = toPendingRebuild(impact.rebuildHints);
       const extractionLanguageChanged = impact.changedKeys.includes('extractionLanguage');
       onApplied?.({

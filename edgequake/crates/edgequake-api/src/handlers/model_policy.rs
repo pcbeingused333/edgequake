@@ -206,18 +206,23 @@ fn workspace_view(
 // Member picker
 // ---------------------------------------------------------------------------
 
-/// `GET /api/v1/models/eligible?workspace_id=&usage=`: models a member may pick.
+/// `GET /api/v1/models/eligible`: models a caller may pick for one scope and usage.
+///
+/// Exactly one of `workspace_id`, `tenant_id`, or `scope=deployment`.
 #[utoipa::path(
     get,
     path = "/api/v1/models/eligible",
     tag = "Models",
     params(
-        ("workspace_id" = Uuid, Query, description = "Workspace id"),
+        ("workspace_id" = Option<Uuid>, Query, description = "Workspace scope"),
+        ("tenant_id" = Option<Uuid>, Query, description = "Tenant scope"),
+        ("scope" = Option<String>, Query, description = "deployment for the fleet offer"),
         ("usage" = String, Query, description = "extract | query | summary | vlm | keyword | embedding | decision"),
     ),
     responses(
         (status = 200, description = "Eligible models for this usage", body = EligibleModelsResponse),
-        (status = 403, description = "Not a member of this workspace"),
+        (status = 400, description = "Zero or two scopes"),
+        (status = 403, description = "Caller cannot read this scope"),
         (status = 422, description = "Unknown usage or rerank"),
     )
 )]
@@ -227,28 +232,170 @@ pub async fn get_eligible_models(
     Query(query): Query<EligibleQuery>,
 ) -> ApiResult<Json<EligibleModelsResponse>> {
     let usage = parse_configurable_usage(&query.usage)?;
-    let workspace = workspace_or_404(&state, query.workspace_id).await?;
-    let scope = caller_scope(&state, &auth, workspace.tenant_id, Some(query.workspace_id)).await?;
-    require_member(scope)?;
+    let choice = authorize_choice(&state, &auth, &parse_choice_scope(&query)?).await?;
 
-    let ceiling = load_rows(&state, workspace.tenant_id, None).await?;
-    let narrowing = load_rows(&state, workspace.tenant_id, Some(query.workspace_id)).await?;
+    let (offer, ceiling, narrowing) = load_choice_inputs(&state, &choice).await?;
     let mut catalog = load_catalog(&state).await;
     crate::services::model_policy_catalog::append_connection_models(&state, &mut catalog).await?;
     let entries = catalog_entries(&catalog);
-    let offer = crate::services::provider_offer_rows::load_workspace_offer(
-        &state,
-        workspace.tenant_id,
-        query.workspace_id,
-    )
-    .await?;
     let eligible = eligible_models(usage, &entries, &ceiling, &narrowing, Some(&offer.slugs));
 
     Ok(Json(EligibleModelsResponse {
         usage: usage.as_str().to_string(),
+        scope: choice.as_str().to_string(),
         policy_mode: policy_mode(&ceiling, usage).as_str().to_string(),
+        offer_mode: if offer.constrained {
+            "constrained"
+        } else {
+            "unconstrained"
+        }
+        .to_string(),
         models: eligible_dtos(&eligible, &catalog),
     }))
+}
+
+/// Which offer and which policy rows a choice list uses.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ChoiceScope {
+    Workspace { tenant_id: Uuid, workspace_id: Uuid },
+    Tenant { tenant_id: Uuid },
+    Deployment,
+}
+
+impl ChoiceScope {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Workspace { .. } => "workspace",
+            Self::Tenant { .. } => "tenant",
+            Self::Deployment => "deployment",
+        }
+    }
+}
+
+pub(crate) fn parse_choice_scope(query: &EligibleQuery) -> ApiResult<ChoiceScope> {
+    if query
+        .scope
+        .as_deref()
+        .is_some_and(|value| value != "deployment")
+    {
+        return Err(scope_required());
+    }
+    let deployment = query.scope.as_deref() == Some("deployment");
+    let marks = [
+        query.workspace_id.is_some(),
+        query.tenant_id.is_some(),
+        deployment,
+    ]
+    .into_iter()
+    .filter(|set| *set)
+    .count();
+    if marks != 1 {
+        return Err(scope_required());
+    }
+    if let Some(workspace_id) = query.workspace_id {
+        return Ok(ChoiceScope::Workspace {
+            tenant_id: Uuid::nil(),
+            workspace_id,
+        });
+    }
+    if let Some(tenant_id) = query.tenant_id {
+        return Ok(ChoiceScope::Tenant { tenant_id });
+    }
+    Ok(ChoiceScope::Deployment)
+}
+
+fn scope_required() -> ApiError {
+    ApiError::bad_request_coded(
+        "scope_required",
+        "pass exactly one of workspace_id, tenant_id, or scope=deployment",
+    )
+}
+
+async fn authorize_choice(
+    state: &AppState,
+    auth: &crate::handlers::auth::RequestAuthContext,
+    choice: &ChoiceScope,
+) -> ApiResult<ChoiceScope> {
+    match *choice {
+        ChoiceScope::Workspace { workspace_id, .. } => {
+            let workspace = workspace_or_404(state, workspace_id).await?;
+            let scope = caller_scope(state, auth, workspace.tenant_id, Some(workspace_id)).await?;
+            require_member(scope)?;
+            Ok(ChoiceScope::Workspace {
+                tenant_id: workspace.tenant_id,
+                workspace_id,
+            })
+        }
+        ChoiceScope::Tenant { tenant_id } => {
+            require_tenant_access(state, auth, tenant_id, TenantAccess::Manage).await?;
+            Ok(ChoiceScope::Tenant { tenant_id })
+        }
+        ChoiceScope::Deployment => {
+            if auth.role == edgequake_auth::Role::Admin {
+                Ok(ChoiceScope::Deployment)
+            } else {
+                Err(ApiError::forbidden_reason("deployment_admin_required"))
+            }
+        }
+    }
+}
+
+pub(crate) struct LoadedChoice {
+    pub constrained: bool,
+    pub slugs: BTreeSet<String>,
+}
+
+async fn load_choice_inputs(
+    state: &AppState,
+    choice: &ChoiceScope,
+) -> ApiResult<(LoadedChoice, Vec<PolicyRow>, Vec<PolicyRow>)> {
+    match *choice {
+        ChoiceScope::Deployment => {
+            let slugs = crate::services::provider_offer_rows::load_global_offer(state).await?;
+            Ok((
+                LoadedChoice {
+                    constrained: true,
+                    slugs,
+                },
+                Vec::new(),
+                Vec::new(),
+            ))
+        }
+        ChoiceScope::Tenant { tenant_id } => {
+            let offer =
+                crate::services::provider_offer_rows::load_tenant_offer(state, tenant_id).await?;
+            let ceiling = load_rows(state, tenant_id, None).await?;
+            Ok((
+                LoadedChoice {
+                    constrained: offer.constrained,
+                    slugs: offer.slugs,
+                },
+                ceiling,
+                Vec::new(),
+            ))
+        }
+        ChoiceScope::Workspace {
+            tenant_id,
+            workspace_id,
+        } => {
+            let offer = crate::services::provider_offer_rows::load_workspace_offer(
+                state,
+                tenant_id,
+                workspace_id,
+            )
+            .await?;
+            let ceiling = load_rows(state, tenant_id, None).await?;
+            let narrowing = load_rows(state, tenant_id, Some(workspace_id)).await?;
+            Ok((
+                LoadedChoice {
+                    constrained: offer.constrained,
+                    slugs: offer.slugs,
+                },
+                ceiling,
+                narrowing,
+            ))
+        }
+    }
 }
 
 fn catalog_entries(catalog: &[CatalogItem]) -> Vec<CatalogEntry> {
@@ -274,6 +421,8 @@ fn eligible_dtos(eligible: &[&CatalogEntry], catalog: &[CatalogItem]) -> Vec<Eli
             model: item.entry.model.clone(),
             display_name: item.display_name.clone(),
             supports_vision: item.supports_vision,
+            supports_streaming: item.supports_streaming,
+            embedding_dimension: item.embedding_dimension,
         })
         .collect()
 }
@@ -346,7 +495,8 @@ pub(crate) fn require_member(scope: CallerScope) -> ApiResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::ensure_in_offer;
+    use super::{ensure_in_offer, parse_choice_scope};
+    use crate::handlers::model_policy_types::EligibleQuery;
     use edgequake_core::model_policy::PolicyRow;
     use edgequake_core::Usage;
     use std::collections::BTreeSet;
@@ -369,5 +519,36 @@ mod tests {
             enabled: true,
         }];
         assert!(ensure_in_offer(&allowed, &offered).is_ok());
+    }
+
+    #[test]
+    fn scope_required_when_zero_or_two_scopes() {
+        let none = EligibleQuery {
+            workspace_id: None,
+            tenant_id: None,
+            scope: None,
+            usage: "query".into(),
+        };
+        assert_eq!(
+            parse_choice_scope(&none).unwrap_err().code(),
+            "scope_required"
+        );
+        let both = EligibleQuery {
+            workspace_id: Some(uuid::Uuid::nil()),
+            tenant_id: Some(uuid::Uuid::nil()),
+            scope: None,
+            usage: "query".into(),
+        };
+        assert_eq!(
+            parse_choice_scope(&both).unwrap_err().code(),
+            "scope_required"
+        );
+        let deployment = EligibleQuery {
+            workspace_id: None,
+            tenant_id: None,
+            scope: Some("deployment".into()),
+            usage: "query".into(),
+        };
+        assert!(parse_choice_scope(&deployment).is_ok());
     }
 }

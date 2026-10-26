@@ -936,6 +936,11 @@ impl From<ProviderResolutionError> for ApiError {
             ProviderResolutionError::WorkspaceServiceError(msg) => {
                 ApiError::Internal(format!("Workspace service error: {}", msg))
             }
+            ProviderResolutionError::OfferUnavailable { .. } => ApiError::Coded {
+                code: "offer_unavailable",
+                message: "model settings could not be loaded".into(),
+                status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            },
         }
     }
 }

@@ -10,11 +10,37 @@ use edgequake_core::{
 
 use super::responses::WorkspaceResponse;
 
+/// Flag an update whose resolved embedding stack differs from the one before it (SPEC-178).
+///
+/// A different model or dimension means stored vectors came from another embedder, so the
+/// update response says a rebuild is required and reports the previous dimension.
+pub fn mark_embedding_rebuild(before: &WorkspaceResponse, after: &mut WorkspaceResponse) {
+    let changed = before.resolved_embedding_provider != after.resolved_embedding_provider
+        || before.resolved_embedding_model != after.resolved_embedding_model
+        || before.resolved_embedding_dimension != after.resolved_embedding_dimension;
+    after.embedding_rebuild_required = changed;
+    after.previous_embedding_dimension = if changed {
+        before.resolved_embedding_dimension
+    } else {
+        None
+    };
+}
+
 /// Convert domain workspace (+ optional tenant) to API DTO with SPEC-123 provenance.
 pub fn workspace_to_response(workspace: &Workspace, tenant: Option<&Tenant>) -> WorkspaceResponse {
     let llm = resolve_llm_choice(None, None, Some(workspace), tenant);
     let emb = resolve_embedding_choice(None, None, None, Some(workspace), tenant);
     let vision = resolve_vision_llm_choice(None, None, Some(workspace), tenant);
+
+    // Inherited groups are not stored on the workspace (LAW-123-8), so the raw LLM and
+    // embedding fields show the effective values. They then agree with `resolved_*`.
+    let mut workspace = workspace.clone();
+    workspace.llm_provider = llm.provider.clone();
+    workspace.llm_model = llm.model.clone();
+    workspace.embedding_provider = emb.provider.clone();
+    workspace.embedding_model = emb.model.clone();
+    workspace.embedding_dimension = emb.dimension;
+    let workspace = &workspace;
 
     WorkspaceResponse {
         id: workspace.workspace_id,
@@ -38,6 +64,8 @@ pub fn workspace_to_response(workspace: &Workspace, tenant: Option<&Tenant>) -> 
         resolved_embedding_model: Some(emb.model.clone()),
         resolved_embedding_dimension: Some(emb.dimension),
         embedding_resolution_source: Some(emb.source.as_str().to_string()),
+        embedding_rebuild_required: false,
+        previous_embedding_dimension: None,
         vision_llm_provider: workspace.vision_llm_provider.clone(),
         vision_llm_model: workspace.vision_llm_model.clone(),
         resolved_vision_llm_provider: Some(vision.provider.clone()),
@@ -153,5 +181,47 @@ pub fn workspace_to_response(workspace: &Workspace, tenant: Option<&Tenant>) -> 
         stats: None,
         created_at: workspace.created_at.to_rfc3339(),
         updated_at: workspace.updated_at.to_rfc3339(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    fn response() -> WorkspaceResponse {
+        let ws = Workspace::new(Uuid::nil(), "ws", "ws");
+        workspace_to_response(&ws, None)
+    }
+
+    #[test]
+    fn unchanged_embedding_stack_needs_no_rebuild() {
+        let before = response();
+        let mut after = response();
+        mark_embedding_rebuild(&before, &mut after);
+        assert!(!after.embedding_rebuild_required);
+        assert_eq!(after.previous_embedding_dimension, None);
+    }
+
+    #[test]
+    fn changed_dimension_requires_rebuild_and_reports_previous() {
+        let before = response();
+        let mut after = response();
+        after.resolved_embedding_dimension = Some(768);
+        mark_embedding_rebuild(&before, &mut after);
+        assert!(after.embedding_rebuild_required);
+        assert_eq!(
+            after.previous_embedding_dimension,
+            before.resolved_embedding_dimension
+        );
+    }
+
+    #[test]
+    fn changed_model_with_same_dimension_still_requires_rebuild() {
+        let before = response();
+        let mut after = response();
+        after.resolved_embedding_model = Some("another-model".to_string());
+        mark_embedding_rebuild(&before, &mut after);
+        assert!(after.embedding_rebuild_required);
     }
 }

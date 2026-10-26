@@ -72,6 +72,10 @@ pub enum ProviderResolutionError {
     /// The provider name is empty or invalid.
     #[error("Invalid provider name: {0}")]
     InvalidProviderName(String),
+
+    /// The workspace offer could not be loaded. Choice paths fail closed.
+    #[error("Provider offer unavailable: {message}")]
+    OfferUnavailable { message: String },
 }
 
 impl ProviderResolutionError {

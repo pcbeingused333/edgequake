@@ -372,14 +372,24 @@ pub async fn put_connection_models(
                 "environment providers use the catalog cards",
             ));
         }
-        let pool = state.optional_pg_pool().ok_or_else(|| ApiError::Internal("PostgreSQL is required".into()))?;
+        let pool = state
+            .optional_pg_pool()
+            .ok_or_else(|| ApiError::Internal("PostgreSQL is required".into()))?;
         let models: Vec<(String, bool, bool, bool)> = body
             .models
             .into_iter()
-            .map(|model| (model.id, model.supports_chat, model.supports_vision, model.supports_embedding))
+            .map(|model| {
+                (
+                    model.id,
+                    model.supports_chat,
+                    model.supports_vision,
+                    model.supports_embedding,
+                )
+            })
             .collect();
-        crate::services::provider_offer_rows::replace_connection_models(pool, &slug, &models).await?;
-        return Ok(StatusCode::NO_CONTENT);
+        crate::services::provider_offer_rows::replace_connection_models(pool, &slug, &models)
+            .await?;
+        Ok(StatusCode::NO_CONTENT)
     }
     #[cfg(not(feature = "postgres"))]
     {
@@ -574,7 +584,10 @@ mod tests {
             offer_mode: "constrained".into(),
             slugs: vec!["Has Space".into()],
         };
-        assert_eq!(code(parse_put(&body, &parent(&["openai"]))), Some("slug_invalid"));
+        assert_eq!(
+            code(parse_put(&body, &parent(&["openai"]))),
+            Some("slug_invalid")
+        );
     }
 
     #[test]

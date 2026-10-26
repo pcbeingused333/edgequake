@@ -110,6 +110,29 @@ describe("reasoning-effort-supported best-practice effective", () => {
     ).toBeUndefined();
   });
 
+  it("ignores catalog rows that omit provider instead of throwing", () => {
+    const broken = {
+      ...model("openai", "gpt-5-mini", {
+        supported: ["minimal", "low"],
+        lowest_structured: "minimal",
+      }),
+      provider: undefined,
+    } as unknown as ModelResponse;
+    const good = model("openai", "gpt-5-mini", {
+      supported: ["minimal", "low"],
+      lowest_structured: "minimal",
+    });
+    expect(() =>
+      supportedReasoningEffortsForModel([broken], "openai", "gpt-5-mini"),
+    ).not.toThrow();
+    expect(
+      supportedReasoningEffortsForModel([broken], "openai", "gpt-5-mini"),
+    ).toBeUndefined();
+    expect(
+      supportedReasoningEffortsForModel([broken, good], "openai", "gpt-5-mini"),
+    ).toEqual(["minimal", "low"]);
+  });
+
   it("formats Auto label and helper with effective best practice", () => {
     expect(formatAutoEffortLabel("minimal")).toContain("effective: minimal");
     expect(formatAutoEffortLabel("minimal")).toContain("best practice");

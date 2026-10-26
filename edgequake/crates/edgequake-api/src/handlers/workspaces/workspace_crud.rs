@@ -58,56 +58,49 @@ pub async fn create_workspace(
     // SPEC-160: coded 400 before any state is touched.
     request.extraction.validate()?;
 
-    // SPEC-032: Fetch parent tenant to inherit default model configuration if not provided
-    let tenant = state
+    // SPEC-032 / LAW-123-8: the tenant must exist, but omitted model fields are NOT copied
+    // from the tenant. They stay inherited and resolve at read time, so a later tenant
+    // default change still reaches this workspace.
+    state
         .workspace_service
         .get_tenant(tenant_id)
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Tenant {} not found", tenant_id)))?;
 
-    // SPEC-032: Use tenant defaults if workspace-level config not provided
-    let llm_model = request
-        .llm_model
-        .clone()
-        .or_else(|| Some(tenant.default_llm_model.clone()));
-    let llm_provider = request
-        .llm_provider
-        .clone()
-        .or_else(|| Some(tenant.default_llm_provider.clone()));
-    let embedding_model = request
-        .embedding_model
-        .clone()
-        .or_else(|| Some(tenant.default_embedding_model.clone()));
-    let embedding_provider = request
-        .embedding_provider
-        .clone()
-        .or_else(|| Some(tenant.default_embedding_provider.clone()));
-    let embedding_dimension = request
-        .embedding_dimension
-        .or(Some(tenant.default_embedding_dimension));
-
-    // SPEC-041: Inherit default vision LLM from tenant if workspace doesn't specify one
-    let vision_llm_model = request
-        .vision_llm_model
-        .clone()
-        .or_else(|| tenant.default_vision_llm_model.clone());
-    let vision_llm_provider = request
-        .vision_llm_provider
-        .clone()
-        .or_else(|| tenant.default_vision_llm_provider.clone());
-
     // Never persist Mock — heal stale SPEC-054 / test leftovers to a real provider.
-    let llm_provider =
-        crate::provider_visibility::heal_optional_mock_provider(llm_provider, llm_model.as_deref());
+    let llm_provider = crate::provider_visibility::heal_optional_mock_provider(
+        request.llm_provider.clone(),
+        request.llm_model.as_deref(),
+    );
     let embedding_provider = crate::provider_visibility::heal_optional_mock_provider(
-        embedding_provider,
-        embedding_model.as_deref(),
+        request.embedding_provider.clone(),
+        request.embedding_model.as_deref(),
     );
     let vision_llm_provider = crate::provider_visibility::heal_optional_mock_provider(
-        vision_llm_provider,
-        vision_llm_model.as_deref(),
+        request.vision_llm_provider.clone(),
+        request.vision_llm_model.as_deref(),
     );
+
+    // SPEC-178: judge every sent pair before anything is stored. The stub only carries the
+    // tenant id: a new workspace has no narrowing rows and no constrained offer of its own.
+    let stub = edgequake_core::Workspace::new(tenant_id, &request.name, "");
+    let embedding_dimension = crate::services::model_policy_enforcement::ensure_workspace_choice(
+        &state,
+        &stub,
+        crate::services::model_policy_enforcement::WorkspaceChoiceFields {
+            llm_provider: llm_provider.as_deref(),
+            llm_model: request.llm_model.as_deref(),
+            embedding_provider: embedding_provider.as_deref(),
+            embedding_model: request.embedding_model.as_deref(),
+            embedding_dimension: request.embedding_dimension,
+            vision_provider: vision_llm_provider.as_deref(),
+            vision_model: request.vision_llm_model.as_deref(),
+            decision_model: request.extraction.decision_model.as_deref(),
+            llm_roles: request.llm_roles.as_ref(),
+        },
+    )
+    .await?;
 
     // SPEC-032: Include LLM and embedding configuration in create request
     let create_request = CreateWorkspaceRequest {
@@ -115,12 +108,12 @@ pub async fn create_workspace(
         slug: request.slug.clone(),
         description: request.description.clone(),
         max_documents: request.max_documents,
-        llm_model,
+        llm_model: request.llm_model.clone(),
         llm_provider,
-        embedding_model,
+        embedding_model: request.embedding_model.clone(),
         embedding_provider,
         embedding_dimension,
-        vision_llm_model,
+        vision_llm_model: request.vision_llm_model.clone(),
         vision_llm_provider,
         pdf_parser_backend: request
             .pdf_parser_backend
@@ -411,6 +404,40 @@ pub async fn update_workspace(
         request.vision_llm_model.as_deref(),
     );
 
+    // SPEC-178: judge the update against the stored workspace. Keep its resolved embedding
+    // stack so the response can say whether stored vectors need a rebuild.
+    let current = state
+        .workspace_service
+        .get_workspace(workspace_id)
+        .await
+        .ok()
+        .flatten();
+    let before = match &current {
+        Some(ws) => Some(workspace_to_response_async(&state, ws).await),
+        None => None,
+    };
+    let embedding_dimension = match &current {
+        Some(ws) => {
+            crate::services::model_policy_enforcement::ensure_workspace_choice(
+                &state,
+                ws,
+                crate::services::model_policy_enforcement::WorkspaceChoiceFields {
+                    llm_provider: llm_provider.as_deref(),
+                    llm_model: request.llm_model.as_deref(),
+                    embedding_provider: embedding_provider.as_deref(),
+                    embedding_model: request.embedding_model.as_deref(),
+                    embedding_dimension: request.embedding_dimension,
+                    vision_provider: vision_llm_provider.as_deref(),
+                    vision_model: request.vision_llm_model.as_deref(),
+                    decision_model: request.extraction.decision_model.as_deref(),
+                    llm_roles: request.llm_roles.as_ref(),
+                },
+            )
+            .await?
+        }
+        None => request.embedding_dimension,
+    };
+
     // SPEC-032: Include LLM/embedding model configuration in update
     let update_request = UpdateWorkspaceRequest {
         name: request.name,
@@ -421,7 +448,7 @@ pub async fn update_workspace(
         llm_provider,
         embedding_model: request.embedding_model,
         embedding_provider,
-        embedding_dimension: request.embedding_dimension,
+        embedding_dimension,
         // SPEC-040: Vision LLM configuration
         vision_llm_provider,
         vision_llm_model: request.vision_llm_model,
@@ -468,7 +495,10 @@ pub async fn update_workspace(
             _ => ApiError::BadRequest(e.to_string()),
         })?;
 
-    let response = workspace_to_response_async(&state, &workspace).await;
+    let mut response = workspace_to_response_async(&state, &workspace).await;
+    if let Some(before) = &before {
+        mark_embedding_rebuild(before, &mut response);
+    }
 
     record_compliance_event(
         &state,

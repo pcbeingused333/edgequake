@@ -34,10 +34,15 @@ export function isLlmProviderAuthFailure(message: string): boolean {
  * available in the current runtime environment. This prevents the UI from sticking
  * to a dead local provider such as Ollama when the backend server default is healthy.
  */
+/**
+ * Drops a persisted pair that the eligible list does not contain.
+ * `loaded: false` leaves the pair alone. A loaded empty list clears it.
+ */
 export function sanitizeQueryModelSelection(
   selection: QueryModelSelection,
   models?: QueryModelInfo[],
   providerHealth?: QueryProviderHealth[],
+  loaded = true,
 ): QueryModelSelection {
   const provider = selection.provider?.trim();
   const model = selection.model?.trim();
@@ -50,17 +55,26 @@ export function sanitizeQueryModelSelection(
     return { provider: undefined, model: undefined };
   }
 
-  if (!models?.length || !providerHealth?.length) {
+  if (!loaded) {
+    return { provider, model };
+  }
+
+  if (!models) {
     return { provider, model };
   }
 
   const modelExists = models.some((entry) => entry.provider === provider && entry.name === model);
-  const providerStatus = providerHealth.find((entry) => entry.name === provider);
-  const providerEnabled = providerStatus?.enabled ?? false;
-  const providerAvailable = providerStatus?.health?.available ?? false;
-
-  if (!modelExists || !providerEnabled || !providerAvailable) {
+  if (!modelExists) {
     return { provider: undefined, model: undefined };
+  }
+
+  if (providerHealth?.length) {
+    const providerStatus = providerHealth.find((entry) => entry.name === provider);
+    const providerEnabled = providerStatus?.enabled ?? false;
+    const providerAvailable = providerStatus?.health?.available ?? false;
+    if (!providerEnabled || !providerAvailable) {
+      return { provider: undefined, model: undefined };
+    }
   }
 
   return { provider, model };

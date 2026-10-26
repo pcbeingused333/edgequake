@@ -1,7 +1,5 @@
 //! Streaming chat completion handler (SSE).
 
-use std::sync::Arc;
-
 use axum::extract::{Extension, State};
 use axum::response::sse::Event;
 use axum::response::Response;
@@ -18,11 +16,11 @@ use crate::handlers::auth::OptionalAuth;
 use crate::handlers::query::{resolve_chunk_file_paths, resolve_query_workspace};
 use crate::middleware::TenantContext;
 use crate::providers::{LlmResolutionRequest, WorkspaceProviderResolver};
+use crate::services::model_policy_enforcement::ensure_resolved_pair;
 use crate::services::{
     build_message_context_from_engine,
     context_bundle_mapper::{map_query_context_to_subgraph, MappingOptions},
-    ensure_debug_granularity_allowed, execute_sota_query_stream_with_auth_fallback,
-    resolve_workspace_query_resources,
+    ensure_debug_granularity_allowed, execute_sota_query_stream, resolve_workspace_query_resources,
 };
 use crate::state::AppState;
 use crate::streaming::{live_sse, StreamAccumulator};
@@ -218,382 +216,300 @@ pub async fn chat_completion_stream(
         edgequake_observability::bind_langfuse_trace_identity_async(
             langfuse_id_spawn,
             async move {
-        // Send initial event
-        if tx.send(initial_event).await.is_err() {
-            ErrorEvent::log_stream_disconnect(
-                &stream_request_id_spawn,
-                "chat_stream",
-                "initial_event",
-            );
-            return;
-        }
-
-        // Use StreamAccumulator for proper token tracking
-        let mut accumulator = StreamAccumulator::new();
-        // SPEC-155 B3: client dropped SSE before token loop finished (partial persist).
-        let mut client_disconnected_mid_stream = false;
-        // Track message context for saving after streaming completes
-        #[allow(unused_assignments)]
-        let mut saved_message_context: Option<MessageContext> = None;
-        #[allow(unused_assignments)]
-        let mut saved_subgraph: Option<crate::handlers::context_types::SubgraphBundle> = None;
-        // SPEC-142: keep sources for verified answer rewrite at Done / persist.
-        // Initial empty is overwritten when Sources arrive; may stay empty if stream ends early.
-        #[allow(unused_assignments)]
-        let mut sources_for_verify: Vec<crate::handlers::query_types::SourceReference> = Vec::new();
-
-        // Build query request
-        // OODA-231: Use workspace's tenant_id for graph queries, not header tenant_id.
-        // WHY: Header tenant_id is for authentication (random UUID from frontend).
-        // But the graph data was ingested with the workspace's actual tenant_id.
-        // Using header tenant_id causes 0 results because of tenant_id mismatch.
-        let enriched_query = enrich_query_with_language(&message_content, &request_language);
-        let mut engine_request = EngineQueryRequest::new(&enriched_query)
-            .with_mode(query_mode)
-            .with_conversation_history(conversation_history_for_engine);
-
-        if let Some(ref seeds) = request.seed_entity_ids {
-            engine_request = engine_request.with_seed_entity_ids(seeds.clone());
-        }
-
-        // SPEC-004: Thread system prompt extension if provided
-        if let Some(ref system_prompt) = request_system_prompt {
-            engine_request = engine_request.with_system_prompt(system_prompt);
-        }
-        let data_tenant_id = workspace_clone
-            .as_ref()
-            .map(|ws| ws.tenant_id.to_string())
-            .unwrap_or_else(|| tenant_id.to_string());
-        engine_request = engine_request.with_tenant_id(data_tenant_id.clone());
-        if let Some(ref ws_id) = workspace_id {
-            engine_request = engine_request.with_workspace_id(ws_id.to_string());
-        }
-
-        // SPEC-005: Resolve document filter → allowed_document_ids for RAG context scoping
-        if request_document_filter.is_some()
-            || crate::handlers::query::document_filter_resolver::clearance_restricts_query()
-        {
-            let filter = request_document_filter.clone().unwrap_or_default();
-            let filter = &filter;
-            let ws_id_str = workspace_id.as_ref().map(|id| id.to_string());
-            let tenant_filter = Some(data_tenant_id.clone());
-            match crate::handlers::query::document_filter_resolver::resolve_document_filter(
-                state_clone.storage.kv_storage.as_ref(),
-                state_clone.optional_pg_pool(),
-                filter,
-                &tenant_filter,
-                &ws_id_str,
-            )
-            .await
-            {
-                Ok(Some(allowed_ids)) => {
-                    engine_request = engine_request.with_allowed_document_ids(allowed_ids);
-                }
-                Ok(None) => {} // No filter constraints
-                Err(e) => {
-                    let msg = format!("Document filter resolution failed: {e}");
-                    ErrorEvent::log_stream_error(
-                        &stream_request_id_spawn,
-                        "chat_stream",
-                        "DOCUMENT_FILTER_ERROR",
-                        &msg,
-                        json!({ "phase": "document_filter_resolve" }),
-                    );
-                    let _ = tx
-                        .send(ChatStreamEvent::Error {
-                            message: msg,
-                            code: "DOCUMENT_FILTER_ERROR".to_string(),
-                        })
-                        .await;
-                    return;
-                }
-            }
-        }
-
-        // FEAT0203: Forward image attachments to the query engine for vision queries.
-        if let Some(ref images) = request.images {
-            // SPEC-083 C-25: materialize data: URL images before Anthropic path.
-            let image_data: Vec<edgequake_llm::traits::ImageData> = images
-                .iter()
-                .map(|i| {
-                    let img = if i.mime_type.eq_ignore_ascii_case("url") {
-                        edgequake_llm::traits::ImageData::from_url(&i.data)
-                    } else {
-                        edgequake_llm::traits::ImageData::new(&i.data, &i.mime_type)
-                    };
-                    edgequake_pipeline::materialize_image_for_anthropic(&img).unwrap_or(img)
-                })
-                .collect();
-            if !image_data.is_empty() {
-                engine_request = engine_request.with_images(image_data);
-            }
-        }
-
-        // SPEC-032 + OODA-227: Unified provider resolution with safety limits (streaming)
-        // Priority order:
-        //   1. Request-specified provider/model (explicit user selection)
-        //   2. Workspace-configured provider/model (workspace settings)
-        //   3. Server default (engine_impl's default provider)
-        // Supports both formats:
-        //   - Legacy format: provider="provider/model" (e.g., "ollama/gemma3:12b")
-        //   - New format: provider="provider", model="model_name"
-        let resolver = WorkspaceProviderResolver::from_app_state(&state_clone);
-        let llm_request = LlmResolutionRequest::from_provider_string(
-            request_provider.clone(),
-            request_model.clone(),
-        );
-
-        // OODA-260: Add detailed logging for LLM provider selection debugging
-        debug!(
-            request_provider = ?request_provider,
-            request_model = ?request_model,
-            workspace_id = ?workspace_clone.as_ref().map(|w| &w.workspace_id),
-            workspace_llm_provider = ?workspace_clone.as_ref().map(|w| &w.llm_provider),
-            workspace_llm_model = ?workspace_clone.as_ref().map(|w| &w.llm_model),
-            "LLM provider resolution inputs (streaming)"
-        );
-
-        let (llm_override, used_provider, used_model) = match resolver
-            .resolve_llm_provider_for_workspace(workspace_clone.as_ref(), &llm_request)
-            .await
-        {
-            Ok(Some(resolved)) => {
-                info!(
-                    provider = %resolved.provider_name,
-                    model = %resolved.model_name,
-                    source = ?resolved.source,
-                    request_provider = ?request_provider,
-                    request_model = ?request_model,
-                    "✅ [QUERY] Resolved LLM provider (streaming) - using user selection or workspace override"
-                );
-                (
-                    Some(resolved.provider),
-                    Some(resolved.provider_name),
-                    Some(resolved.model_name),
-                )
-            }
-            Ok(None) => {
-                // No provider resolved - will use server default
-                info!(
-                    request_provider = ?request_provider,
-                    request_model = ?request_model,
-                    workspace_llm_provider = ?workspace_clone.as_ref().map(|w| &w.llm_provider),
-                    "⚠️ [QUERY] Using server default LLM provider (streaming) - neither request nor workspace specified a provider"
-                );
-                (None, None, None)
-            }
-            Err(e) => {
-                let error_msg = e.to_string();
-                ErrorEvent::log_stream_error(
-                    &stream_request_id_spawn,
-                    "chat_stream",
-                    "PROVIDER_CONFIG_ERROR",
-                    &error_msg,
-                    json!({ "phase": "provider_resolve" }),
-                );
-                let _ = tx
-                    .send(ChatStreamEvent::Error {
-                        message: error_msg,
-                        code: "PROVIDER_CONFIG_ERROR".to_string(),
-                    })
-                    .await;
-                return;
-            }
-        };
-
-        // FEAT0203: When images are attached, prefer the vision-capable LLM provider.
-        // WHY: Some models (e.g. mistral-small-latest) silently drop image content.
-        // A request-level provider override takes precedence over the server-default vision provider.
-        let (llm_override, used_provider, used_model) = if llm_override.is_none()
-            && engine_request
-                .images
-                .as_ref()
-                .is_some_and(|imgs| !imgs.is_empty())
-        {
-            if let Some(ref vision_provider) = state_clone.query.vision_llm_provider {
-                debug!("Using vision LLM provider for image query (FEAT0203 streaming)");
-                (
-                    Some(Arc::clone(vision_provider) as Arc<dyn edgequake_llm::traits::LLMProvider>),
-                    Some(vision_provider.name().to_string()),
-                    Some(vision_provider.model().to_string()),
-                )
-            } else {
-                (llm_override, used_provider, used_model)
-            }
-        } else {
-            (llm_override, used_provider, used_model)
-        };
-
-        // Honesty: always record effective provider/model (incl. server-default path).
-        let effective_llm = llm_override
-            .as_ref()
-            .map(|p| p.as_ref())
-            .unwrap_or_else(|| state_clone.query.llm_provider.as_ref());
-        let (used_provider, used_model) = {
-            let (p, m) =
-                super::coalesce_effective_llm_lineage(used_provider, used_model, effective_llm);
-            (Some(p), Some(m))
-        };
-
-        let provider_for_effort = used_provider
-            .as_deref()
-            .or_else(|| workspace.as_ref().map(|w| w.llm_provider.as_str()))
-            .unwrap_or("openai");
-        let model_for_effort = used_model
-            .as_deref()
-            .or_else(|| workspace.as_ref().map(|w| w.llm_model.as_str()))
-            .unwrap_or("");
-        if let Some(effort) = crate::services::resolve_query_reasoning_effort(
-            workspace.as_ref(),
-            provider_for_effort,
-            model_for_effort,
-            request.reasoning_effort.as_deref(),
-            None,
-        ) {
-            engine_request = engine_request.with_reasoning_effort(effort);
-        }
-
-        let workspace_id_str = workspace_id.as_ref().map(|id| id.to_string());
-        let resources = match resolve_workspace_query_resources(
-            &state_clone,
-            workspace_id_str.as_deref(),
-        )
-        .await
-        {
-            Ok(resources) => resources,
-            Err(e) => {
-                let msg = e.to_string();
-                ErrorEvent::log_stream_error(
-                    &stream_request_id_spawn,
-                    "chat_stream",
-                    "WORKSPACE_QUERY_CONFIG_ERROR",
-                    &msg,
-                    json!({
-                        "phase": "workspace_resolve",
-                        "workspace_id": workspace_id_str,
-                    }),
-                );
-                let _ = tx
-                    .send(ChatStreamEvent::Error {
-                        message: msg,
-                        code: "WORKSPACE_QUERY_CONFIG_ERROR".to_string(),
-                    })
-                    .await;
-                return;
-            }
-        };
-
-        let retrieval_start = std::time::Instant::now();
-
-        if tx
-            .send(ChatStreamEvent::Stage {
-                stage: "retrieving".to_string(),
-                detail: None,
-            })
-            .await
-            .is_err()
-        {
-            ErrorEvent::log_stream_disconnect(
-                &stream_request_id_spawn,
-                "chat_stream",
-                "stage_retrieving",
-            );
-            return;
-        }
-
-        let stream_result = execute_sota_query_stream_with_auth_fallback(
-            &state_clone,
-            engine_request,
-            resources,
-            llm_override.clone(),
-        )
-        .await;
-
-        match stream_result {
-            Ok((context, used_mode, mut stream)) => {
-                // Send context event BEFORE streaming tokens (for source citations)
-                let mut sources = build_sources(&context, stream_content_granularity);
-
-                // Resolve document names for chunk sources
-                resolve_chunk_file_paths(state_clone.storage.kv_storage.as_ref(), &mut sources)
-                    .await;
-
-                // Save message context for later persistence
-                saved_message_context = Some(build_message_context_from_engine(&context, &sources));
-                saved_subgraph = Some(map_query_context_to_subgraph(
-                    &context,
-                    &MappingOptions {
-                        granularity: stream_content_granularity,
-                        include_lineage: true,
-                        include_documents: false,
-                        include_agent_hints: false,
-                        include_subgraph: true,
-                        rerank_top_k: None,
-                        reranked: false,
-                    },
-                ));
-                sources_for_verify = sources.clone();
-
-                let retrieval_elapsed_ms = retrieval_start.elapsed().as_millis() as u64;
-                let retrieval_summary = format!(
-                    "Retrieved context via {used_mode} ({} sources in {retrieval_elapsed_ms}ms)",
-                    sources.len()
-                );
-
-                // SPEC-083 X-22: emit Thinking before Context (keep variant live).
-                let thinking = ChatStreamEvent::Thinking {
-                    content: retrieval_summary.clone(),
-                };
-                if tx.send(thinking).await.is_err() {
+                // Send initial event
+                if tx.send(initial_event).await.is_err() {
                     ErrorEvent::log_stream_disconnect(
                         &stream_request_id_spawn,
                         "chat_stream",
-                        "thinking_event",
+                        "initial_event",
                     );
                     return;
                 }
 
-                if tx
-                    .send(ChatStreamEvent::Stage {
-                        stage: "reading".to_string(),
-                        detail: Some(retrieval_summary),
-                    })
-                    .await
-                    .is_err()
+                // Use StreamAccumulator for proper token tracking
+                let mut accumulator = StreamAccumulator::new();
+                // SPEC-155 B3: client dropped SSE before token loop finished (partial persist).
+                let mut client_disconnected_mid_stream = false;
+                // Track message context for saving after streaming completes
+                #[allow(unused_assignments)]
+                let mut saved_message_context: Option<MessageContext> = None;
+                #[allow(unused_assignments)]
+                let mut saved_subgraph: Option<
+                    crate::handlers::context_types::SubgraphBundle,
+                > = None;
+                // SPEC-142: keep sources for verified answer rewrite at Done / persist.
+                // Initial empty is overwritten when Sources arrive; may stay empty if stream ends early.
+                #[allow(unused_assignments)]
+                let mut sources_for_verify: Vec<
+                    crate::handlers::query_types::SourceReference,
+                > = Vec::new();
+
+                // Build query request
+                // OODA-231: Use workspace's tenant_id for graph queries, not header tenant_id.
+                // WHY: Header tenant_id is for authentication (random UUID from frontend).
+                // But the graph data was ingested with the workspace's actual tenant_id.
+                // Using header tenant_id causes 0 results because of tenant_id mismatch.
+                let enriched_query =
+                    enrich_query_with_language(&message_content, &request_language);
+                let mut engine_request = EngineQueryRequest::new(&enriched_query)
+                    .with_mode(query_mode)
+                    .with_conversation_history(conversation_history_for_engine);
+
+                if let Some(ref seeds) = request.seed_entity_ids {
+                    engine_request = engine_request.with_seed_entity_ids(seeds.clone());
+                }
+
+                // SPEC-004: Thread system prompt extension if provided
+                if let Some(ref system_prompt) = request_system_prompt {
+                    engine_request = engine_request.with_system_prompt(system_prompt);
+                }
+                let data_tenant_id = workspace_clone
+                    .as_ref()
+                    .map(|ws| ws.tenant_id.to_string())
+                    .unwrap_or_else(|| tenant_id.to_string());
+                engine_request = engine_request.with_tenant_id(data_tenant_id.clone());
+                if let Some(ref ws_id) = workspace_id {
+                    engine_request = engine_request.with_workspace_id(ws_id.to_string());
+                }
+
+                // SPEC-005: Resolve document filter → allowed_document_ids for RAG context scoping
+                if request_document_filter.is_some()
+                    || crate::handlers::query::document_filter_resolver::clearance_restricts_query()
                 {
-                    ErrorEvent::log_stream_disconnect(
-                        &stream_request_id_spawn,
-                        "chat_stream",
-                        "stage_reading",
-                    );
-                    return;
+                    let filter = request_document_filter.clone().unwrap_or_default();
+                    let filter = &filter;
+                    let ws_id_str = workspace_id.as_ref().map(|id| id.to_string());
+                    let tenant_filter = Some(data_tenant_id.clone());
+                    match crate::handlers::query::document_filter_resolver::resolve_document_filter(
+                        state_clone.storage.kv_storage.as_ref(),
+                        state_clone.optional_pg_pool(),
+                        filter,
+                        &tenant_filter,
+                        &ws_id_str,
+                    )
+                    .await
+                    {
+                        Ok(Some(allowed_ids)) => {
+                            engine_request = engine_request.with_allowed_document_ids(allowed_ids);
+                        }
+                        Ok(None) => {} // No filter constraints
+                        Err(e) => {
+                            let msg = format!("Document filter resolution failed: {e}");
+                            ErrorEvent::log_stream_error(
+                                &stream_request_id_spawn,
+                                "chat_stream",
+                                "DOCUMENT_FILTER_ERROR",
+                                &msg,
+                                json!({ "phase": "document_filter_resolve" }),
+                            );
+                            let _ = tx
+                                .send(ChatStreamEvent::Error {
+                                    message: msg,
+                                    code: "DOCUMENT_FILTER_ERROR".to_string(),
+                                })
+                                .await;
+                            return;
+                        }
+                    }
                 }
 
-                let context_event = ChatStreamEvent::Context {
-                    sources: sources.clone(),
-                    query_mode: Some(used_mode.to_string()),
-                    retrieval_time_ms: Some(retrieval_elapsed_ms),
-                    subgraph: saved_subgraph.clone(),
-                };
-                if tx.send(context_event).await.is_err() {
-                    ErrorEvent::log_stream_disconnect(
-                        &stream_request_id_spawn,
-                        "chat_stream",
-                        "context_event",
-                    );
-                    return;
+                // FEAT0203: Forward image attachments to the query engine for vision queries.
+                if let Some(ref images) = request.images {
+                    // SPEC-083 C-25: materialize data: URL images before Anthropic path.
+                    let image_data: Vec<edgequake_llm::traits::ImageData> = images
+                        .iter()
+                        .map(|i| {
+                            let img = if i.mime_type.eq_ignore_ascii_case("url") {
+                                edgequake_llm::traits::ImageData::from_url(&i.data)
+                            } else {
+                                edgequake_llm::traits::ImageData::new(&i.data, &i.mime_type)
+                            };
+                            edgequake_pipeline::materialize_image_for_anthropic(&img).unwrap_or(img)
+                        })
+                        .collect();
+                    if !image_data.is_empty() {
+                        engine_request = engine_request.with_images(image_data);
+                    }
                 }
-                info!(
-                    "Sent context event with {} sources ({} entities, {} relationships, {} chunks)",
-                    sources.len(),
-                    context.entities.len(),
-                    context.relationships.len(),
-                    context.chunks.len()
+
+                // SPEC-032 + OODA-227: Unified provider resolution with safety limits (streaming)
+                // Priority order:
+                //   1. Request-specified provider/model (explicit user selection)
+                //   2. Workspace-configured provider/model (workspace settings)
+                //   3. Server default (engine_impl's default provider)
+                // Supports both formats:
+                //   - Legacy format: provider="provider/model" (e.g., "ollama/gemma3:12b")
+                //   - New format: provider="provider", model="model_name"
+                let resolver = WorkspaceProviderResolver::from_app_state(&state_clone);
+                let llm_request = LlmResolutionRequest::from_provider_string(
+                    request_provider.clone(),
+                    request_model.clone(),
                 );
+
+                // OODA-260: Add detailed logging for LLM provider selection debugging
+                debug!(
+                    request_provider = ?request_provider,
+                    request_model = ?request_model,
+                    workspace_id = ?workspace_clone.as_ref().map(|w| &w.workspace_id),
+                    workspace_llm_provider = ?workspace_clone.as_ref().map(|w| &w.llm_provider),
+                    workspace_llm_model = ?workspace_clone.as_ref().map(|w| &w.llm_model),
+                    "LLM provider resolution inputs (streaming)"
+                );
+
+                let (llm_override, used_provider, used_model) = match resolver
+                    .resolve_llm_provider_for_workspace(workspace_clone.as_ref(), &llm_request)
+                    .await
+                {
+                    Ok(Some(resolved)) => {
+                        let choice_usage = if engine_request
+                            .images
+                            .as_ref()
+                            .is_some_and(|imgs| !imgs.is_empty())
+                        {
+                            edgequake_core::Usage::Vlm
+                        } else {
+                            edgequake_core::Usage::Query
+                        };
+                        if let Err(err) = ensure_resolved_pair(
+                            &state_clone,
+                            workspace_clone.as_ref(),
+                            choice_usage,
+                            request_provider.as_deref(),
+                            request_model.as_deref(),
+                            Some(&resolved.provider_name),
+                            Some(&resolved.model_name),
+                        )
+                        .await
+                        {
+                            let _ = tx
+                                .send(ChatStreamEvent::Error {
+                                    message: err.to_string(),
+                                    code: err.code().to_string(),
+                                })
+                                .await;
+                            return;
+                        }
+                        info!(
+                            provider = %resolved.provider_name,
+                            model = %resolved.model_name,
+                            source = ?resolved.source,
+                            request_provider = ?request_provider,
+                            request_model = ?request_model,
+                            "Resolved LLM provider (streaming)"
+                        );
+                        (
+                            Some(resolved.provider),
+                            Some(resolved.provider_name),
+                            Some(resolved.model_name),
+                        )
+                    }
+                    Ok(None) => {
+                        if llm_request.has_explicit_provider() {
+                            let err = ApiError::unprocessable_coded(
+                                "credential",
+                                "this provider has no key the workspace can use",
+                            );
+                            let _ = tx
+                                .send(ChatStreamEvent::Error {
+                                    message: err.to_string(),
+                                    code: err.code().to_string(),
+                                })
+                                .await;
+                            return;
+                        }
+                        info!(
+                            request_provider = ?request_provider,
+                            request_model = ?request_model,
+                            "Using server default LLM provider (streaming)"
+                        );
+                        (None, None, None)
+                    }
+                    Err(e) => {
+                        let error_msg = e.to_string();
+                        ErrorEvent::log_stream_error(
+                            &stream_request_id_spawn,
+                            "chat_stream",
+                            "PROVIDER_CONFIG_ERROR",
+                            &error_msg,
+                            json!({ "phase": "provider_resolve" }),
+                        );
+                        let _ = tx
+                            .send(ChatStreamEvent::Error {
+                                message: error_msg,
+                                code: "PROVIDER_CONFIG_ERROR".to_string(),
+                            })
+                            .await;
+                        return;
+                    }
+                };
+
+                // Honesty: always record effective provider/model (incl. server-default path).
+                let effective_llm = llm_override
+                    .as_ref()
+                    .map(|p| p.as_ref())
+                    .unwrap_or_else(|| state_clone.query.llm_provider.as_ref());
+                let (used_provider, used_model) = {
+                    let (p, m) = super::coalesce_effective_llm_lineage(
+                        used_provider,
+                        used_model,
+                        effective_llm,
+                    );
+                    (Some(p), Some(m))
+                };
+
+                let provider_for_effort = used_provider
+                    .as_deref()
+                    .or_else(|| workspace.as_ref().map(|w| w.llm_provider.as_str()))
+                    .unwrap_or("openai");
+                let model_for_effort = used_model
+                    .as_deref()
+                    .or_else(|| workspace.as_ref().map(|w| w.llm_model.as_str()))
+                    .unwrap_or("");
+                if let Some(effort) = crate::services::resolve_query_reasoning_effort(
+                    workspace.as_ref(),
+                    provider_for_effort,
+                    model_for_effort,
+                    request.reasoning_effort.as_deref(),
+                    None,
+                ) {
+                    engine_request = engine_request.with_reasoning_effort(effort);
+                }
+
+                let workspace_id_str = workspace_id.as_ref().map(|id| id.to_string());
+                let resources = match resolve_workspace_query_resources(
+                    &state_clone,
+                    workspace_id_str.as_deref(),
+                )
+                .await
+                {
+                    Ok(resources) => resources,
+                    Err(e) => {
+                        let msg = e.to_string();
+                        ErrorEvent::log_stream_error(
+                            &stream_request_id_spawn,
+                            "chat_stream",
+                            "WORKSPACE_QUERY_CONFIG_ERROR",
+                            &msg,
+                            json!({
+                                "phase": "workspace_resolve",
+                                "workspace_id": workspace_id_str,
+                            }),
+                        );
+                        let _ = tx
+                            .send(ChatStreamEvent::Error {
+                                message: msg,
+                                code: "WORKSPACE_QUERY_CONFIG_ERROR".to_string(),
+                            })
+                            .await;
+                        return;
+                    }
+                };
+
+                let retrieval_start = std::time::Instant::now();
 
                 if tx
                     .send(ChatStreamEvent::Stage {
-                        stage: "generating".to_string(),
+                        stage: "retrieving".to_string(),
                         detail: None,
                     })
                     .await
@@ -602,262 +518,373 @@ pub async fn chat_completion_stream(
                     ErrorEvent::log_stream_disconnect(
                         &stream_request_id_spawn,
                         "chat_stream",
-                        "stage_generating",
+                        "stage_retrieving",
                     );
                     return;
                 }
 
-                // Stream tokens
-                while let Some(chunk_result) = stream.next().await {
-                    match chunk_result {
-                        Ok(text) => {
-                            // Accumulate content with proper tracking
-                            accumulator.append_content(&text);
+                let stream_result = execute_sota_query_stream(
+                    &state_clone,
+                    engine_request,
+                    resources,
+                    llm_override.clone(),
+                )
+                .await;
 
-                            let event = ChatStreamEvent::Token {
-                                content: text.clone(),
-                            };
-                            if tx.send(event).await.is_err() {
-                                ErrorEvent::log_stream_disconnect(
-                                    &stream_request_id_spawn,
-                                    "chat_stream",
-                                    "token_stream",
-                                );
-                                client_disconnected_mid_stream = true;
-                                break;
-                            }
-                        }
-                        Err(e) => {
-                            let msg = e.to_string();
-                            ErrorEvent::log_stream_error(
+                match stream_result {
+                    Ok((context, used_mode, mut stream)) => {
+                        // Send context event BEFORE streaming tokens (for source citations)
+                        let mut sources = build_sources(&context, stream_content_granularity);
+
+                        // Resolve document names for chunk sources
+                        resolve_chunk_file_paths(
+                            state_clone.storage.kv_storage.as_ref(),
+                            &mut sources,
+                        )
+                        .await;
+
+                        // Save message context for later persistence
+                        saved_message_context =
+                            Some(build_message_context_from_engine(&context, &sources));
+                        saved_subgraph = Some(map_query_context_to_subgraph(
+                            &context,
+                            &MappingOptions {
+                                granularity: stream_content_granularity,
+                                include_lineage: true,
+                                include_documents: false,
+                                include_agent_hints: false,
+                                include_subgraph: true,
+                                rerank_top_k: None,
+                                reranked: false,
+                            },
+                        ));
+                        sources_for_verify = sources.clone();
+
+                        let retrieval_elapsed_ms = retrieval_start.elapsed().as_millis() as u64;
+                        let retrieval_summary = format!(
+                    "Retrieved context via {used_mode} ({} sources in {retrieval_elapsed_ms}ms)",
+                    sources.len()
+                );
+
+                        // SPEC-083 X-22: emit Thinking before Context (keep variant live).
+                        let thinking = ChatStreamEvent::Thinking {
+                            content: retrieval_summary.clone(),
+                        };
+                        if tx.send(thinking).await.is_err() {
+                            ErrorEvent::log_stream_disconnect(
                                 &stream_request_id_spawn,
                                 "chat_stream",
-                                "STREAM_ERROR",
-                                &msg,
-                                json!({ "phase": "token_stream" }),
+                                "thinking_event",
                             );
-                            let _ = tx
-                                .send(ChatStreamEvent::Error {
-                                    message: msg,
-                                    code: "STREAM_ERROR".to_string(),
-                                })
-                                .await;
                             return;
                         }
+
+                        if tx
+                            .send(ChatStreamEvent::Stage {
+                                stage: "reading".to_string(),
+                                detail: Some(retrieval_summary),
+                            })
+                            .await
+                            .is_err()
+                        {
+                            ErrorEvent::log_stream_disconnect(
+                                &stream_request_id_spawn,
+                                "chat_stream",
+                                "stage_reading",
+                            );
+                            return;
+                        }
+
+                        let context_event = ChatStreamEvent::Context {
+                            sources: sources.clone(),
+                            query_mode: Some(used_mode.to_string()),
+                            retrieval_time_ms: Some(retrieval_elapsed_ms),
+                            subgraph: saved_subgraph.clone(),
+                        };
+                        if tx.send(context_event).await.is_err() {
+                            ErrorEvent::log_stream_disconnect(
+                                &stream_request_id_spawn,
+                                "chat_stream",
+                                "context_event",
+                            );
+                            return;
+                        }
+                        info!(
+                    "Sent context event with {} sources ({} entities, {} relationships, {} chunks)",
+                    sources.len(),
+                    context.entities.len(),
+                    context.relationships.len(),
+                    context.chunks.len()
+                );
+
+                        if tx
+                            .send(ChatStreamEvent::Stage {
+                                stage: "generating".to_string(),
+                                detail: None,
+                            })
+                            .await
+                            .is_err()
+                        {
+                            ErrorEvent::log_stream_disconnect(
+                                &stream_request_id_spawn,
+                                "chat_stream",
+                                "stage_generating",
+                            );
+                            return;
+                        }
+
+                        // Stream tokens
+                        while let Some(chunk_result) = stream.next().await {
+                            match chunk_result {
+                                Ok(text) => {
+                                    // Accumulate content with proper tracking
+                                    accumulator.append_content(&text);
+
+                                    let event = ChatStreamEvent::Token {
+                                        content: text.clone(),
+                                    };
+                                    if tx.send(event).await.is_err() {
+                                        ErrorEvent::log_stream_disconnect(
+                                            &stream_request_id_spawn,
+                                            "chat_stream",
+                                            "token_stream",
+                                        );
+                                        client_disconnected_mid_stream = true;
+                                        break;
+                                    }
+                                }
+                                Err(e) => {
+                                    let msg = e.to_string();
+                                    ErrorEvent::log_stream_error(
+                                        &stream_request_id_spawn,
+                                        "chat_stream",
+                                        "STREAM_ERROR",
+                                        &msg,
+                                        json!({ "phase": "token_stream" }),
+                                    );
+                                    let _ = tx
+                                        .send(ChatStreamEvent::Error {
+                                            message: msg,
+                                            code: "STREAM_ERROR".to_string(),
+                                        })
+                                        .await;
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let msg = e.to_string();
+                        ErrorEvent::log_stream_error(
+                            &stream_request_id_spawn,
+                            "chat_stream",
+                            "QUERY_FAILED",
+                            &msg,
+                            json!({ "phase": "stream_start" }),
+                        );
+                        let _ = tx
+                            .send(ChatStreamEvent::Error {
+                                message: msg,
+                                code: "QUERY_FAILED".to_string(),
+                            })
+                            .await;
+                        return;
                     }
                 }
-            }
-            Err(e) => {
-                let msg = e.to_string();
-                ErrorEvent::log_stream_error(
-                    &stream_request_id_spawn,
-                    "chat_stream",
-                    "QUERY_FAILED",
-                    &msg,
-                    json!({ "phase": "stream_start" }),
+
+                // Get metrics from accumulator (proper token estimation instead of chunk count)
+                let duration_ms = accumulator.duration_ms();
+                let tokens_used = accumulator.estimated_tokens();
+                let full_content = accumulator.content().to_string();
+
+                // SPEC-155 B3: pre-token disconnects return above without persisting; here we have
+                // accumulated text (or an interrupted empty stream — skip in that case).
+                if !super::stream_persist::should_persist_stream_assistant(&full_content) {
+                    return;
+                }
+
+                let finish_reason = super::stream_persist::assistant_stream_finish_reason(
+                    client_disconnected_mid_stream,
                 );
-                let _ = tx
-                    .send(ChatStreamEvent::Error {
-                        message: msg,
-                        code: "QUERY_FAILED".to_string(),
-                    })
-                    .await;
-                return;
-            }
-        }
 
-        // Get metrics from accumulator (proper token estimation instead of chunk count)
-        let duration_ms = accumulator.duration_ms();
-        let tokens_used = accumulator.estimated_tokens();
-        let full_content = accumulator.content().to_string();
+                // SPEC-142: persist + Done carry verified document+page links.
+                let verified = crate::services::verified_citations::verified_answer(
+                    &full_content,
+                    &sources_for_verify,
+                );
 
-        // SPEC-155 B3: pre-token disconnects return above without persisting; here we have
-        // accumulated text (or an interrupted empty stream — skip in that case).
-        if !super::stream_persist::should_persist_stream_assistant(&full_content) {
-            return;
-        }
+                // SPEC-124: root observation I/O after stream completes.
+                edgequake_observability::record_query_root_io(&message_content, &verified);
 
-        let finish_reason =
-            super::stream_persist::assistant_stream_finish_reason(client_disconnected_mid_stream);
+                // SPEC-040 #259: conversation may be deleted while the LLM stream runs.
+                if !super::conversation_guard::conversation_exists(&state_clone, conversation_id)
+                    .await
+                    .unwrap_or(false)
+                {
+                    let _ = tx
+                        .send(ChatStreamEvent::Error {
+                            message: "Conversation no longer exists".to_string(),
+                            code: "CONVERSATION_GONE".to_string(),
+                        })
+                        .await;
+                    return;
+                }
 
-        // SPEC-142: persist + Done carry verified document+page links.
-        let verified = crate::services::verified_citations::verified_answer(
-            &full_content,
-            &sources_for_verify,
-        );
-
-        // SPEC-124: root observation I/O after stream completes.
-        edgequake_observability::record_query_root_io(&message_content, &verified);
-
-        // SPEC-040 #259: conversation may be deleted while the LLM stream runs.
-        if !super::conversation_guard::conversation_exists(&state_clone, conversation_id)
-            .await
-            .unwrap_or(false)
-        {
-            let _ = tx
-                .send(ChatStreamEvent::Error {
-                    message: "Conversation no longer exists".to_string(),
-                    code: "CONVERSATION_GONE".to_string(),
-                })
-                .await;
-            return;
-        }
-
-        // 7. Save assistant message (AFTER streaming completes)
-        match state_clone
-            .conversation_service
-            .create_message(
-                conversation_id,
-                CreateMessageRequest {
-                    content: verified.clone(),
-                    role: MessageRole::Assistant,
-                    parent_id: Some(user_message_id),
-                    stream: true,
-                },
-            )
-            .await
-        {
-            Ok(assistant_message) => {
-                // Update with metadata AND context for source citations
-                if let Err(e) = state_clone
+                // 7. Save assistant message (AFTER streaming completes)
+                match state_clone
                     .conversation_service
-                    .update_message(
-                        assistant_message.message_id,
-                        UpdateMessageRequest {
-                            content: None,
-                            mode: Some(mode),
-                            tokens_used: Some(tokens_used as i32),
-                            duration_ms: Some(duration_ms as i32),
-                            thinking_time_ms: accumulator
-                                .thinking_time_ms()
-                                .map(|ms| ms as i32),
-                            context: saved_message_context, // Save context for source citations!
-                            is_error: None,
-                            llm_provider: used_provider.clone(),
-                            llm_model: used_model.clone(),
-                            finish_reason: finish_reason.clone(),
+                    .create_message(
+                        conversation_id,
+                        CreateMessageRequest {
+                            content: verified.clone(),
+                            role: MessageRole::Assistant,
+                            parent_id: Some(user_message_id),
+                            stream: true,
                         },
                     )
                     .await
                 {
-                    error!(
-                        conversation_id = %conversation_id,
-                        assistant_message_id = %assistant_message.message_id,
-                        error = %e,
-                        "Failed to persist assistant message metadata (mode/lineage/tokens)"
-                    );
-                }
-
-                info!(
-                    conversation_id = %conversation_id,
-                    assistant_message_id = %assistant_message.message_id,
-                    tokens_used = tokens_used,
-                    duration_ms = duration_ms,
-                    chunk_count = accumulator.chunk_count(),
-                    llm_provider = ?used_provider,
-                    llm_model = ?used_model,
-                    finish_reason = ?finish_reason,
-                    stream_interrupted = client_disconnected_mid_stream,
-                    "Streaming chat completion successful"
-                );
-
-                if client_disconnected_mid_stream {
-                    return;
-                }
-
-                let _ = tx
-                    .send(ChatStreamEvent::Done {
-                        assistant_message_id: assistant_message.message_id,
-                        tokens_used,
-                        duration_ms,
-                        // SPEC-032: Provider lineage tracking
-                        llm_provider: used_provider.clone(),
-                        llm_model: used_model.clone(),
-                        answer: Some(verified),
-                        // SPEC-155 B09: answer-on-graph linkage
-                        subgraph: saved_subgraph.clone(),
-                    })
-                    .await;
-
-                // FEAT0505: Auto-generate conversation title for new conversations
-                if is_new_conversation {
-                    let title_llm =
-                        llm_override.unwrap_or_else(|| state_clone.query.llm_provider.clone());
-                    let title_conv_service = state_clone.conversation_service.clone();
-                    let title_conv_id = conversation_id;
-                    let title_first_msg = first_message_for_title.clone();
-                    let title_tx = tx.clone();
-                    let title_tenant_id = tenant_id;
-                    let title_user_id = user_id;
-
-                    tokio::spawn(async move {
-                        let title = crate::handlers::title_generator::generate_title(
-                            title_llm,
-                            &title_first_msg,
-                        )
-                        .await;
-
-                        match title_conv_service
-                            .update_conversation(
-                                title_tenant_id,
-                                title_user_id,
-                                title_conv_id,
-                                edgequake_core::types::UpdateConversationRequest {
-                                    title: Some(title.clone()),
-                                    ..Default::default()
+                    Ok(assistant_message) => {
+                        // Update with metadata AND context for source citations
+                        if let Err(e) = state_clone
+                            .conversation_service
+                            .update_message(
+                                assistant_message.message_id,
+                                UpdateMessageRequest {
+                                    content: None,
+                                    mode: Some(mode),
+                                    tokens_used: Some(tokens_used as i32),
+                                    duration_ms: Some(duration_ms as i32),
+                                    thinking_time_ms: accumulator
+                                        .thinking_time_ms()
+                                        .map(|ms| ms as i32),
+                                    context: saved_message_context, // Save context for source citations!
+                                    is_error: None,
+                                    llm_provider: used_provider.clone(),
+                                    llm_model: used_model.clone(),
+                                    finish_reason: finish_reason.clone(),
                                 },
                             )
                             .await
                         {
-                            Ok(_) => {
-                                info!(
-                                    conversation_id = %title_conv_id,
-                                    title = %title,
-                                    "Auto-generated conversation title"
-                                );
-                                // Send title update event to frontend via SSE
-                                let _ = title_tx
-                                    .send(ChatStreamEvent::TitleUpdate {
-                                        conversation_id: title_conv_id,
-                                        title,
-                                    })
-                                    .await;
-                            }
-                            Err(e) => {
-                                warn!(
-                                    conversation_id = %title_conv_id,
-                                    error = %e,
-                                    "Failed to update conversation title"
-                                );
-                            }
+                            error!(
+                                conversation_id = %conversation_id,
+                                assistant_message_id = %assistant_message.message_id,
+                                error = %e,
+                                "Failed to persist assistant message metadata (mode/lineage/tokens)"
+                            );
                         }
-                    });
+
+                        info!(
+                            conversation_id = %conversation_id,
+                            assistant_message_id = %assistant_message.message_id,
+                            tokens_used = tokens_used,
+                            duration_ms = duration_ms,
+                            chunk_count = accumulator.chunk_count(),
+                            llm_provider = ?used_provider,
+                            llm_model = ?used_model,
+                            finish_reason = ?finish_reason,
+                            stream_interrupted = client_disconnected_mid_stream,
+                            "Streaming chat completion successful"
+                        );
+
+                        if client_disconnected_mid_stream {
+                            return;
+                        }
+
+                        let _ = tx
+                            .send(ChatStreamEvent::Done {
+                                assistant_message_id: assistant_message.message_id,
+                                tokens_used,
+                                duration_ms,
+                                // SPEC-032: Provider lineage tracking
+                                llm_provider: used_provider.clone(),
+                                llm_model: used_model.clone(),
+                                answer: Some(verified),
+                                // SPEC-155 B09: answer-on-graph linkage
+                                subgraph: saved_subgraph.clone(),
+                            })
+                            .await;
+
+                        // FEAT0505: Auto-generate conversation title for new conversations
+                        if is_new_conversation {
+                            let title_llm = llm_override
+                                .unwrap_or_else(|| state_clone.query.llm_provider.clone());
+                            let title_conv_service = state_clone.conversation_service.clone();
+                            let title_conv_id = conversation_id;
+                            let title_first_msg = first_message_for_title.clone();
+                            let title_tx = tx.clone();
+                            let title_tenant_id = tenant_id;
+                            let title_user_id = user_id;
+
+                            tokio::spawn(async move {
+                                let title = crate::handlers::title_generator::generate_title(
+                                    title_llm,
+                                    &title_first_msg,
+                                )
+                                .await;
+
+                                match title_conv_service
+                                    .update_conversation(
+                                        title_tenant_id,
+                                        title_user_id,
+                                        title_conv_id,
+                                        edgequake_core::types::UpdateConversationRequest {
+                                            title: Some(title.clone()),
+                                            ..Default::default()
+                                        },
+                                    )
+                                    .await
+                                {
+                                    Ok(_) => {
+                                        info!(
+                                            conversation_id = %title_conv_id,
+                                            title = %title,
+                                            "Auto-generated conversation title"
+                                        );
+                                        // Send title update event to frontend via SSE
+                                        let _ = title_tx
+                                            .send(ChatStreamEvent::TitleUpdate {
+                                                conversation_id: title_conv_id,
+                                                title,
+                                            })
+                                            .await;
+                                    }
+                                    Err(e) => {
+                                        warn!(
+                                            conversation_id = %title_conv_id,
+                                            error = %e,
+                                            "Failed to update conversation title"
+                                        );
+                                    }
+                                }
+                            });
+                        }
+                    }
+                    Err(e) => {
+                        let msg = if e.to_string().contains("messages_conversation_id_fkey") {
+                            "Conversation no longer exists".to_string()
+                        } else {
+                            format!("Failed to save response: {e}")
+                        };
+                        let code = if msg.contains("Conversation no longer exists") {
+                            "CONVERSATION_GONE".to_string()
+                        } else {
+                            "SAVE_FAILED".to_string()
+                        };
+                        ErrorEvent::log_stream_error(
+                            &stream_request_id_spawn,
+                            "chat_stream",
+                            code.as_str(),
+                            &msg,
+                            json!({
+                                "phase": "save_assistant_message",
+                                "conversation_id": conversation_id.to_string(),
+                            }),
+                        );
+                        let _ = tx.send(ChatStreamEvent::Error { message: msg, code }).await;
+                    }
                 }
-            }
-            Err(e) => {
-                let msg = if e.to_string().contains("messages_conversation_id_fkey") {
-                    "Conversation no longer exists".to_string()
-                } else {
-                    format!("Failed to save response: {e}")
-                };
-                let code = if msg.contains("Conversation no longer exists") {
-                    "CONVERSATION_GONE".to_string()
-                } else {
-                    "SAVE_FAILED".to_string()
-                };
-                ErrorEvent::log_stream_error(
-                    &stream_request_id_spawn,
-                    "chat_stream",
-                    code.as_str(),
-                    &msg,
-                    json!({
-                        "phase": "save_assistant_message",
-                        "conversation_id": conversation_id.to_string(),
-                    }),
-                );
-                let _ = tx.send(ChatStreamEvent::Error { message: msg, code }).await;
-            }
-        }
             },
         )
         .await;

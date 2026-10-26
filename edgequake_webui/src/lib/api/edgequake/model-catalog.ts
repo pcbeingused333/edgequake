@@ -64,12 +64,16 @@ export interface EligibleModel {
   model: string;
   display_name: string;
   supports_vision: boolean;
+  supports_streaming?: boolean;
+  embedding_dimension?: number | null;
 }
 
 /** `GET /models/eligible`. `policy_mode` is per usage. */
 export interface EligibleModelsResponse {
-  usage: UsageKey;
+  usage: UsageKey | string;
+  scope?: "workspace" | "tenant" | "deployment";
   policy_mode: PolicyMode;
+  offer_mode?: PolicyMode;
   models: EligibleModel[];
 }
 
@@ -124,9 +128,27 @@ export const fetchEffectiveUsages = (workspaceId: string) =>
   api.get<EffectiveUsagesResponse>(`/config/effective?workspace_id=${encodeURIComponent(workspaceId)}`);
 
 export const fetchEligibleModels = (workspaceId: string, usage: UsageKey) =>
-  api.get<EligibleModelsResponse>(
-    `/models/eligible?workspace_id=${encodeURIComponent(workspaceId)}&usage=${usage}`,
-  );
+  fetchScopedEligibleModels({ scope: "workspace", id: workspaceId, usage });
+
+export function eligibleModelsPath(input: {
+  scope: "workspace" | "tenant" | "deployment";
+  id?: string | null;
+  usage: UsageKey;
+}) {
+  const params = new URLSearchParams({ usage: input.usage });
+  if (input.scope === "workspace" && input.id) params.set("workspace_id", input.id);
+  if (input.scope === "tenant" && input.id) params.set("tenant_id", input.id);
+  if (input.scope === "deployment") params.set("scope", "deployment");
+  return `/models/eligible?${params.toString()}`;
+}
+
+export function fetchScopedEligibleModels(input: {
+  scope: "workspace" | "tenant" | "deployment";
+  id?: string | null;
+  usage: UsageKey;
+}) {
+  return api.get<EligibleModelsResponse>(eligibleModelsPath(input));
+}
 
 export const fetchTenantModelCatalog = (tenantId: string) =>
   api.get<CatalogResponse>(`${tenantPath(tenantId)}/model-catalog`);

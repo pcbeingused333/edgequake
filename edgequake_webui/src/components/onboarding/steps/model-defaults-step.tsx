@@ -1,5 +1,6 @@
 'use client';
 
+import { useLlmCapabilityModels } from "@/hooks/use-llm-capability-models";
 import { ServerDefaultsCard } from '@/components/onboarding/server-defaults-card';
 import { ReasoningEffortSelect } from '@/components/settings/reasoning-effort-select';
 import { Button } from '@/components/ui/button';
@@ -15,7 +16,6 @@ import {
 } from '@/components/workspace/llm-model-selector';
 import { useInheritedModelDefaults } from '@/hooks/use-inherited-model-defaults';
 import { useDecisionModels, useDecisionStatus } from '@/hooks/use-decision-status';
-import { useLlmModels } from '@/hooks/use-providers';
 import { formatInheritModelLabel } from '@/lib/onboarding/inherited-defaults';
 import type { WizardDraft } from '@/lib/onboarding/wizard-state';
 import {
@@ -62,29 +62,29 @@ export function ModelDefaultsStep({
   const { t } = useTranslation();
   const useTenantLadder = Boolean(tenantId);
   const inherited = useInheritedModelDefaults(tenantId ?? null);
-  const { data: llmCatalog } = useLlmModels();
+  const llmModels = useLlmCapabilityModels();
   const reasoningSupported = useMemo(
     () =>
       supportedReasoningEffortsForModel(
-        llmCatalog?.models,
+        llmModels,
         llm?.provider,
         llm?.model,
       ),
-    [llmCatalog?.models, llm?.provider, llm?.model],
+    [llmModels, llm?.provider, llm?.model],
   );
   const thinkingSupported = useMemo(
-    () => modelSupportsThinking(llmCatalog?.models, llm?.provider, llm?.model),
-    [llmCatalog?.models, llm?.provider, llm?.model],
+    () => modelSupportsThinking(llmModels, llm?.provider, llm?.model),
+    [llmModels, llm?.provider, llm?.model],
   );
   const reasoningEffectiveAuto = useMemo(
     () =>
       effectiveEffortWhenAuto(
-        llmCatalog?.models,
+        llmModels,
         llm?.provider,
         llm?.model,
         'fleet',
       ),
-    [llmCatalog?.models, llm?.provider, llm?.model],
+    [llmModels, llm?.provider, llm?.model],
   );
 
   const { isLoading, hasConfiguredDefaults } = inherited;
@@ -115,7 +115,7 @@ export function ModelDefaultsStep({
   ]);
 
   const showAdvanced = advancedOpen && !isLoading;
-  const tenantPrefix = t('onboarding.tenantDefaultShort', 'Tenant default');
+  const tenantPrefix = t('onboarding.tenantDefaultShort', 'Organization default');
   const serverPrefix = t('onboarding.serverDefaultShort', 'Server default');
   const llmInheritLabel = formatInheritModelLabel({
     source: inherited.source,
@@ -213,7 +213,7 @@ export function ModelDefaultsStep({
                 data-testid="wizard-models-use-defaults"
               >
                 {useTenantLadder
-                  ? t('onboarding.backToInheritedDefaults', 'Use tenant defaults')
+                  ? t('onboarding.backToInheritedDefaults', 'Use organization defaults')
                   : t('onboarding.backToServerDefaults', 'Use server defaults')}
               </Button>
             ) : null}
@@ -233,6 +233,7 @@ export function ModelDefaultsStep({
                 showCapabilityFilters={false}
                 showUsageHint
                 inheritLabel={llmInheritLabel}
+                choiceScope="tenant"
               />
             </div>
             <div className="grid gap-2">
@@ -241,6 +242,7 @@ export function ModelDefaultsStep({
                 value={embedding}
                 onChange={onEmbeddingChange}
                 inheritLabel={embeddingInheritLabel}
+                choiceScope="tenant"
               />
             </div>
             <div className="grid gap-2">
@@ -251,6 +253,8 @@ export function ModelDefaultsStep({
                 filterVision
                 showCapabilityFilters={false}
                 showUsageHint
+                choiceScope="tenant"
+                usage="vlm"
                 inheritLabel={visionInheritLabel}
               />
             </div>
@@ -275,7 +279,7 @@ export function ModelDefaultsStep({
           {t(
             'onboarding.modelsRequiredHint',
             useTenantLadder
-              ? 'Tenant and server defaults are incomplete. Customize models to continue.'
+              ? 'Organization and server defaults are incomplete. Customize models to continue.'
               : 'Server defaults are incomplete. Customize models to continue.',
           )}
         </p>

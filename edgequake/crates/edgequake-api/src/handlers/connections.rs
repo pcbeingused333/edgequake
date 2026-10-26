@@ -470,9 +470,9 @@ async fn upsert(
 
     let connection_id = id.unwrap_or_else(Uuid::new_v4);
     let mut fingerprint = None;
-    let mut ciphertext: Option<Vec<u8>> = None;
-    let mut nonce: Option<Vec<u8>> = None;
-    let mut key_id: Option<String> = None;
+    let ciphertext: Option<Vec<u8>> = None;
+    let nonce: Option<Vec<u8>> = None;
+    let key_id: Option<String> = None;
     let mut secret_ref: Option<serde_json::Value> = None;
     let mut replace_secret = false;
     if let Some(k) = body.api_key.as_deref().filter(|s| !s.is_empty()) {

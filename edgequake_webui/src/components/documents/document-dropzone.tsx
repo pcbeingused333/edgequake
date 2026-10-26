@@ -1,5 +1,6 @@
 'use client';
 
+import { useLlmCapabilityModels } from "@/hooks/use-llm-capability-models";
 import { cn } from '@/lib/utils';
 import { SlidersHorizontal, Upload } from 'lucide-react';
 import type React from 'react';
@@ -23,7 +24,6 @@ import {
   VisionSettingsPanel,
   type VisionExtractDraft,
 } from '@/components/settings/vision-extract-controls';
-import { useLlmModels } from '@/hooks/use-providers';
 import { useTranslation } from 'react-i18next';
 import { MAX_UPLOAD_LABEL } from '@/lib/api/upload-limits';
 import { formatWorkspaceDefaultPdfParserLabel, formatWorkspaceDefaultPdfParserShortLabel } from '@/lib/pdf/resolve-pdf-parser-backend';
@@ -350,19 +350,19 @@ export function DocumentDropzone({
   fill = false,
 }: DocumentDropzoneProps) {
   const { t } = useTranslation();
-  const { data: llmCatalog } = useLlmModels();
+  const llmModels = useLlmCapabilityModels();
   const visionThinkingSupported = useMemo(
-    () => modelSupportsThinking(llmCatalog?.models, visionProvider, visionModel),
-    [llmCatalog?.models, visionProvider, visionModel],
+    () => modelSupportsThinking(llmModels, visionProvider, visionModel),
+    [llmModels, visionProvider, visionModel],
   );
   const visionEffortSupported = useMemo(
     () =>
       supportedReasoningEffortsForModel(
-        llmCatalog?.models,
+        llmModels,
         visionProvider,
         visionModel,
       ),
-    [llmCatalog?.models, visionProvider, visionModel],
+    [llmModels, visionProvider, visionModel],
   );
   const compact = quiet || collapsed;
   const workspaceIsVision =
@@ -525,7 +525,7 @@ export function DocumentDropzone({
                   supported: visionEffortSupported,
                   thinkingSupported: visionThinkingSupported,
                   effectiveWhenAuto: effectiveEffortWhenAuto(
-                    llmCatalog?.models,
+                    llmModels,
                     visionProvider,
                     visionModel,
                     'structured',

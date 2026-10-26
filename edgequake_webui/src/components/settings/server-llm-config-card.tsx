@@ -4,6 +4,7 @@
  * Server-wide LLM defaults saved to PostgreSQL `server_config` (SPEC-043).
  * Includes configurable ENV vs Server priority mode.
  */
+import { useLlmCapabilityModels } from "@/hooks/use-llm-capability-models";
 import { EmbeddingModelSelector, type EmbeddingSelection } from "@/components/workspace/embedding-model-selector";
 import { LLMModelSelector, type LLMSelection } from "@/components/workspace/llm-model-selector";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +19,6 @@ import { Database, Info, Loader2, Save, Server } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ReasoningEffortSelect } from "@/components/settings/reasoning-effort-select";
-import { useLlmModels } from "@/hooks/use-providers";
 import {
   effectiveEffortWhenAuto,
   modelSupportsThinking,
@@ -87,39 +87,39 @@ export function ServerLlmConfigCard() {
   const [reasoningByRole, setReasoningByRole] = useState<Record<string, string>>(
     {},
   );
-  const { data: llmCatalog } = useLlmModels();
+  const llmModels = useLlmCapabilityModels();
   const fleetSupported = useMemo(
     () =>
       supportedReasoningEffortsForModel(
-        llmCatalog?.models,
+        llmModels,
         llm?.provider,
         llm?.model,
       ),
-    [llmCatalog?.models, llm?.provider, llm?.model],
+    [llmModels, llm?.provider, llm?.model],
   );
   const thinkingSupported = useMemo(
-    () => modelSupportsThinking(llmCatalog?.models, llm?.provider, llm?.model),
-    [llmCatalog?.models, llm?.provider, llm?.model],
+    () => modelSupportsThinking(llmModels, llm?.provider, llm?.model),
+    [llmModels, llm?.provider, llm?.model],
   );
   const fleetEffectiveAuto = useMemo(
     () =>
       effectiveEffortWhenAuto(
-        llmCatalog?.models,
+        llmModels,
         llm?.provider,
         llm?.model,
         "fleet",
       ),
-    [llmCatalog?.models, llm?.provider, llm?.model],
+    [llmModels, llm?.provider, llm?.model],
   );
   const queryEffectiveAuto = useMemo(
     () =>
       effectiveEffortWhenAuto(
-        llmCatalog?.models,
+        llmModels,
         llm?.provider,
         llm?.model,
         "query",
       ),
-    [llmCatalog?.models, llm?.provider, llm?.model],
+    [llmModels, llm?.provider, llm?.model],
   );
 
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -278,17 +278,17 @@ export function ServerLlmConfigCard() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Chat & extraction (LLM)</Label>
-                <LLMModelSelector value={llm} onChange={setLlm} />
+                <LLMModelSelector value={llm} onChange={setLlm} choiceScope="deployment" />
               </div>
 
               <div className="space-y-2">
                 <Label>Embedding</Label>
-                <EmbeddingModelSelector value={embedding} onChange={setEmbedding} />
+                <EmbeddingModelSelector value={embedding} onChange={setEmbedding} choiceScope="deployment" />
               </div>
 
               <div className="space-y-2">
                 <Label>Vision / PDF</Label>
-                <LLMModelSelector value={vision} onChange={setVision} filterVision />
+                <LLMModelSelector value={vision} onChange={setVision} filterVision choiceScope="deployment" usage="vlm" />
                 <p className="text-xs text-muted-foreground">
                   Leave unset to inherit from LLM server defaults.
                 </p>

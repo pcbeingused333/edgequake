@@ -1,7 +1,5 @@
 //! Non-streaming chat completion handler.
 
-use std::sync::Arc;
-
 use axum::extract::State;
 use axum::Json;
 use tracing::{debug, error, info, warn};
@@ -11,10 +9,10 @@ use crate::handlers::auth::OptionalAuth;
 use crate::handlers::query::{resolve_chunk_file_paths, resolve_query_workspace};
 use crate::middleware::TenantContext;
 use crate::providers::{LlmResolutionRequest, WorkspaceProviderResolver};
-use crate::services::model_policy_enforcement::ensure_pair_eligible;
+use crate::services::model_policy_enforcement::ensure_resolved_pair;
 use crate::services::{
-    build_message_context_from_engine, ensure_debug_granularity_allowed,
-    execute_sota_query_with_auth_fallback, resolve_workspace_query_resources,
+    build_message_context_from_engine, ensure_debug_granularity_allowed, execute_sota_query,
+    resolve_workspace_query_resources,
 };
 use crate::state::AppState;
 use edgequake_core::types::{
@@ -241,22 +239,31 @@ pub async fn chat_completion(
     let resolver = WorkspaceProviderResolver::from_app_state(&state);
     let llm_request =
         LlmResolutionRequest::from_provider_string(request.provider.clone(), request.model.clone());
+    let choice_usage = if engine_request
+        .images
+        .as_ref()
+        .is_some_and(|imgs| !imgs.is_empty())
+    {
+        Usage::Vlm
+    } else {
+        Usage::Query
+    };
 
     let (llm_override, used_provider, used_model) = match resolver
         .resolve_llm_provider_for_workspace(workspace.as_ref(), &llm_request)
         .await
     {
         Ok(Some(resolved)) => {
-            if llm_request.has_explicit_provider() {
-                ensure_pair_eligible(
-                    &state,
-                    workspace.as_ref(),
-                    Usage::Query,
-                    Some(&resolved.provider_name),
-                    Some(&resolved.model_name),
-                )
-                .await?;
-            }
+            ensure_resolved_pair(
+                &state,
+                workspace.as_ref(),
+                choice_usage,
+                request.provider.as_deref(),
+                request.model.as_deref(),
+                Some(&resolved.provider_name),
+                Some(&resolved.model_name),
+            )
+            .await?;
             debug!(
                 provider = %resolved.provider_name,
                 model = %resolved.model_name,
@@ -270,43 +277,21 @@ pub async fn chat_completion(
             )
         }
         Ok(None) => {
-            // No provider resolved - will use server default
+            if llm_request.has_explicit_provider() {
+                return Err(ApiError::unprocessable_coded(
+                    "credential",
+                    "this provider has no key the workspace can use",
+                ));
+            }
             debug!("Using server default LLM provider (non-streaming)");
             (None, None, None)
         }
         Err(e) => {
-            // Explicit provider request failed - return error to user
-            // OODA-234: Unified error conversion via From<ProviderResolutionError>
             error!(error = %e, "Failed to resolve LLM provider (non-streaming)");
             return Err(ApiError::from(e));
         }
     };
 
-    // FEAT0203: When images are attached, prefer the vision-capable LLM provider.
-    // WHY: Some models (e.g. mistral-small-latest) silently drop image content.
-    // The vision provider (e.g. pixtral-large-latest) is used instead when available.
-    // A request-level provider override takes precedence over the server-default vision provider.
-    let (llm_override, used_provider, used_model) = if llm_override.is_none()
-        && engine_request
-            .images
-            .as_ref()
-            .is_some_and(|imgs| !imgs.is_empty())
-    {
-        if let Some(ref vision_provider) = state.query.vision_llm_provider {
-            debug!("Using vision LLM provider for image query (FEAT0203)");
-            (
-                Some(Arc::clone(vision_provider) as Arc<dyn edgequake_llm::traits::LLMProvider>),
-                Some(vision_provider.name().to_string()),
-                Some(vision_provider.model().to_string()),
-            )
-        } else {
-            (llm_override, used_provider, used_model)
-        }
-    } else {
-        (llm_override, used_provider, used_model)
-    };
-
-    // Honesty: always record effective provider/model (incl. server-default path).
     let effective_llm = llm_override
         .as_ref()
         .map(|p| p.as_ref())
@@ -339,13 +324,8 @@ pub async fn chat_completion(
     let workspace_id_str = workspace_id.as_ref().map(|id| id.to_string());
     let resources = resolve_workspace_query_resources(&state, workspace_id_str.as_deref()).await?;
 
-    let result = execute_sota_query_with_auth_fallback(
-        &state,
-        engine_request,
-        resources,
-        llm_override.clone(),
-    )
-    .await?;
+    let result =
+        execute_sota_query(&state, engine_request, resources, llm_override.clone()).await?;
 
     // SPEC-124: root observation I/O (query turn).
     edgequake_observability::record_query_root_io(&request.message, &result.answer);

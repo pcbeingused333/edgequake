@@ -1,5 +1,6 @@
 "use client";
 
+import { useLlmCapabilityModels } from "@/hooks/use-llm-capability-models";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -19,7 +20,6 @@ import {
 } from "@/components/workspace/llm-model-selector";
 import { ReasoningEffortSelect } from "@/components/settings/reasoning-effort-select";
 import { useInheritedModelDefaults } from "@/hooks/use-inherited-model-defaults";
-import { useLlmModels } from "@/hooks/use-providers";
 import {
   effectiveEmbeddingFromWorkspace,
   effectiveLlmFromWorkspace,
@@ -176,7 +176,7 @@ export function WorkspaceModelConfigGrid({
   const { t } = useTranslation();
   const tenantId = useTenantStore((s) => s.selectedTenantId);
   const inherited = useInheritedModelDefaults(tenantId);
-  const { data: llmCatalog } = useLlmModels();
+  const llmModels = useLlmCapabilityModels();
   const llmDefaultId =
     inherited.defaultLlmProvider && inherited.defaultLlmModel
       ? `${inherited.defaultLlmProvider}/${inherited.defaultLlmModel}`
@@ -188,23 +188,23 @@ export function WorkspaceModelConfigGrid({
   const provider = selectedLLM?.provider ?? workspace.llm_provider;
   const model = selectedLLM?.model ?? workspace.llm_model;
   const supported = supportedReasoningEffortsForModel(
-    llmCatalog?.models,
+    llmModels,
     provider,
     model,
   );
   const thinkingSupported = modelSupportsThinking(
-    llmCatalog?.models,
+    llmModels,
     provider,
     model,
   );
   const extractEffectiveAuto = effectiveEffortWhenAuto(
-    llmCatalog?.models,
+    llmModels,
     provider,
     model,
     "structured",
   );
   const queryEffectiveAuto = effectiveEffortWhenAuto(
-    llmCatalog?.models,
+    llmModels,
     provider,
     model,
     "query",
@@ -227,6 +227,19 @@ export function WorkspaceModelConfigGrid({
   // Prefer API provenance (LAW-123-8); fall back to source from FE mirror.
   const hasLlmOverride = resolvedLlm.source === "workspace";
   const hasEmbeddingOverride = resolvedEmbedding.source === "workspace";
+  const currentDimension = resolvedEmbedding.dimension;
+  const nextDimension = selectedEmbedding?.dimension;
+  const embeddingChangeMessage =
+    currentDimension && nextDimension && currentDimension !== nextDimension
+      ? t(
+          "workspace.embeddingDimensionChangeWarning",
+          "Saving changes the embedding dimension from {{from}} to {{to}}. Existing vectors must be rebuilt.",
+          { from: currentDimension, to: nextDimension },
+        )
+      : t(
+          "workspace.embeddingChangeWarning",
+          "Saving changes the embedding model. Existing vectors must be rebuilt to match it.",
+        );
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -361,13 +374,7 @@ export function WorkspaceModelConfigGrid({
                 onChange={onEmbeddingChange}
               />
               {embeddingModelChanged && (
-                <ChangeWarning
-                  tone="amber"
-                  message={t(
-                    "workspace.embeddingChangeWarning",
-                    "Changing embedding model requires rebuilding all document embeddings.",
-                  )}
-                />
+                <ChangeWarning tone="amber" message={embeddingChangeMessage} />
               )}
             </>
           ) : (

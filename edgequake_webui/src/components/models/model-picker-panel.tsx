@@ -35,6 +35,7 @@ import {
   ensureSelectedInPickerOptions,
   mergePickerOptions,
 } from "@/components/models/model-picker-options";
+import { CHOICE_POPOVER } from "@/components/models/choice-menu-surface";
 import { Check, ChevronDown, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
@@ -484,7 +485,7 @@ export function ModelPickerPanel({
             </Button>
           </PopoverTrigger>
           <PopoverContent
-            className="w-[var(--radix-popover-trigger-width)] min-w-[min(100%,22rem)] p-0"
+            className={cn(CHOICE_POPOVER, "w-[var(--radix-popover-trigger-width)] min-w-[min(100%,22rem)] p-1")}
             align="start"
             onOpenAutoFocus={(event) => {
               event.preventDefault();
@@ -590,7 +591,7 @@ export function ModelPickerPanel({
             </Button>
           </PopoverTrigger>
           <PopoverContent
-            className="w-[var(--radix-popover-trigger-width)] min-w-[min(100%,22rem)] p-0"
+            className={cn(CHOICE_POPOVER, "w-[var(--radix-popover-trigger-width)] min-w-[min(100%,22rem)] p-1")}
             align="start"
             onOpenAutoFocus={(event) => {
               event.preventDefault();

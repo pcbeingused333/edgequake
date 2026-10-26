@@ -1,17 +1,21 @@
 /**
- * LLM model selector for workspace configuration (SPEC-043 two-step picker).
+ * LLM model selector. Lists `eligible_models` for the scope, not the inventory.
  */
 'use client';
 
-import { llmModelToPickerOption } from '@/components/models/model-picker-mappers';
 import { mergePickerOptions } from '@/components/models/model-picker-options';
+import { ModelsStatus } from '@/components/models/models-status';
 import {
   ModelPickerPanel,
+  formatModelFullId,
+  type ModelPickerOption,
   type ModelPickerValue,
 } from '@/components/models/model-picker-panel';
-import { useLlmModels } from '@/hooks/use-providers';
+import { useScopedEligibleModels } from '@/hooks/use-model-policy';
+import type { EligibleModel, UsageKey } from '@/lib/api/edgequake/model-catalog';
 import { cn } from '@/lib/utils';
-import { Loader2, Sparkles } from 'lucide-react';
+import { useTenantStore } from '@/stores/use-tenant-store';
+import { Sparkles } from 'lucide-react';
 
 export interface LLMSelection {
   model: string;
@@ -29,11 +33,25 @@ interface LLMModelSelectorProps {
   /** @deprecated Ignored — provider is a dedicated select. */
   showProviderFilters?: boolean;
   showCapabilityFilters?: boolean;
-  /**
-   * LAW-101-13 inherit chip. When set, replaces fleet catalog "Server default (…)"
-   * so tenant ladder matches ServerDefaultsCard.
-   */
   inheritLabel?: string;
+  /** Defaults to the workspace on screen. */
+  choiceScope?: 'workspace' | 'tenant' | 'deployment';
+  usage?: UsageKey;
+}
+
+function toOption(model: EligibleModel): ModelPickerOption {
+  return {
+    provider: model.provider,
+    providerDisplayName: model.provider_display_name || model.provider,
+    name: model.model,
+    displayName: model.display_name || model.model,
+    fullId: formatModelFullId(model.provider, model.model),
+    contextLength: 0,
+    supportsVision: model.supports_vision,
+    supportsTools: false,
+    supportsStreaming: model.supports_streaming !== false,
+    available: true,
+  };
 }
 
 export function LLMModelSelector({
@@ -45,50 +63,41 @@ export function LLMModelSelector({
   filterVision = false,
   showCapabilityFilters,
   inheritLabel,
+  choiceScope = 'workspace',
+  usage,
 }: LLMModelSelectorProps) {
-  const { data: llmData, isLoading, error } = useLlmModels();
+  const workspaceId = useTenantStore((s) => s.selectedWorkspaceId);
+  const tenantId = useTenantStore((s) => s.selectedTenantId);
+  const resolvedUsage: UsageKey = usage ?? (filterVision ? 'vlm' : 'query');
+  const id = choiceScope === 'tenant' ? tenantId : choiceScope === 'workspace' ? workspaceId : null;
+  const { data, isLoading, error, refetch } = useScopedEligibleModels({
+    scope: choiceScope,
+    id,
+    usage: resolvedUsage,
+  });
 
   if (isLoading) {
-    return (
-      <div className={cn('flex items-center gap-2 px-3 py-2 bg-muted rounded-lg', className)}>
-        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-        <span className="text-sm text-muted-foreground">Loading LLM models...</span>
-      </div>
-    );
+    return <ModelsStatus state="loading" className={className} />;
   }
 
-  if (error || !llmData) {
-    return (
-      <div className={cn('px-3 py-2 bg-muted rounded-lg text-sm text-muted-foreground', className)}>
-        Could not load LLM models. Will use server default.
-      </div>
-    );
+  if (error || !data) {
+    return <ModelsStatus state="error" onRetry={() => void refetch()} className={className} />;
   }
 
-  const filtered = filterVision
-    ? llmData.models.filter((m) => m.capabilities.supports_vision)
-    : llmData.models;
-
-  const options = mergePickerOptions(filtered.map(llmModelToPickerOption));
-
+  const models = filterVision ? data.models.filter((model) => model.supports_vision) : data.models;
+  const options = mergePickerOptions(models.map(toOption));
   const pickerValue: ModelPickerValue | undefined = value
     ? { provider: value.provider, model: value.model, fullId: value.fullId }
     : undefined;
-
-  const defaultLabel =
-    inheritLabel ??
-    (llmData.default_provider && llmData.default_model
-      ? `Server default (${llmData.default_provider}/${llmData.default_model})`
-      : 'Server default');
 
   return (
     <div className={cn('space-y-1', className)} data-testid="llm-model-selector">
       <ModelPickerPanel
         options={options}
         value={pickerValue}
-        onChange={(v) =>
+        onChange={(next) =>
           onChange?.(
-            v ? { provider: v.provider, model: v.model, fullId: v.fullId } : undefined,
+            next ? { provider: next.provider, model: next.model, fullId: next.fullId } : undefined,
           )
         }
         disabled={disabled}
@@ -96,7 +105,7 @@ export function LLMModelSelector({
         showCapabilityFilters={
           showCapabilityFilters !== undefined ? showCapabilityFilters : !filterVision
         }
-        serverDefaultLabel={defaultLabel}
+        serverDefaultLabel={inheritLabel ?? 'Inherit'}
         placeholder="Search models…"
       />
       {showUsageHint && (
@@ -105,7 +114,7 @@ export function LLMModelSelector({
           <span>
             {filterVision
               ? 'Used for PDF-to-Markdown image extraction (requires vision capability)'
-              : 'Used for document ingestion, entity extraction, and summarization'}
+              : 'Models this scope allows for this job.'}
           </span>
         </div>
       )}

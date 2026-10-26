@@ -21,6 +21,8 @@ use super::helpers::{
 use super::rows::WorkspaceRow;
 #[cfg(feature = "postgres")]
 use super::WorkspaceServiceImpl;
+#[cfg(feature = "postgres")]
+use crate::model_resolution::{write_sent_model_choice_metadata, SentModelChoice};
 
 #[cfg(feature = "postgres")]
 impl WorkspaceServiceImpl {
@@ -51,6 +53,14 @@ impl WorkspaceServiceImpl {
                 tenant.max_workspaces
             )));
         }
+
+        // LAW-123-8: capture before the request fields are moved below.
+        let sent = SentModelChoice::from_create_fields(
+            request.llm_model.as_deref(),
+            request.llm_provider.as_deref(),
+            request.embedding_model.as_deref(),
+            request.embedding_provider.as_deref(),
+        );
 
         let slug = request
             .slug
@@ -254,13 +264,9 @@ impl WorkspaceServiceImpl {
         // SPEC-032/SPEC-040: Store LLM, embedding, and vision config in metadata
         .bind({
             let mut metadata = workspace.metadata.clone();
-            // LLM configuration
-            metadata.insert("llm_model".to_string(), serde_json::Value::String(workspace.llm_model.clone()));
-            metadata.insert("llm_provider".to_string(), serde_json::Value::String(workspace.llm_provider.clone()));
-            // Embedding configuration
-            metadata.insert("embedding_model".to_string(), serde_json::Value::String(workspace.embedding_model.clone()));
-            metadata.insert("embedding_provider".to_string(), serde_json::Value::String(workspace.embedding_provider.clone()));
-            metadata.insert("embedding_dimension".to_string(), serde_json::Value::Number(workspace.embedding_dimension.into()));
+            // LAW-123-8: only the model groups the caller sent become overrides.
+            // Inherited values stay unset so tenant/env changes still reach this workspace.
+            write_sent_model_choice_metadata(&mut metadata, &workspace, sent);
             // SPEC-041: Vision LLM configuration (already set in workspace.metadata above)
             if let Some(pdf_parser_backend) = workspace.pdf_parser_backend {
                 metadata.insert(

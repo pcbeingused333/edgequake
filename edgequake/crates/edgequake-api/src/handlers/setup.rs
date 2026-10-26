@@ -461,6 +461,20 @@ pub async fn setup_initialize(
     if let Some(desc) = request.tenant_description.as_ref() {
         tenant = tenant.with_description(desc);
     }
+    crate::services::model_policy_enforcement::ensure_tenant_choice(
+        &state,
+        tenant.tenant_id,
+        request.default_llm_provider.as_deref(),
+        request.default_llm_model.as_deref(),
+        (
+            request.default_embedding_provider.as_deref(),
+            request.default_embedding_model.as_deref(),
+            None,
+        ),
+        request.default_vision_llm_provider.as_deref(),
+        request.default_vision_llm_model.as_deref(),
+    )
+    .await?;
     if let (Some(model), Some(provider)) =
         (&request.default_llm_model, &request.default_llm_provider)
     {

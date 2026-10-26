@@ -142,6 +142,20 @@ pub async fn probe_provider(req: ProbeRequest) -> ProbeResponse {
 
     let list_url = if shape == "ollama" {
         format!("{base}{}", local_health_path("ollama"))
+    } else if crate::providers::connection_shapes::requires_server_credentials(&shape) {
+        return ProbeResponse {
+            ok: false,
+            kind: ProbeErrorKind::ShapeMismatch,
+            latency_ms: start.elapsed().as_millis() as u64,
+            message: format!(
+                "{shape} is available to add, but a saved URL and key cannot build it. Configure server credentials for this provider."
+            ),
+            models: vec![],
+            embedding_dimension: None,
+            chat_ok: false,
+            embed_ok: false,
+            list_ok: false,
+        };
     } else {
         format!("{base}/v1/models")
     };

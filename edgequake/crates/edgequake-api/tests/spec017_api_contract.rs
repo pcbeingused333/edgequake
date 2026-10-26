@@ -59,8 +59,12 @@ fn spec017_query_and_chat_share_execution_service() {
     ] {
         let src = read_crate_src(rel);
         assert!(
-            src.contains("execute_sota_query_with_auth_fallback"),
+            src.contains("execute_sota_query(") || src.contains("execute_sota_query_stream("),
             "{rel} must call shared execution service (API-DRY-002)"
+        );
+        assert!(
+            !src.contains("with_auth_fallback"),
+            "{rel} must not retry a refused choice on the process provider"
         );
         assert!(
             src.contains("resolve_workspace_query_resources"),

@@ -29,11 +29,14 @@
 //! This enables the WebUI to display intelligent model selection with
 //! capability tooltips and cost estimates.
 
-use axum::{extract::State, Json};
+use axum::{extract::Query, extract::State, Json};
 use edgequake_llm::model_config::ProviderType;
+use serde::Deserialize;
 
 use crate::error::{ApiError, ApiResult};
-use crate::model_catalog::{active_provider_names, model_card_to_response};
+use crate::model_catalog::{
+    active_provider_names, model_card_to_response, provider_filter_matches,
+};
 use crate::provider_visibility::filter_ui_providers;
 use crate::state::AppState;
 
@@ -120,15 +123,27 @@ pub async fn list_models(State(state): State<AppState>) -> ApiResult<Json<Models
 /// # Returns
 ///
 /// All LLM and multimodal models across all enabled providers.
+/// Optional `provider` narrows the inventory to one slug (Fleet refresh checklist).
+#[derive(Debug, Deserialize)]
+pub struct LlmModelsQuery {
+    pub provider: Option<String>,
+}
+
 #[utoipa::path(
     get,
     path = "/api/v1/models/llm",
     tag = "Models",
+    params(
+        ("provider" = Option<String>, Query, description = "Keep models for this provider slug")
+    ),
     responses(
         (status = 200, description = "List of LLM models", body = LlmModelsResponse)
     )
 )]
-pub async fn list_llm_models(State(state): State<AppState>) -> ApiResult<Json<LlmModelsResponse>> {
+pub async fn list_llm_models(
+    State(state): State<AppState>,
+    Query(query): Query<LlmModelsQuery>,
+) -> ApiResult<Json<LlmModelsResponse>> {
     let config = &*state.query.models_config;
 
     // WHY: Show all enabled providers from models.toml by default.
@@ -140,6 +155,10 @@ pub async fn list_llm_models(State(state): State<AppState>) -> ApiResult<Json<Ll
         .model_catalog
         .list_llm_models(config, &allowed)
         .await;
+    let models = models
+        .into_iter()
+        .filter(|item| provider_filter_matches(&item.provider, query.provider.as_deref()))
+        .collect();
 
     // WHY: Return the runtime-active provider/model, not static models.toml defaults.
     // The runtime provider is wired via ProviderFactory::from_env(); using config

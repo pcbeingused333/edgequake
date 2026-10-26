@@ -27,6 +27,7 @@ import { useTranslation } from "react-i18next";
 import { ChatMessage } from "./message";
 import { Composer } from "./composer";
 import { ModelChip } from "./composer/model-chip";
+import { useQueryChoice } from "@/hooks/use-query-choice";
 import { SlashMenu } from "./composer/slash-menu";
 import { useQueryComposerShortcuts } from "./composer/use-query-composer-shortcuts";
 import { ConversationHistoryPanelV2 } from "./conversation-history-panel-v2";
@@ -37,6 +38,7 @@ import { QuerySettingsSheet } from "./query-settings-sheet";
 
 export function QueryInterface() {
   const { t } = useTranslation();
+  const choice = useQueryChoice();
   const isXl = useMediaQuery("(min-width: 1280px)");
   const historyOpen = useQueryUIStore((s) => s.historyPanelOpen);
   const toggleHistory = useQueryUIStore((s) => s.toggleHistoryPanel);
@@ -283,19 +285,6 @@ export function QueryInterface() {
                     ? `${querySettings.provider}/${querySettings.model}`
                     : ""
                 }
-                onProviderModelChange={(fullModelId) => {
-                  if (!fullModelId) {
-                    setQuerySettings({
-                      provider: undefined,
-                      model: undefined,
-                    });
-                  } else {
-                    const parts = fullModelId.split("/");
-                    const provider = parts[0];
-                    const model = parts.slice(1).join("/");
-                    setQuerySettings({ provider, model });
-                  }
-                }}
                 documentFilter={querySettings.documentFilter}
                 onDocumentFilterChange={(documentFilter) =>
                   setQuerySettings({ documentFilter })
@@ -424,6 +413,15 @@ export function QueryInterface() {
               onDragOver={handleDragOver}
               inputRef={inputRef}
               modelSlot={<ModelChip />}
+              sendBlocked={choice.sendBlocked}
+              sendBlockedHint={
+                choice.empty
+                  ? undefined
+                  : t(
+                      "query.model.pickHint",
+                      "The workspace default isn’t available here. Choose a model below.",
+                    )
+              }
               scopePickerOpen={scopePickerOpen}
               onScopePickerOpenChange={setScopePickerOpen}
             />

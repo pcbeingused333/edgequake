@@ -1039,24 +1039,43 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 	echo "  API:      $$BACKEND_URL"; \
 	echo "  Swagger:  $$BACKEND_URL/swagger-ui"; \
 	echo ""; \
-	echo "$(YELLOW)Waiting until the website answers...$(RESET)"; \
+	echo "$(YELLOW)Waiting until the API and website answer...$(RESET)"; \
+	_api_ready=0; \
 	_web_ready=0; \
-	for _i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do \
-		if curl -fsS "$$FRONTEND_URL" >/dev/null 2>&1; then \
+	for _i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60; do \
+		if [ "$$_api_ready" != "1" ] && curl -fsS "$$BACKEND_URL/health" >/dev/null 2>&1; then \
+			_api_ready=1; \
+			echo "$(GREEN)✓ API healthy on $$BACKEND_URL$(RESET)"; \
+		fi; \
+		if [ "$$_web_ready" != "1" ] && curl -fsS "$$FRONTEND_URL" >/dev/null 2>&1; then \
 			_web_ready=1; \
+			echo "$(GREEN)✓ Website up on $$FRONTEND_URL$(RESET)"; \
+		fi; \
+		if [ "$$_api_ready" = "1" ] && [ "$$_web_ready" = "1" ]; then \
+			break; \
+		fi; \
+		if [ -n "$$BACKEND_PID" ] && ! kill -0 "$$BACKEND_PID" 2>/dev/null; then \
+			echo "$(RED)✗ Backend exited during startup$(RESET)"; \
 			break; \
 		fi; \
 		if ! kill -0 "$$FRONTEND_PID" 2>/dev/null; then \
+			echo "$(RED)✗ Frontend exited during startup$(RESET)"; \
 			break; \
 		fi; \
 		sleep 2; \
 	done; \
-	if [ "$$_web_ready" = "1" ]; then \
+	if [ "$$_api_ready" = "1" ] && [ "$$_web_ready" = "1" ]; then \
 		echo "$(BOLD)$(GREEN)✓ Open this in your browser: $$FRONTEND_URL$(RESET)"; \
 	else \
-		echo "$(RED)✗ The website is not up at $$FRONTEND_URL$(RESET)"; \
-		echo "  Look for lines starting with [frontend] above."; \
-		echo "  If they mention missing packages: cd edgequake_webui && pnpm install"; \
+		if [ "$$_api_ready" != "1" ]; then \
+			echo "$(RED)✗ The API is not up at $$BACKEND_URL/health$(RESET)"; \
+			echo "  Look for lines starting with [backend] above (migrate / storage inspector can take a minute)."; \
+		fi; \
+		if [ "$$_web_ready" != "1" ]; then \
+			echo "$(RED)✗ The website is not up at $$FRONTEND_URL$(RESET)"; \
+			echo "  Look for lines starting with [frontend] above."; \
+			echo "  If they mention missing packages: cd edgequake_webui && pnpm install"; \
+		fi; \
 	fi; \
 	echo "$(YELLOW)Press Ctrl+C to stop only this session's app processes$(RESET)"; \
 	wait

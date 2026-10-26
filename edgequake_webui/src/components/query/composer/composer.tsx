@@ -63,6 +63,10 @@ export interface ComposerProps {
   inputRef: RefObject<HTMLTextAreaElement | null>;
   /** Optional model chip slot */
   modelSlot?: React.ReactNode;
+  /** Eligible set is empty: Send stays disabled and the empty sentence is shown. */
+  sendBlocked?: boolean;
+  /** Overrides the default empty-eligible copy when Send is blocked for another reason. */
+  sendBlockedHint?: string;
   settingsSlot?: React.ReactNode;
   scopePickerOpen?: boolean;
   onScopePickerOpenChange?: (open: boolean) => void;
@@ -92,6 +96,8 @@ export function Composer({
   onDragOver,
   inputRef,
   modelSlot,
+  sendBlocked = false,
+  sendBlockedHint,
   settingsSlot,
   scopePickerOpen,
   onScopePickerOpenChange,
@@ -347,6 +353,19 @@ export function Composer({
             {modelSlot}
           </div>
 
+          {sendBlocked ? (
+            <p
+              id="query-choice-empty"
+              data-testid="query-choice-empty"
+              className="px-1 pb-1 text-[12.5px] text-[#6b6760] dark:text-[#9a968f]"
+            >
+              {sendBlockedHint
+                ?? t(
+                  "query.model.emptyEligible",
+                  "An admin needs to allow a model before you can ask.",
+                )}
+            </p>
+          ) : null}
           <div className="flex items-center gap-1 shrink-0">
             {settingsSlot}
             {showStop ? (
@@ -366,7 +385,8 @@ export function Composer({
               <Button
                 type="submit"
                 size="sm"
-                disabled={!input.trim()}
+                disabled={!input.trim() || sendBlocked}
+                aria-describedby={sendBlocked ? "query-choice-empty" : undefined}
                 className={cn(
                   "h-8 w-8 p-0 rounded-full",
                   "disabled:opacity-30 disabled:shadow-none",

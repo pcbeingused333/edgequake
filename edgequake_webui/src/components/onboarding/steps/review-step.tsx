@@ -184,7 +184,7 @@ export function ReviewStep({
 
   const inheritLabel =
     defaults.source === 'tenant'
-      ? t('onboarding.usingTenantDefaults', 'Using tenant defaults')
+      ? t('onboarding.usingTenantDefaults', 'Using organization defaults')
       : t('onboarding.usingServerDefaults', 'Using server defaults');
 
   const llmId = draft.useServerDefaults

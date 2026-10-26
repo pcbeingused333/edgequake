@@ -5,9 +5,10 @@
 use std::sync::Arc;
 
 use edgequake_llm::traits::{EmbeddingProvider, LLMProvider};
-use edgequake_llm::{AnthropicProvider, OllamaProvider, OpenAIProvider, ProviderFactory};
+use edgequake_llm::{AnthropicProvider, GeminiProvider, OllamaProvider, OpenAIProvider};
 
 use crate::error::ApiError;
+use crate::providers::connection_shapes::{is_openai_wire, requires_server_credentials};
 use crate::safety_limits::{
     SafetyLimitedEmbeddingProviderWrapper, SafetyLimitedProviderWrapper, SafetyLimitsConfig,
 };
@@ -24,21 +25,33 @@ pub struct ConnectionSpec {
 
 pub fn llm_from_connection(spec: &ConnectionSpec) -> Result<Arc<dyn LLMProvider>, ApiError> {
     let shape = spec.shape.to_ascii_lowercase();
+    if requires_server_credentials(&shape) {
+        return Err(server_credential_error(&shape));
+    }
     let key = spec.api_key.clone().unwrap_or_default();
     let inner: Arc<dyn LLMProvider> = match shape.as_str() {
         "ollama" => Arc::new(build_ollama(spec)?),
-        "openai_chat" | "openai" | "openai_responses" | "openai-compatible"
-        | "openai_compatible" | "omlx" | "mlx-lm" | "mlx_lm" | "llamacpp" | "vllm-mlx"
-        | "lmstudio" => {
-            Arc::new(OpenAIProvider::compatible(key, spec.base_url.clone()).with_model(&spec.model))
-        }
         "anthropic_messages" | "anthropic" | "claude" => Arc::new(
             AnthropicProvider::new(key)
                 .with_base_url(&spec.base_url)
                 .with_model(&spec.model),
         ),
-        other => ProviderFactory::create_llm_provider(other, &spec.model)
-            .map_err(|e| ApiError::BadRequest(e.to_string()))?,
+        "gemini" | "google" => {
+            if key.is_empty() {
+                return Err(ApiError::BadRequest(
+                    "Gemini requires an API key on the connection".into(),
+                ));
+            }
+            Arc::new(GeminiProvider::new(key).with_model(&spec.model))
+        }
+        other if is_openai_wire(other) => {
+            Arc::new(OpenAIProvider::compatible(key, spec.base_url.clone()).with_model(&spec.model))
+        }
+        other => {
+            return Err(ApiError::BadRequest(format!(
+                "provider shape '{other}' is not supported"
+            )));
+        }
     };
     Ok(wrap_llm(&shape, inner))
 }
@@ -47,6 +60,9 @@ pub fn embedding_from_connection(
     spec: &ConnectionSpec,
 ) -> Result<Arc<dyn EmbeddingProvider>, ApiError> {
     let shape = spec.shape.to_ascii_lowercase();
+    if requires_server_credentials(&shape) {
+        return Err(server_credential_error(&shape));
+    }
     let key = spec.api_key.clone().unwrap_or_default();
     let model = spec
         .embedding_model
@@ -58,18 +74,30 @@ pub fn embedding_from_connection(
             adjusted.embedding_model = Some(model.clone());
             Arc::new(build_ollama(&adjusted)?)
         }
-        "openai_chat" | "openai" | "openai_responses" | "openai-compatible"
-        | "openai_compatible" | "omlx" | "mlx-lm" | "mlx_lm" | "llamacpp" | "vllm-mlx"
-        | "lmstudio" => Arc::new(
+        "gemini" | "google" => {
+            if key.is_empty() {
+                return Err(ApiError::BadRequest(
+                    "Gemini requires an API key on the connection".into(),
+                ));
+            }
+            Arc::new(GeminiProvider::new(key).with_embedding_model(&model))
+        }
+        other if is_openai_wire(other) => Arc::new(
             OpenAIProvider::compatible(key, spec.base_url.clone()).with_embedding_model(&model),
         ),
         other => {
-            let dim = spec.embedding_dimension.unwrap_or(768);
-            ProviderFactory::create_embedding_provider(other, &model, dim)
-                .map_err(|e| ApiError::BadRequest(e.to_string()))?
+            return Err(ApiError::BadRequest(format!(
+                "provider shape '{other}' is not supported for embeddings"
+            )));
         }
     };
     Ok(wrap_embed(&shape, inner))
+}
+
+fn server_credential_error(shape: &str) -> ApiError {
+    ApiError::BadRequest(format!(
+        "{shape} is available to add, but a saved URL and key cannot build it. Configure server credentials for this provider."
+    ))
 }
 
 fn build_ollama(spec: &ConnectionSpec) -> Result<OllamaProvider, ApiError> {
@@ -147,5 +175,37 @@ mod tests {
         assert_eq!(LLMProvider::model(&built), "custom-chat");
         assert!(llm_from_connection(&spec).is_ok());
         assert!(embedding_from_connection(&spec).is_ok());
+    }
+
+    #[test]
+    fn mistral_and_openrouter_use_the_saved_base_url() {
+        for shape in ["mistral", "openrouter"] {
+            let spec = ConnectionSpec {
+                shape: shape.into(),
+                base_url: "https://example.test/v1".into(),
+                api_key: Some("k".into()),
+                model: "default".into(),
+                embedding_model: None,
+                embedding_dimension: None,
+            };
+            assert!(llm_from_connection(&spec).is_ok(), "{shape}");
+            assert!(embedding_from_connection(&spec).is_ok(), "{shape}");
+        }
+    }
+
+    #[test]
+    fn vertex_does_not_fall_back_to_env() {
+        let spec = ConnectionSpec {
+            shape: "vertexai".into(),
+            base_url: "https://aiplatform.googleapis.com".into(),
+            api_key: Some("k".into()),
+            model: "gemini".into(),
+            embedding_model: None,
+            embedding_dimension: None,
+        };
+        match llm_from_connection(&spec) {
+            Err(err) => assert!(err.to_string().contains("server credentials"), "{err}"),
+            Ok(_) => panic!("vertexai must not build from a saved key"),
+        }
     }
 }

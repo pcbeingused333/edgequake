@@ -21,12 +21,12 @@ use crate::error::{ApiError, ApiResult};
 use crate::handlers::auth::OptionalAuth;
 use crate::middleware::TenantContext;
 use crate::providers::{LlmResolutionRequest, WorkspaceProviderResolver};
-use crate::services::model_policy_enforcement::ensure_pair_eligible;
+use crate::services::model_policy_enforcement::ensure_resolved_pair;
 use crate::services::{
     build_engine_request, build_legacy_query_response, build_legacy_query_sources,
-    ensure_debug_granularity_allowed, execute_sota_query_with_auth_fallback, record_audit,
-    reject_rerank_model, resolve_workspace_query_resources, validate_llm_override_pair,
-    with_request_context, QueryExecutionParams,
+    ensure_debug_granularity_allowed, execute_sota_query, record_audit, reject_rerank_model,
+    resolve_workspace_query_resources, validate_llm_override_pair, with_request_context,
+    QueryExecutionParams,
 };
 use crate::state::AppState;
 use crate::validation::validate_query;
@@ -136,12 +136,14 @@ pub async fn execute_query(
         request.llm_model.as_deref(),
     )?;
     reject_rerank_model(request.rerank_model.as_deref())?;
-    ensure_pair_eligible(
+    ensure_resolved_pair(
         &state,
         workspace.as_ref(),
         Usage::Query,
         request.llm_provider.as_deref(),
         request.llm_model.as_deref(),
+        None,
+        None,
     )
     .await?;
 
@@ -156,8 +158,32 @@ pub async fn execute_query(
         .resolve_llm_provider_for_workspace(workspace.as_ref(), &llm_request)
         .await
     {
-        Ok(Some(resolved)) => Some(resolved.provider),
-        Ok(None) => None,
+        Ok(Some(resolved)) => {
+            ensure_resolved_pair(
+                &state,
+                workspace.as_ref(),
+                Usage::Query,
+                request.llm_provider.as_deref(),
+                request.llm_model.as_deref(),
+                Some(&resolved.provider_name),
+                Some(&resolved.model_name),
+            )
+            .await?;
+            Some(resolved.provider)
+        }
+        Ok(None) => {
+            if llm_request
+                .provider
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty())
+            {
+                return Err(ApiError::unprocessable_coded(
+                    "credential",
+                    "this provider has no key the workspace can use",
+                ));
+            }
+            None
+        }
         Err(e) => return Err(ApiError::from(e)),
     };
 
@@ -215,7 +241,7 @@ pub async fn execute_query(
 
     let result = scope_llm_provider(
         obs_llm_provider,
-        execute_sota_query_with_auth_fallback(&state, engine_request, resources, llm_override),
+        execute_sota_query(&state, engine_request, resources, llm_override),
     )
     .await?;
 

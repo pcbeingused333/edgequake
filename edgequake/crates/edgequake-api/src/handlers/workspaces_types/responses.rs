@@ -122,6 +122,13 @@ pub struct WorkspaceResponse {
     pub resolved_embedding_dimension: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub embedding_resolution_source: Option<String>,
+    /// Set on a workspace update when the resolved embedding model, provider, or dimension
+    /// changed. Stored vectors came from the previous embedder and need a rebuild (SPEC-178).
+    #[serde(default)]
+    pub embedding_rebuild_required: bool,
+    /// Resolved embedding dimension before the update; set only when a rebuild is required.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_embedding_dimension: Option<usize>,
 
     // === Vision LLM Configuration (SPEC-040) ===
     /// Vision LLM provider for PDF → Markdown extraction (None if not configured).

@@ -186,6 +186,13 @@ mod tests {
     fn apply_workspace_does_not_mutate_vision_fields() {
         let mut ws = Workspace::new(Uuid::nil(), "ws", "ws");
         ws.llm_provider = "mistral".into();
+        // A saved vision choice is recorded in metadata (EC-175-22); struct fields alone are not.
+        ws.metadata
+            .insert("vision_llm_provider".into(), serde_json::json!("mistral"));
+        ws.metadata.insert(
+            "vision_llm_model".into(),
+            serde_json::json!("mistral-small-latest"),
+        );
         ws.vision_llm_provider = Some("mistral".into());
         ws.vision_llm_model = Some("mistral-small-latest".into());
         ws.pdf_parser_backend = Some(PdfParserBackend::Vision);

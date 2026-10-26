@@ -24,92 +24,64 @@ use crate::safety_limits::{
 use crate::state::AppState;
 use crate::vision_env::{default_vision_model_for_provider, resolved_vision_provider_from_env};
 
-/// Resolve vision provider/model from workspace (vision fields → main LLM fields).
+/// Resolve the workspace VLM choice (SPEC-163 / SPEC-123).
 ///
-/// Prefer `llm_roles.vlm` when set; otherwise SPEC-123 `resolve_vision_llm_choice`.
+/// One resolver for the pipeline and the API: `llm_roles.vlm` is canonical, then the legacy
+/// vision fields, tenant vision, the workspace LLM, and env. The connection id comes from the
+/// role only; it is `None` for legacy and inherited choices.
 pub fn resolve_workspace_vlm_config(
     ws: &Workspace,
     tenant: Option<&edgequake_core::Tenant>,
 ) -> edgequake_core::ResolvedRoleLlm {
-    if ws
-        .metadata
-        .get("llm_roles")
-        .and_then(|v| v.get("vlm"))
-        .is_some()
-    {
-        return resolve_role_llm(ws, LlmRole::Vlm);
-    }
     let resolved = resolve_vision_llm_choice(None, None, Some(ws), tenant);
     edgequake_core::ResolvedRoleLlm {
         provider: resolved.provider,
         model: resolved.model,
-        connection_id: None,
+        connection_id: resolve_role_llm(ws, LlmRole::Vlm).connection_id,
     }
+}
+
+async fn load_workspace_vlm(
+    workspace_service: &Arc<dyn WorkspaceService>,
+    workspace_id: Uuid,
+) -> Option<edgequake_core::ResolvedRoleLlm> {
+    let ws = workspace_service.get_workspace(workspace_id).await.ok()??;
+    let tenant = workspace_service
+        .get_tenant(ws.tenant_id)
+        .await
+        .ok()
+        .flatten();
+    Some(resolve_workspace_vlm_config(&ws, tenant.as_ref()))
 }
 
 async fn try_workspace_vlm(
     workspace_service: &Arc<dyn WorkspaceService>,
     workspace_id: Uuid,
 ) -> Option<Arc<dyn LLMProvider>> {
-    let ws = workspace_service.get_workspace(workspace_id).await.ok()??;
-    let tenant = workspace_service
-        .get_tenant(ws.tenant_id)
-        .await
-        .ok()
-        .flatten();
-    // Prefer explicit llm_roles.vlm; else SPEC-123 cascade with tenant.
-    let (provider, model, connection_id) = if ws
-        .metadata
-        .get("llm_roles")
-        .and_then(|v| v.get("vlm"))
-        .is_some()
-    {
-        let role = resolve_role_llm(&ws, LlmRole::Vlm);
-        (role.provider, role.model, role.connection_id)
-    } else {
-        let resolved = resolve_vision_llm_choice(None, None, Some(&ws), tenant.as_ref());
-        (resolved.provider, resolved.model, None)
-    };
-    if let Some(id) = connection_id.as_deref() {
+    let cfg = load_workspace_vlm(workspace_service, workspace_id).await?;
+    if let Some(id) = cfg.connection_id.as_deref() {
         if let Some(connected) =
-            crate::providers::connection_store::llm_from_ambient_connection(id, &model).await
+            crate::providers::connection_store::llm_from_ambient_connection(id, &cfg.model).await
         {
             return Some(connected);
         }
     }
-    create_safe_vision_provider(&provider, &model).ok()
+    create_safe_vision_provider(&cfg.provider, &cfg.model).ok()
 }
 
 async fn try_workspace_vlm_pass_b(
     workspace_service: &Arc<dyn WorkspaceService>,
     workspace_id: Uuid,
 ) -> Option<Arc<dyn LLMProvider>> {
-    let ws = workspace_service.get_workspace(workspace_id).await.ok()??;
-    let tenant = workspace_service
-        .get_tenant(ws.tenant_id)
-        .await
-        .ok()
-        .flatten();
-    let (provider, model, connection_id) = if ws
-        .metadata
-        .get("llm_roles")
-        .and_then(|v| v.get("vlm"))
-        .is_some()
-    {
-        let role = resolve_role_llm(&ws, LlmRole::Vlm);
-        (role.provider, role.model, role.connection_id)
-    } else {
-        let resolved = resolve_vision_llm_choice(None, None, Some(&ws), tenant.as_ref());
-        (resolved.provider, resolved.model, None)
-    };
-    if let Some(id) = connection_id.as_deref() {
+    let cfg = load_workspace_vlm(workspace_service, workspace_id).await?;
+    if let Some(id) = cfg.connection_id.as_deref() {
         if let Some(connected) =
-            crate::providers::connection_store::llm_from_ambient_connection(id, &model).await
+            crate::providers::connection_store::llm_from_ambient_connection(id, &cfg.model).await
         {
             return Some(connected);
         }
     }
-    create_safe_vision_provider_for_pass_b(&provider, &model).ok()
+    create_safe_vision_provider_for_pass_b(&cfg.provider, &cfg.model).ok()
 }
 
 async fn try_workspace_extract(
@@ -291,10 +263,29 @@ mod tests {
 
     #[test]
     fn workspace_vlm_prefers_vision_fields_over_main_llm() {
-        let ws = sample_workspace(HashMap::new());
+        // A saved vision choice always has metadata keys (EC-175-22); struct fields alone do not count.
+        let mut meta = HashMap::new();
+        meta.insert("vision_llm_provider".into(), serde_json::json!("openai"));
+        meta.insert("vision_llm_model".into(), serde_json::json!("gpt-4.1-mini"));
+        let ws = sample_workspace(meta);
         let cfg = resolve_workspace_vlm_config(&ws, None);
         assert_eq!(cfg.provider, "openai");
         assert_eq!(cfg.model, "gpt-4.1-mini");
+    }
+
+    #[test]
+    fn workspace_vlm_role_wins_over_legacy_vision_fields() {
+        let mut meta = HashMap::new();
+        meta.insert("vision_llm_provider".into(), serde_json::json!("openai"));
+        meta.insert("vision_llm_model".into(), serde_json::json!("gpt-4.1-mini"));
+        meta.insert(
+            "llm_roles".into(),
+            serde_json::json!({"vlm": {"provider": "mistral", "model": "pixtral-large-latest"}}),
+        );
+        let cfg = resolve_workspace_vlm_config(&sample_workspace(meta), None);
+        assert_eq!(cfg.provider, "mistral");
+        assert_eq!(cfg.model, "pixtral-large-latest");
+        assert!(cfg.connection_id.is_none());
     }
 
     #[test]

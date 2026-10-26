@@ -4,10 +4,10 @@
  * Stream session orchestration for the query interface (SPEC-155 W7Q).
  * Thin React wrapper over stream-session-reducer + buildChatRequest.
  */
-import { useLlmModels } from "@/hooks/use-providers";
+import { useScopedEligibleModels } from "@/hooks/use-model-policy";
+import { useTenantStore } from "@/stores/use-tenant-store";
 import { chatCompletion, chatCompletionStream } from "@/lib/api/chat";
 import {
-  modelSupportsStreaming,
   resolveStreamMode,
 } from "@/lib/query/model-menu";
 import { parseCOTStreaming } from "@/lib/query/parse-cot-streaming";
@@ -95,15 +95,18 @@ export function useQueryStreamSession({
   }, []);
 
   // Stream when the user wants it and the selected (or default) model supports it.
-  const { data: llmCatalog } = useLlmModels();
+  const workspaceId = useTenantStore((s) => s.selectedWorkspaceId);
+  const eligible = useScopedEligibleModels({
+    scope: "workspace",
+    id: workspaceId,
+    usage: "query",
+  });
+  const selected = eligible.data?.models.find(
+    (entry) => entry.provider === querySettings.provider && entry.model === querySettings.model,
+  );
   const effectiveStream = resolveStreamMode(
     querySettings.stream,
-    modelSupportsStreaming(llmCatalog?.models, {
-      provider: querySettings.provider,
-      model: querySettings.model,
-      defaultProvider: llmCatalog?.default_provider,
-      defaultModel: llmCatalog?.default_model,
-    }),
+    !querySettings.model || selected?.supports_streaming !== false,
   );
 
   const tryDeleteMessage = useCallback(async (id: string) => {

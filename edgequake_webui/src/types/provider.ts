@@ -82,6 +82,8 @@ export interface ProviderInfo {
   config_requirements: ConfigRequirement[];
   /** Default models for this provider */
   default_models: DefaultModels;
+  /** Server: Dynamic/Hybrid discovery can refresh this slug. */
+  refreshable?: boolean;
 }
 
 /**

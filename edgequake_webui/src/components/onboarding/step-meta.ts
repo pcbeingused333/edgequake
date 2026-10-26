@@ -14,7 +14,7 @@ export const STEP_META: Record<
     titleKey: 'onboarding.tenantTitle',
     title: 'Name your organization',
     descriptionKey: 'onboarding.tenantSubtitle',
-    description: 'Tenants isolate workspaces and data.',
+    description: 'Organizations isolate workspaces and data.',
   },
   models: {
     titleKey: 'onboarding.modelsTitle',

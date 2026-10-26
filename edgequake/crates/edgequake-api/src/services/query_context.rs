@@ -29,8 +29,7 @@ use crate::services::context_bundle_mapper::{
 };
 use crate::services::model_policy_enforcement::ensure_pair_eligible;
 use crate::services::query_execution::{
-    execute_sota_query_with_auth_fallback, resolve_workspace_query_resources,
-    validate_llm_override_pair,
+    execute_sota_query, resolve_workspace_query_resources, validate_llm_override_pair,
 };
 use crate::services::query_request_builder::{build_engine_request, QueryExecutionParams};
 use crate::services::retrieval_id_cache::{global_retrieval_cache, new_retrieval_id};
@@ -178,9 +177,7 @@ async fn run_context_retrieval(
     let resources =
         resolve_workspace_query_resources(state, tenant_ctx.workspace_id.as_deref()).await?;
 
-    let result =
-        execute_sota_query_with_auth_fallback(state, engine_request, resources, llm_override)
-            .await?;
+    let result = execute_sota_query(state, engine_request, resources, llm_override).await?;
 
     let reranker_configured = state.query.engine_impl.has_reranker();
     let reranked = enable_rerank && reranker_configured;

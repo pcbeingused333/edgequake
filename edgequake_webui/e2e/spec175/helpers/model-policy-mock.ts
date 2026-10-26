@@ -35,6 +35,10 @@ export interface ModelPolicyScenario {
   roles?: Partial<Record<UsageKey, RoleValue>>;
   /** Keep `keyword` set by the operator (locked). */
   lockKeyword?: boolean;
+  /** Keep `query` set by the operator (locked). */
+  lockQuery?: boolean;
+  /** When false, every eligible model reports `supports_streaming: false`. */
+  supportsStreaming?: boolean;
 }
 
 export interface ModelPolicyRecorder {
@@ -43,7 +47,12 @@ export interface ModelPolicyRecorder {
   rolePuts: Record<string, RoleValue>[];
 }
 
-function eligibleFor(usage: UsageKey, tenantRows: PolicyRow[], workspaceRows: PolicyRow[]) {
+function eligibleFor(
+  usage: UsageKey,
+  tenantRows: PolicyRow[],
+  workspaceRows: PolicyRow[],
+  supportsStreaming?: boolean,
+) {
   const ceiling = tenantRows.filter((r) => r.enabled && r.usage === usage).map((r) => key(r.provider, r.model));
   const disabled = new Set(
     workspaceRows.filter((r) => !r.enabled && r.usage === usage).map((r) => key(r.provider, r.model)),
@@ -54,7 +63,9 @@ function eligibleFor(usage: UsageKey, tenantRows: PolicyRow[], workspaceRows: Po
       m.health !== "probe_failed" &&
       (ceiling.length === 0 || ceiling.includes(key(m.provider, m.model))) &&
       !disabled.has(key(m.provider, m.model)),
-  ).map(({ health: _health, usages: _usages, ...m }) => m);
+  ).map(({ health: _health, usages: _usages, ...m }) =>
+    supportsStreaming === false ? { ...m, supports_streaming: false } : m,
+  );
 }
 
 const json = (route: Route, body: unknown, status = 200) =>
@@ -74,7 +85,10 @@ export async function mockModelPolicy(page: Page, scenario: ModelPolicyScenario)
   const workspaceView = () => ({ ...SPEC155_WORKSPACE, llm_roles: roles });
 
   const effectiveUsage = (usage: UsageKey) => {
-    const eligible = eligibleFor(usage, tenantRows, workspaceRows);
+    const eligible = eligibleFor(usage, tenantRows, workspaceRows, scenario.supportsStreaming);
+    if (usage === "query" && scenario.lockQuery) {
+      return { usage, provider: "openai", provider_display_name: "OpenAI", model: "gpt-5-nano", connection_id: null, reasoning_effort: null, source: "operator_lock", locked: true, eligible: true, broken_reason: "none" };
+    }
     if (usage === "keyword" && scenario.lockKeyword) {
       return { usage, provider: "openai", provider_display_name: "OpenAI", model: "gpt-5-nano", connection_id: null, reasoning_effort: null, source: "operator_lock", locked: true, eligible: true, broken_reason: "none" };
     }
@@ -126,7 +140,7 @@ export async function mockModelPolicy(page: Page, scenario: ModelPolicyScenario)
     return json(route, {
       usage,
       policy_mode: tenantRows.some((r) => r.usage === usage) ? "constrained" : "unconstrained",
-      models: eligibleFor(usage, tenantRows, workspaceRows),
+      models: eligibleFor(usage, tenantRows, workspaceRows, scenario.supportsStreaming),
     });
   });
 

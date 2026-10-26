@@ -437,12 +437,24 @@ impl WorkspaceProviderResolver {
             None => None,
         };
         if let Some(ws) = workspace {
-            if let Some(from_conn) = self
-                .try_llm_from_workspace_connection(ws, edgequake_core::LlmRole::Query)
-                .await?
-            {
-                self.refuse_unoffered(Some(ws), request).await?;
-                return Ok(Some(from_conn));
+            let request_names_pair = request
+                .provider
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty())
+                && request
+                    .model
+                    .as_deref()
+                    .is_some_and(|value| !value.trim().is_empty());
+            // LAW-178-9: a request pair is step 2. The role connection runs only
+            // when the request did not name both fields.
+            if !request_names_pair {
+                if let Some(from_conn) = self
+                    .try_llm_from_workspace_connection(ws, edgequake_core::LlmRole::Query)
+                    .await?
+                {
+                    self.refuse_unoffered(Some(ws), request).await?;
+                    return Ok(Some(from_conn));
+                }
             }
             let resolved =
                 self.resolve_llm_provider_with_workspace(Some(ws), tenant.as_ref(), request)?;
@@ -486,8 +498,9 @@ impl WorkspaceProviderResolver {
             {
                 Ok(offer) => offer,
                 Err(err) => {
-                    warn!(error = %err, "provider offer unavailable; query was not refused");
-                    return Ok(());
+                    return Err(ProviderResolutionError::OfferUnavailable {
+                        message: err.to_string(),
+                    });
                 }
             };
             if edgequake_core::provider_offer::provider_outside_offer(&provider, &offer.slugs) {

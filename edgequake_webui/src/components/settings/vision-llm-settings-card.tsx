@@ -1,23 +1,22 @@
 'use client';
 
 /**
- * Vision LLM Settings Card
+ * Vision LLM Settings Card (Settings → Ingestion).
  *
- * Allows users to configure the default Vision LLM model for the current workspace
- * directly from the global Settings page.
+ * Shows and edits the workspace vision (VLM) choice through the shared `VisionModelField`.
+ * Saves through `visionChoicePatch`, the same write path as the workspace page.
  *
  * @implements SPEC-040: Vision LLM workspace override for PDF extraction
  */
 
-import { ProviderIcon } from '@/components/providers/provider-icon';
-import { Badge } from '@/components/ui/badge';
+import { VisionModelField } from '@/components/workspace/vision-model-field';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { LLMModelSelector, type LLMSelection } from '@/components/workspace/llm-model-selector';
+import type { LLMSelection } from '@/components/workspace/llm-model-selector';
 import { getWorkspace, updateWorkspace } from '@/lib/api/edgequake';
-import { effectiveVisionFromWorkspace } from '@/lib/config/resolve-model-choice';
 import { getWorkspaceVisionSelection } from '@/lib/workspace/drafts';
+import { visionChoicePatch } from '@/lib/workspace/vision-choice';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Eye, Pencil, Save, X } from 'lucide-react';
@@ -25,16 +24,6 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-/**
- * Return a small icon for each LLM provider.
- */
-
-/**
- * VisionLLMSettingsCard
- *
- * Reads the current workspace's `vision_llm_provider` / `vision_llm_model`
- * and lets the user pick a new one via `LLMModelSelector`.
- */
 export function VisionLLMSettingsCard() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -43,7 +32,6 @@ export function VisionLLMSettingsCard() {
   const [isEditing, setIsEditing] = useState(false);
   const [selectedVisionLLM, setSelectedVisionLLM] = useState<LLMSelection | undefined>(undefined);
 
-  // Fetch the workspace to get current vision LLM config
   const { data: workspace, isLoading } = useQuery({
     queryKey: ['workspace', selectedTenantId, selectedWorkspaceId],
     queryFn: () => getWorkspace(selectedTenantId!, selectedWorkspaceId!),
@@ -52,13 +40,18 @@ export function VisionLLMSettingsCard() {
     retry: 1,
   });
 
-  // Save mutation
   const updateMutation = useMutation({
     mutationFn: () =>
-      updateWorkspace(selectedTenantId!, selectedWorkspaceId!, {
-        vision_llm_provider: selectedVisionLLM?.provider ?? '',
-        vision_llm_model: selectedVisionLLM?.model ?? '',
-      }),
+      updateWorkspace(
+        selectedTenantId!,
+        selectedWorkspaceId!,
+        visionChoicePatch(
+          workspace?.llm_roles,
+          selectedVisionLLM
+            ? { provider: selectedVisionLLM.provider, model: selectedVisionLLM.model }
+            : undefined,
+        ),
+      ),
     onSuccess: () => {
       toast.success(t('settings.vision.updateSuccess', 'Vision LLM configuration updated'));
       queryClient.invalidateQueries({ queryKey: ['workspace', selectedTenantId, selectedWorkspaceId] });
@@ -71,12 +64,16 @@ export function VisionLLMSettingsCard() {
     },
   });
 
+  const startEditing = () => {
+    setSelectedVisionLLM(getWorkspaceVisionSelection(workspace));
+    setIsEditing(true);
+  };
+
   const handleCancel = () => {
     setIsEditing(false);
     setSelectedVisionLLM(getWorkspaceVisionSelection(workspace));
   };
 
-  // Don't render if no workspace context
   if (!selectedTenantId || !selectedWorkspaceId) {
     return null;
   }
@@ -93,10 +90,7 @@ export function VisionLLMSettingsCard() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => {
-                setSelectedVisionLLM(getWorkspaceVisionSelection(workspace));
-                setIsEditing(true);
-              }}
+              onClick={startEditing}
               aria-label={t('common.edit', 'Edit')}
             >
               <Pencil className="h-4 w-4" />
@@ -114,70 +108,36 @@ export function VisionLLMSettingsCard() {
       <CardContent className="space-y-4">
         {isLoading ? (
           <Skeleton className="h-14 w-full" />
-        ) : isEditing ? (
+        ) : workspace ? (
           <>
-            <LLMModelSelector
+            <VisionModelField
+              workspace={workspace}
+              isEditing={isEditing}
               value={selectedVisionLLM}
               onChange={setSelectedVisionLLM}
-              showUsageHint
             />
-            <div className="flex items-center gap-2 pt-2">
-              <Button
-                size="sm"
-                onClick={() => updateMutation.mutate()}
-                disabled={updateMutation.isPending}
-              >
-                <Save className="h-4 w-4 mr-2" />
-                {t('common.save', 'Save')}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCancel}
-                disabled={updateMutation.isPending}
-              >
-                <X className="h-4 w-4 mr-2" />
-                {t('common.cancel', 'Cancel')}
-              </Button>
-            </div>
-          </>
-        ) : workspace ? (
-          (() => {
-            const resolved = effectiveVisionFromWorkspace(workspace);
-            const hasOverride = Boolean(
-              workspace.vision_llm_provider?.trim() ||
-                workspace.vision_llm_model?.trim(),
-            );
-            return (
-              <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-                <ProviderIcon providerId={resolved.provider} />
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium truncate">
-                    {hasOverride
-                      ? workspace.vision_llm_model
-                      : t('settings.vision.serverDefault', 'Server Default')}
-                  </div>
-                  <div className="text-sm text-muted-foreground truncate">
-                    {hasOverride
-                      ? t('workspace.workspaceOverride', 'Workspace override')
-                      : t('workspace.resolvesVia', 'Resolves via {{source}}', {
-                          source: resolved.source,
-                        })}
-                  </div>
-                </div>
-                <Badge
-                  variant="outline"
-                  className="ml-auto max-w-[45%] shrink-0 truncate font-mono text-xs"
-                  data-testid="settings-vision-resolves-to"
-                  title={`source=${resolved.source}`}
+            {isEditing && (
+              <div className="flex items-center gap-2 pt-2">
+                <Button
+                  size="sm"
+                  onClick={() => updateMutation.mutate()}
+                  disabled={updateMutation.isPending}
                 >
-                  {t('settings.pdfParser.resolvesTo', 'Resolves to {{value}}', {
-                    value: `${resolved.provider}/${resolved.model}`,
-                  })}
-                </Badge>
+                  <Save className="h-4 w-4 mr-2" />
+                  {t('common.save', 'Save')}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCancel}
+                  disabled={updateMutation.isPending}
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  {t('common.cancel', 'Cancel')}
+                </Button>
               </div>
-            );
-          })()
+            )}
+          </>
         ) : (
           <p className="text-sm text-muted-foreground">
             {t('settings.vision.noVisionModelDesc', 'Configure a vision model to enable image-aware document processing')}

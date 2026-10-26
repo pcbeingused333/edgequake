@@ -245,3 +245,38 @@ fn only_written_usages_are_checked() {
     let written = [row("ollama", "gemma3", Usage::Query, true)];
     assert!(usages_left_empty(&written, &cat, &written, &[], None).is_empty());
 }
+
+#[test]
+fn unoffered_static_card_absent_from_eligible() {
+    let cat = catalog();
+    let offered = std::collections::BTreeSet::from(["openai".to_string()]);
+    let got = eligible_models(Usage::Query, &cat, &[], &[], Some(&offered));
+    assert_eq!(names(&got), ["gpt-5-nano", "gpt-5-mini"]);
+}
+
+#[test]
+fn unconstrained_eligible_omits_unoffered_card() {
+    let cat = catalog();
+    let offered = std::collections::BTreeSet::from(["ollama".to_string()]);
+    assert_eq!(policy_mode(&[], Usage::Query), PolicyMode::Unconstrained);
+    let got = eligible_models(Usage::Query, &cat, &[], &[], Some(&offered));
+    assert_eq!(names(&got), ["gemma3"]);
+}
+
+#[test]
+fn deployment_eligible_ignores_workspace_narrowing() {
+    let cat = catalog();
+    let narrowing = [row("openai", "gpt-5-nano", Usage::Query, false)];
+    let workspace = eligible_models(Usage::Query, &cat, &[], &narrowing, None);
+    let deployment = eligible_models(Usage::Query, &cat, &[], &[], None);
+    assert!(!names(&workspace).contains(&"gpt-5-nano".to_string()));
+    assert!(names(&deployment).contains(&"gpt-5-nano".to_string()));
+}
+
+#[test]
+fn probe_failed_omitted_from_eligible() {
+    let mut cat = catalog();
+    cat[2].facts.probe = Some(false);
+    let got = eligible_models(Usage::Query, &cat, &[], &[], None);
+    assert!(!names(&got).contains(&"gemma3".to_string()));
+}

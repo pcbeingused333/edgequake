@@ -13,8 +13,8 @@ import { settingsH1 } from "../spec175/helpers/open-settings";
 import { setViewport } from "../spec175/helpers/shots";
 
 const SHAPES = [
-  { id: "openai_chat", label: "OpenAI-compatible", default_base_url: "https://api.openai.com/v1", hint: "Chat completions API." },
-  { id: "anthropic_messages", label: "Anthropic-compatible", default_base_url: "https://api.anthropic.com", hint: "Messages API." },
+  { id: "openai", label: "OpenAI", default_base_url: "https://api.openai.com/v1", hint: "OpenAI and compatible Chat Completions APIs." },
+  { id: "anthropic", label: "Anthropic", default_base_url: "https://api.anthropic.com", hint: "Anthropic Messages API." },
   { id: "ollama", label: "Ollama", default_base_url: "http://127.0.0.1:11434", hint: "Local Ollama." },
 ];
 
@@ -77,16 +77,16 @@ test.describe("SPEC-176 custom providers @spec176", () => {
     await page.getByLabel("API key", { exact: true }).fill("sk-openai-secret");
     await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText("Stored in the database")).toBeVisible();
-    expect(creates[0]?.api_shape).toBe("openai_chat");
+    expect(creates[0]?.api_shape).toBe("openai");
     expect(creates[0]?.api_key).toBe("sk-openai-secret");
     await expect(page.getByText("sk-openai-secret")).toHaveCount(0);
 
-    await page.getByTestId("connection-shape").selectOption("anthropic_messages");
+    await page.getByTestId("connection-shape").selectOption("anthropic");
     await expect(page.getByLabel("Base URL")).toHaveValue("https://api.anthropic.com");
     await page.getByLabel("Name", { exact: true }).fill("claude-prod");
     await page.getByLabel("API key", { exact: true }).fill("sk-ant-secret");
     await page.getByRole("button", { name: "Save", exact: true }).click();
-    expect(creates[1]?.api_shape).toBe("anthropic_messages");
+    expect(creates[1]?.api_shape).toBe("anthropic");
     expect(creates[1]?.api_key).toBe("sk-ant-secret");
     await expect(page.getByText("sk-ant-secret")).toHaveCount(0);
     await expect(page.getByLabel("API key", { exact: true })).toHaveValue("");

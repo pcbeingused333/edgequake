@@ -6,17 +6,28 @@ import type { ModelResponse } from "@/lib/api/models";
 
 export type ReasoningEffortRolePolicy = "structured" | "query" | "fleet";
 
+function normalizedId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.toLowerCase() : undefined;
+}
+
 function findModel(
   models: ModelResponse[] | undefined,
   provider?: string | null,
   model?: string | null,
 ): ModelResponse | undefined {
-  if (!models?.length || !provider || !model) return undefined;
-  return models.find(
-    (m) =>
-      m.provider.toLowerCase() === provider.toLowerCase() &&
-      m.name.toLowerCase() === model.toLowerCase(),
-  );
+  const wantProvider = normalizedId(provider);
+  const wantModel = normalizedId(model);
+  if (!models?.length || !wantProvider || !wantModel) return undefined;
+  // Nested `/models` cards omit `provider` until the capability hook stamps the parent.
+  // A missing field must not throw — the workspace page renders this lookup unconditionally.
+  return models.find((entry) => {
+    return (
+      normalizedId(entry?.provider) === wantProvider &&
+      normalizedId(entry?.name) === wantModel
+    );
+  });
 }
 
 export function modelSupportsThinking(

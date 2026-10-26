@@ -142,6 +142,10 @@ export interface Workspace {
   resolved_embedding_provider?: string;
   resolved_embedding_model?: string;
   resolved_embedding_dimension?: number;
+  /** Set on an update response when the resolved embedding model or dimension changed (SPEC-178). */
+  embedding_rebuild_required?: boolean;
+  /** Resolved embedding dimension before the update; set only when a rebuild is required. */
+  previous_embedding_dimension?: number | null;
   embedding_resolution_source?: string;
   /**
    * Vision LLM provider for PDF-to-Markdown extraction (e.g., "openai", "ollama").

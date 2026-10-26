@@ -164,6 +164,16 @@ pub async fn update_llm_defaults(
 ) -> ApiResult<Json<UpdateLlmDefaultsResponse>> {
     #[cfg(feature = "postgres")]
     if let Some(pool) = app_state.optional_pg_pool() {
+        crate::services::model_policy_enforcement::ensure_deployment_choice(
+            &app_state,
+            request.llm_provider.as_deref(),
+            request.llm_model.as_deref(),
+            request.embedding_provider.as_deref(),
+            request.embedding_model.as_deref(),
+            request.vision_provider.as_deref(),
+            request.vision_model.as_deref(),
+        )
+        .await?;
         let current = snapshot_from_state(&app_state).await;
         let mut saved = current.llm_defaults.clone();
 

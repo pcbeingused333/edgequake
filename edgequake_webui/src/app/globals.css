@@ -188,6 +188,84 @@
   --graph-community-9: oklch(0.75 0.1 330);
 }
 
+/* ============================================================
+ * gr8r-studio visual system (ui-tokens)
+ * Values from gr8r-studio src/styles/tokens.css, mapped onto the shadcn semantic
+ * variables. Declared after the defaults above, so they win by cascade. Light on
+ * :root, dark on .dark. Literal values on both, so no var() resolves on the wrong element.
+ * ============================================================ */
+:root {
+  --background: #fbfaf8; /* --bg */
+  --foreground: #1d1c1a; /* --text */
+  --card: #ffffff; /* --surface */
+  --card-foreground: #1d1c1a;
+  --popover: #ffffff;
+  --popover-foreground: #1d1c1a;
+  --primary: #4b5bd6; /* --accent */
+  --primary-foreground: #ffffff; /* --on-accent */
+  --secondary: #f6f5f2; /* --surface-2 */
+  --secondary-foreground: #1d1c1a;
+  --muted: #f6f5f2;
+  --muted-foreground: #6b6760; /* --text-3 */
+  --accent: #f6f5f2;
+  --accent-foreground: #1d1c1a;
+  --destructive: #b23c30; /* --red */
+  --destructive-foreground: #ffffff;
+  --border: #e9e7e2; /* --border */
+  --input: #dad7d0; /* --border-strong */
+  --ring: #4b5bd6;
+  --sidebar: #f4f3f0; /* --bg-side */
+  --sidebar-foreground: #1d1c1a;
+  --sidebar-primary: #4b5bd6;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eeede9; /* --surface-3 */
+  --sidebar-accent-foreground: #1d1c1a;
+  --sidebar-border: #e9e7e2;
+  --sidebar-ring: #4b5bd6;
+  --success: #25754b; /* --green */
+  --success-foreground: #ffffff;
+  --warning: #8f5e0e; /* --amber */
+  --warning-foreground: #ffffff;
+  --info: #3570c4; /* --blue */
+  --info-foreground: #ffffff;
+}
+
+.dark {
+  --background: #1a1a19;
+  --foreground: #eceae5;
+  --card: #1d1d1c;
+  --card-foreground: #eceae5;
+  --popover: #1d1d1c;
+  --popover-foreground: #eceae5;
+  --primary: #8e9af3; /* --acc-d */
+  --primary-foreground: #12131c;
+  --secondary: #252524;
+  --secondary-foreground: #eceae5;
+  --muted: #252524;
+  --muted-foreground: #9a968f;
+  --accent: #252524;
+  --accent-foreground: #eceae5;
+  --destructive: #e57d70;
+  --destructive-foreground: #151514;
+  --border: #2c2b29;
+  --input: #3a3936;
+  --ring: #8e9af3;
+  --sidebar: #151514;
+  --sidebar-foreground: #eceae5;
+  --sidebar-primary: #8e9af3;
+  --sidebar-primary-foreground: #12131c;
+  --sidebar-accent: #2d2d2b;
+  --sidebar-accent-foreground: #eceae5;
+  --sidebar-border: #2c2b29;
+  --sidebar-ring: #8e9af3;
+  --success: #5cba86;
+  --success-foreground: #12131c;
+  --warning: #d8a443;
+  --warning-foreground: #151514;
+  --info: #72a5ea;
+  --info-foreground: #151514;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

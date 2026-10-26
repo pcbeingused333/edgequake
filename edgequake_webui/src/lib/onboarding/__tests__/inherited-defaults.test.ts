@@ -89,7 +89,7 @@ describe('formatInheritModelLabel', () => {
         provider: 'ollama',
         model: 'gemma4:latest',
       }),
-    ).toBe('Tenant default (ollama/gemma4:latest)');
+    ).toBe('Organization default (ollama/gemma4:latest)');
   });
 
   it('includes server prefix and resolved id', () => {

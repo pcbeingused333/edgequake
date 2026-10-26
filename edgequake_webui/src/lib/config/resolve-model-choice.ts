@@ -206,6 +206,7 @@ export function effectiveVisionFromWorkspace(workspace: {
   vision_llm_resolution_source?: string | null;
   llm_provider?: string | null;
   llm_model?: string | null;
+  llm_roles?: Record<string, { provider?: string; model?: string } | undefined> | null;
 }): ResolvedProviderModel {
   if (
     workspace.resolved_vision_llm_provider &&
@@ -219,9 +220,11 @@ export function effectiveVisionFromWorkspace(workspace: {
         "env",
     };
   }
+  // `llm_roles.vlm` is canonical (SPEC-163); the legacy vision fields only fill in behind it.
+  const role = workspace.llm_roles?.vlm;
   return resolveVisionLlmChoice({
-    workspaceVisionProvider: workspace.vision_llm_provider,
-    workspaceVisionModel: workspace.vision_llm_model,
+    workspaceVisionProvider: role?.provider || workspace.vision_llm_provider,
+    workspaceVisionModel: role?.model || workspace.vision_llm_model,
     workspaceLlmProvider: workspace.llm_provider,
     workspaceLlmModel: workspace.llm_model,
   });

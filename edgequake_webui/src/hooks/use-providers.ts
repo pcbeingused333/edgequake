@@ -117,6 +117,7 @@ export async function refreshDynamicModels(queryClient: {
   queryClient.invalidateQueries({ queryKey: ["llm-models"] });
   queryClient.invalidateQueries({ queryKey: ["embedding-models"] });
   queryClient.invalidateQueries({ queryKey: ["provider-health"] });
+  queryClient.invalidateQueries({ queryKey: ["eligible-models"] });
 }
 
 /**

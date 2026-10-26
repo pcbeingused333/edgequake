@@ -1,0 +1,38 @@
+/**
+ * SPEC-178 screenshot helper. Writes under
+ * specs/178-provider-and-model-choice/e2e/screenshots/{SPEC178_ROUND}/.
+ */
+import fs from "node:fs";
+import path from "node:path";
+import type { Page } from "@playwright/test";
+import { applyTheme, setViewport, type Theme } from "../../spec168/helpers/shots";
+
+export { applyTheme, setViewport };
+export type { Theme };
+
+const REPO_ROOT = path.resolve(__dirname, "../../../../");
+export const SPEC178_SHOTS_ROOT = path.join(
+  REPO_ROOT,
+  "specs/178-provider-and-model-choice/e2e/screenshots",
+);
+export const ROUND = process.env.SPEC178_ROUND ?? "round-01";
+
+export async function shot(
+  page: Page,
+  name: string,
+  opts: { theme?: Theme; width?: number; fullPage?: boolean } = {},
+): Promise<string> {
+  const theme = opts.theme ?? "light";
+  const width = opts.width ?? page.viewportSize()?.width ?? 1440;
+  const dir = path.join(SPEC178_SHOTS_ROOT, ROUND);
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${name}-${theme}-${width}.png`);
+  await page.screenshot({
+    path: file,
+    fullPage: opts.fullPage ?? false,
+    animations: "disabled",
+    caret: "hide",
+    timeout: 15_000,
+  });
+  return file;
+}

@@ -17,6 +17,38 @@ use crate::handlers::models_types::{
     ReasoningEffortCapabilityResponse,
 };
 
+/// Providers whose discovery strategy is Dynamic or Hybrid (`edgequake-llm`).
+/// Static-only slugs (`xai`, `mock`) are absent.
+pub const REFRESHABLE_DISCOVERY_PROVIDERS: &[&str] = &[
+    "anthropic",
+    "gemini",
+    "lmstudio",
+    "mistral",
+    "mtplx",
+    "nvidia",
+    "ollama",
+    "omlx",
+    "openai",
+    "openrouter",
+    "vertexai",
+];
+
+/// True when Settings may refresh a live model list for this slug.
+pub fn is_refreshable_discovery_provider(slug: &str) -> bool {
+    let slug = slug.trim().to_ascii_lowercase();
+    REFRESHABLE_DISCOVERY_PROVIDERS
+        .iter()
+        .any(|name| *name == slug)
+}
+
+/// Keep a catalog row when `filter` is empty or matches the provider slug.
+pub fn provider_filter_matches(item_provider: &str, filter: Option<&str>) -> bool {
+    match filter.map(str::trim).filter(|value| !value.is_empty()) {
+        None => true,
+        Some(want) => item_provider.eq_ignore_ascii_case(want),
+    }
+}
+
 /// Whether live model discovery is enabled (default: true).
 pub fn dynamic_discovery_enabled() -> bool {
     !matches!(
@@ -586,6 +618,34 @@ impl ModelCatalog {
 mod tests {
     use super::*;
     use edgequake_llm::ModelCapabilities;
+
+    #[test]
+    fn refreshable_discovery_set_includes_dynamic_and_hybrid() {
+        for slug in [
+            "ollama",
+            "openrouter",
+            "openai",
+            "lmstudio",
+            "anthropic",
+            "mistral",
+        ] {
+            assert!(
+                is_refreshable_discovery_provider(slug),
+                "{slug} must be refreshable"
+            );
+        }
+        assert!(!is_refreshable_discovery_provider("mock"));
+        assert!(!is_refreshable_discovery_provider("xai"));
+        assert!(!is_refreshable_discovery_provider("acme"));
+    }
+
+    #[test]
+    fn provider_filter_matches_is_case_insensitive() {
+        assert!(provider_filter_matches("Ollama", Some("ollama")));
+        assert!(!provider_filter_matches("openai", Some("ollama")));
+        assert!(provider_filter_matches("openai", None));
+        assert!(provider_filter_matches("openai", Some("  ")));
+    }
 
     #[test]
     fn dynamic_discovery_env_toggle() {

@@ -31,8 +31,8 @@ fn numbered_sql_versions() -> Vec<i64> {
 fn head_train_includes_160_through_169() {
     let versions = numbered_sql_versions();
     let max = *versions.last().expect("at least one migration");
-    assert_eq!(max, 222, "HEAD schema train must end at 222");
-    for v in 160..=222 {
+    assert_eq!(max, 223, "HEAD schema train must end at 223");
+    for v in 160..=223 {
         assert!(
             versions.contains(&v),
             "missing migration {v} in edgequake/migrations/"
@@ -48,7 +48,7 @@ fn manifest_compat_serve_max_matches_head() {
         .find(|l| l.starts_with("compat_serve_max"))
         .expect("compat_serve_max");
     let digits: String = max_line.chars().filter(|c| c.is_ascii_digit()).collect();
-    assert_eq!(digits, "222");
+    assert_eq!(digits, "223");
 }
 
 #[test]
@@ -850,8 +850,8 @@ fn progress_module_release_map_covers_head() {
         "release_for_schema must map 215–218 to v0.37.0"
     );
     assert!(
-        src.contains("219..=222 => \"v0.38.0\""),
-        "release_for_schema must map 219 through 222 to v0.38.0"
+        src.contains("219..=223 => \"v0.38.0\""),
+        "release_for_schema must map 219 through 223 to v0.38.0"
     );
     assert!(
         src.contains("149 => \"v0.26.0–v0.26.10\""),

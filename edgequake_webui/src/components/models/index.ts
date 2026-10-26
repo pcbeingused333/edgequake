@@ -10,11 +10,5 @@ export {
   ModelCapabilityBadge,
 } from "./model-capability-badge";
 
-export { ModelCard, ModelCardGrid } from "./model-card";
+export { ModelCard } from "./model-card";
 
-export {
-  EmbeddingModelSelector2,
-  LlmModelSelector,
-  ModelSelector,
-  type DisplayModelItem,
-} from "./model-selector";

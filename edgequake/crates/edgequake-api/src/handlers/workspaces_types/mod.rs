@@ -20,7 +20,7 @@ mod responses;
 pub use extraction_mode::{
     EffectiveExtractionModeDto, ExtractionModeFieldsDto, ExtractionModeView,
 };
-pub use map::workspace_to_response;
+pub use map::{mark_embedding_rebuild, workspace_to_response};
 pub use rebuild::*;
 pub use requests::*;
 pub use responses::*;
@@ -231,6 +231,8 @@ mod tests {
             resolved_embedding_model: None,
             resolved_embedding_dimension: None,
             embedding_resolution_source: None,
+            embedding_rebuild_required: false,
+            previous_embedding_dimension: None,
             vision_llm_provider: None,
             vision_llm_model: None,
             resolved_vision_llm_provider: None,

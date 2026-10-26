@@ -24,11 +24,11 @@ use crate::handlers::chat::build_sources;
 use crate::handlers::query::resolve_chunk_file_paths;
 use crate::middleware::TenantContext;
 use crate::providers::{LlmResolutionRequest, WorkspaceProviderResolver};
-use crate::services::model_policy_enforcement::ensure_pair_eligible;
+use crate::services::model_policy_enforcement::ensure_resolved_pair;
 use crate::services::{
-    build_engine_request, ensure_debug_granularity_allowed,
-    execute_sota_query_stream_with_auth_fallback, reject_rerank_model,
-    resolve_workspace_query_resources, validate_llm_override_pair, QueryExecutionParams,
+    build_engine_request, ensure_debug_granularity_allowed, execute_sota_query_stream,
+    reject_rerank_model, resolve_workspace_query_resources, validate_llm_override_pair,
+    QueryExecutionParams,
 };
 use crate::state::AppState;
 use crate::streaming::{live_sse, StreamAccumulator};
@@ -215,12 +215,14 @@ pub async fn stream_query(
         request.llm_model.as_deref(),
     )?;
     reject_rerank_model(request.rerank_model.as_deref())?;
-    ensure_pair_eligible(
+    ensure_resolved_pair(
         &state,
         workspace.as_ref(),
         Usage::Query,
         request.llm_provider.as_deref(),
         request.llm_model.as_deref(),
+        None,
+        None,
     )
     .await?;
 
@@ -238,6 +240,16 @@ pub async fn stream_query(
         .await
     {
         Ok(Some(resolved)) => {
+            ensure_resolved_pair(
+                &state,
+                workspace.as_ref(),
+                Usage::Query,
+                request.llm_provider.as_deref(),
+                request.llm_model.as_deref(),
+                Some(&resolved.provider_name),
+                Some(&resolved.model_name),
+            )
+            .await?;
             info!(
                 provider = %resolved.provider_name,
                 model = %resolved.model_name,
@@ -250,7 +262,19 @@ pub async fn stream_query(
                 Some(resolved.model_name),
             )
         }
-        Ok(None) => (None, None, None),
+        Ok(None) => {
+            if request
+                .llm_provider
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty())
+            {
+                return Err(ApiError::unprocessable_coded(
+                    "credential",
+                    "this provider has no key the workspace can use",
+                ));
+            }
+            (None, None, None)
+        }
         Err(e) => return Err(ApiError::from(e)),
     };
 
@@ -278,12 +302,7 @@ pub async fn stream_query(
             .unwrap_or_else(|| "default".to_string());
         let (_, _, stream) = scope_llm_provider(
             provider_label,
-            execute_sota_query_stream_with_auth_fallback(
-                &state,
-                engine_request,
-                resources,
-                llm_override.clone(),
-            ),
+            execute_sota_query_stream(&state, engine_request, resources, llm_override.clone()),
         )
         .await
         .map_err(ApiError::from)?;
@@ -361,7 +380,7 @@ pub async fn stream_query(
                     }
                 };
 
-            let stream_result = execute_sota_query_stream_with_auth_fallback(
+            let stream_result = execute_sota_query_stream(
                 &state_clone,
                 engine_request,
                 resources,

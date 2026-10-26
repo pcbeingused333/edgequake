@@ -615,6 +615,18 @@ fn spec027_auth_extractors_arch_d001() {
         !user_mgmt.contains("authenticate_request"),
         "user_management must not call authenticate_request directly"
     );
+    // SPEC-174 clearance must synthesize auth when EDGEQUAKE_AUTH_ENABLED=false
+    // (raw Extension<RequestAuthContext> 500s under make-dev auth-off).
+    let clearance = read_crate_src("src/handlers/clearance.rs");
+    assert!(
+        clearance.matches("ApiAuthenticated").count() >= 12,
+        "clearance handlers must use ApiAuthenticated (auth-off safe)"
+    );
+    assert!(
+        !clearance.contains("Extension<RequestAuthContext>")
+            && !clearance.contains("Extension(auth): Extension"),
+        "clearance must not extract RequestAuthContext via Extension"
+    );
     let api_keys = read_crate_src("src/handlers/auth/api_keys.rs");
     assert!(
         api_keys.matches("ApiAuthenticated").count() >= 3,

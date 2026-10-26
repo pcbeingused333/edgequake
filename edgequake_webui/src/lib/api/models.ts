@@ -57,6 +57,10 @@ export interface ModelResponse {
   name: string;
   display_name: string;
   model_type: "llm" | "embedding" | "multimodal";
+  /**
+   * Provider slug. `/models/llm` items include it.
+   * Nested cards on `GET /models` omit it; copy `ProviderResponse.name` before matching.
+   */
   provider: string;
   provider_display_name: string;
   description: string;

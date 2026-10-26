@@ -2,6 +2,7 @@ import type { PdfParserBackendChoice } from "@/components/settings/pdf-parser-ba
 import type { EmbeddingSelection } from "@/components/workspace/embedding-model-selector";
 import type { LLMSelection } from "@/components/workspace/llm-model-selector";
 import type { Workspace } from "@/types";
+import { savedVisionRole } from "@/lib/workspace/vision-choice";
 
 export interface WorkspaceSelectionOpts {
   /**
@@ -96,21 +97,22 @@ export function getWorkspaceEmbeddingSelection(
   };
 }
 
+/** The saved vision choice: `llm_roles.vlm` (canonical), then the legacy vision fields. */
 export function getWorkspaceVisionSelection(
   workspace?: Workspace | null,
 ): LLMSelection | undefined {
-  if (!workspace?.vision_llm_provider || !workspace.vision_llm_model) {
+  const role = savedVisionRole(workspace);
+  const rawProvider = role?.provider ?? workspace?.vision_llm_provider;
+  const model = role?.model ?? workspace?.vision_llm_model;
+  if (!rawProvider || !model) {
     return undefined;
   }
 
-  const provider = healMockProvider(
-    workspace.vision_llm_provider,
-    workspace.vision_llm_model,
-  );
+  const provider = healMockProvider(rawProvider, model);
   return {
-    model: workspace.vision_llm_model,
+    model,
     provider,
-    fullId: `${provider}/${workspace.vision_llm_model}`,
+    fullId: `${provider}/${model}`,
   };
 }
 

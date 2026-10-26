@@ -7691,22 +7691,30 @@ export interface components {
          */
         EligibleModelDto: {
             display_name: string;
+            embedding_dimension?: number | null;
             model: string;
             provider: string;
             provider_display_name: string;
+            supports_streaming: boolean;
             supports_vision: boolean;
         };
         /**
          * @example {
          *       "models": [],
+         *       "offer_mode": {},
          *       "policy_mode": {},
+         *       "scope": {},
          *       "usage": {}
          *     }
          */
         EligibleModelsResponse: {
             models: components["schemas"]["EligibleModelDto"][];
+            /** @description `constrained` when this scope narrowed its parent offer. */
+            offer_mode: string;
             /** @description `constrained` when the tenant ceiling restricts this usage. */
             policy_mode: string;
+            /** @description `workspace`, `tenant`, or `deployment`. */
+            scope: string;
             usage: string;
         };
         /** @description Embedding model item with provider info. */
@@ -21337,10 +21345,14 @@ export interface operations {
     get_eligible_models: {
         parameters: {
             query: {
-                /** @description Workspace id */
-                workspace_id: string;
+                /** @description `deployment` for the fleet offer */
+                scope?: string;
+                /** @description Tenant scope */
+                tenant_id?: string;
                 /** @description extract | query | summary | vlm | keyword | embedding | decision */
                 usage: string;
+                /** @description Workspace scope */
+                workspace_id?: string;
             };
             header?: never;
             path?: never;

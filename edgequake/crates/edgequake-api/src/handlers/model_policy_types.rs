@@ -64,10 +64,13 @@ pub struct WorkspacePolicyResponse {
     pub rows: Vec<PolicyRowDto>,
 }
 
-/// Query string for `GET /models/eligible`.
+/// Query string for `GET /models/eligible`. Exactly one scope.
 #[derive(Debug, Clone, Deserialize)]
 pub struct EligibleQuery {
-    pub workspace_id: uuid::Uuid,
+    pub workspace_id: Option<uuid::Uuid>,
+    pub tenant_id: Option<uuid::Uuid>,
+    /// `deployment` selects the fleet offer. Any other value is `scope_required`.
+    pub scope: Option<String>,
     pub usage: String,
 }
 
@@ -78,13 +81,19 @@ pub struct EligibleModelDto {
     pub model: String,
     pub display_name: String,
     pub supports_vision: bool,
+    pub supports_streaming: bool,
+    pub embedding_dimension: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct EligibleModelsResponse {
     pub usage: String,
+    /// `workspace`, `tenant`, or `deployment`.
+    pub scope: String,
     /// `constrained` when the tenant ceiling restricts this usage.
     pub policy_mode: String,
+    /// `constrained` when this scope has narrowed its parent offer.
+    pub offer_mode: String,
     pub models: Vec<EligibleModelDto>,
 }
 
@@ -299,6 +308,8 @@ mod catalog_view_tests {
             display_name: format!("{model} (display)"),
             provider_display_name: "OpenAI".into(),
             supports_vision: false,
+            supports_streaming: true,
+            embedding_dimension: None,
         }
     }
 

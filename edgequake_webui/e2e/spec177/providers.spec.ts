@@ -145,6 +145,9 @@ test.describe("SPEC-177 provider cascade @spec177", () => {
     const fleet = page.getByTestId("fleet-models-acme");
     await fleet.getByLabel("Model id for acme").fill("acme-extra");
     await fleet.getByRole("button", { name: "Add" }).click();
+    // Model edits are a draft until Save is pressed (no autosave).
+    await expect(fleet.getByTestId("model-save-bar")).toHaveAttribute("data-dirty", "true");
+    await fleet.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText("Models saved")).toBeVisible();
     expect(modelPuts[0]).toEqual({
       models: [

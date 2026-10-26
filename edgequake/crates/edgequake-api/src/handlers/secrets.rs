@@ -62,7 +62,7 @@ pub async fn get_secret_backend(
         let view = crate::providers::secret_manager::SecretService::new(pool(&state)?)
             .view(scoped_tenant(&tenant_ctx)?)
             .await?;
-        return Ok(Json(serde_json::to_value(view).unwrap_or_default()));
+        Ok(Json(serde_json::to_value(view).unwrap_or_default()))
     }
     #[cfg(not(feature = "postgres"))]
     {
@@ -98,7 +98,7 @@ pub async fn put_secret_backend(
                 },
             )
             .await?;
-        return Ok(Json(serde_json::to_value(view).unwrap_or_default()));
+        Ok(Json(serde_json::to_value(view).unwrap_or_default()))
     }
     #[cfg(not(feature = "postgres"))]
     {
@@ -121,7 +121,7 @@ pub async fn test_secret_backend(
         crate::providers::secret_manager::SecretService::new(pool(&state)?)
             .test(scoped_tenant(&tenant_ctx)?)
             .await?;
-        return Ok(Json(serde_json::json!({ "ok": true })));
+        Ok(Json(serde_json::json!({ "ok": true })))
     }
     #[cfg(not(feature = "postgres"))]
     {
@@ -154,7 +154,7 @@ pub async fn list_secrets(
                 })
             })
             .collect();
-        return Ok(Json(body));
+        Ok(Json(body))
     }
     #[cfg(not(feature = "postgres"))]
     {
@@ -178,10 +178,10 @@ pub async fn create_secret(
         let stored = crate::providers::secret_manager::SecretService::new(pool(&state)?)
             .put(scoped_tenant(&tenant_ctx)?, &body.name, &body.value)
             .await?;
-        return Ok(Json(serde_json::json!({
+        Ok(Json(serde_json::json!({
             "name": body.name,
             "backend": stored.backend_name(),
-        })));
+        })))
     }
     #[cfg(not(feature = "postgres"))]
     {
@@ -205,7 +205,7 @@ pub async fn delete_secret(
         crate::providers::secret_manager::SecretService::new(pool(&state)?)
             .delete_named(scoped_tenant(&tenant_ctx)?, &name)
             .await?;
-        return Ok(axum::http::StatusCode::NO_CONTENT);
+        Ok(axum::http::StatusCode::NO_CONTENT)
     }
     #[cfg(not(feature = "postgres"))]
     {

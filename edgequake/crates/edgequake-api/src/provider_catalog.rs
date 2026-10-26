@@ -55,6 +55,7 @@ fn provider_info_from_config(provider: &ProviderConfig) -> ProviderInfo {
             embedding_model,
             embedding_dimension,
         },
+        refreshable: crate::model_catalog::is_refreshable_discovery_provider(&provider.name),
     }
 }
 
@@ -153,6 +154,23 @@ mod tests {
             "text-embedding-nomic-embed-text-v1.5"
         );
         assert_eq!(lmstudio.default_models.embedding_dimension, 768);
+    }
+
+    #[test]
+    fn refreshable_flag_follows_discovery_strategy() {
+        let config = embedded_models_catalog();
+        let response = build_available_providers_response(&config, "mock", "mock");
+        let flag = |id: &str| {
+            response
+                .llm_providers
+                .iter()
+                .find(|provider| provider.id == id)
+                .map(|provider| provider.refreshable)
+        };
+        assert_eq!(flag("ollama"), Some(true));
+        assert_eq!(flag("openrouter"), Some(true));
+        assert_eq!(flag("openai"), Some(true));
+        assert_ne!(flag("xai"), Some(true));
     }
 
     #[test]

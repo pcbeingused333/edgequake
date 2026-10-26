@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dropRetiredSettingsKeys } from "../use-settings-store";
+import { adoptLegacyQueryModel, dropRetiredSettingsKeys, visibleChoiceModels } from "../use-settings-store";
 
 describe("dropRetiredSettingsKeys (EC-175-23, store version 2)", () => {
   it("drops the persisted theme, which next-themes owns", () => {
@@ -22,6 +22,32 @@ describe("dropRetiredSettingsKeys (EC-175-23, store version 2)", () => {
 
   it("tolerates a v1 blob with no query settings", () => {
     expect(dropRetiredSettingsKeys({ theme: "light" })).toEqual({ querySettings: {} });
+  });
+
+  it("copies a legacy pair onto the open workspace once (EC-178-27)", () => {
+    const first = adoptLegacyQueryModel({
+      map: {},
+      legacy: { provider: "openai", model: "gpt-5-nano" },
+      workspaceId: "ws-a",
+      adopted: false,
+    });
+    expect(first.map["ws-a"]).toEqual({ provider: "openai", model: "gpt-5-nano" });
+    expect(first.adopted).toBe(true);
+    const second = adoptLegacyQueryModel({
+      map: first.map,
+      legacy: { provider: "openai", model: "gpt-5-nano" },
+      workspaceId: "ws-b",
+      adopted: first.adopted,
+    });
+    expect(second.map["ws-b"]).toBeUndefined();
+    expect(second.wrote).toBe(false);
+  });
+
+  it("drops the mock provider from a choice list (EC-178-22)", () => {
+    expect(visibleChoiceModels([
+      { provider: "mock", model: "mock-smart" },
+      { provider: "openai", model: "gpt-5-nano" },
+    ])).toEqual([{ provider: "openai", model: "gpt-5-nano" }]);
   });
 
   it("does not mutate its input", () => {

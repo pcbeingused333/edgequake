@@ -74,6 +74,23 @@ pub async fn create_tenant(
         request.default_vision_llm_model.as_deref(),
     );
 
+    // SPEC-178: every set default pair must be eligible before the tenant is stored.
+    let card_dimension = crate::services::model_policy_enforcement::ensure_tenant_choice(
+        &state,
+        tenant.tenant_id,
+        default_llm_provider.as_deref(),
+        request.default_llm_model.as_deref(),
+        (
+            default_embedding_provider.as_deref(),
+            request.default_embedding_model.as_deref(),
+            request.default_embedding_dimension,
+        ),
+        default_vision_llm_provider.as_deref(),
+        request.default_vision_llm_model.as_deref(),
+    )
+    .await?;
+    let embedding_dimension = card_dimension.or(request.default_embedding_dimension);
+
     // SPEC-032: Apply LLM configuration if provided
     if let (Some(model), Some(provider)) = (&request.default_llm_model, &default_llm_provider) {
         tenant = tenant.with_llm_config(model, provider);
@@ -90,7 +107,7 @@ pub async fn create_tenant(
     if let (Some(model), Some(provider), Some(dimension)) = (
         &request.default_embedding_model,
         &default_embedding_provider,
-        request.default_embedding_dimension,
+        embedding_dimension,
     ) {
         tenant = tenant.with_embedding_config(model, provider, dimension);
     } else if let Some(model) = &request.default_embedding_model {
@@ -101,7 +118,7 @@ pub async fn create_tenant(
         );
         let dimension = edgequake_core::Workspace::detect_dimension_from_model(model);
         let final_provider = default_embedding_provider.clone().unwrap_or(provider);
-        let final_dimension = request.default_embedding_dimension.unwrap_or(dimension);
+        let final_dimension = embedding_dimension.unwrap_or(dimension);
         tenant = tenant.with_embedding_config(model, final_provider, final_dimension);
     }
 
@@ -431,6 +448,21 @@ pub async fn update_tenant(
             )));
         }
     }
+    // A changed embedding model recomputes the dimension from its card (SPEC-178).
+    let card_dimension = crate::services::model_policy_enforcement::ensure_tenant_choice(
+        &state,
+        tenant_id,
+        request.default_llm_provider.as_deref(),
+        request.default_llm_model.as_deref(),
+        (
+            request.default_embedding_provider.as_deref(),
+            request.default_embedding_model.as_deref(),
+            request.default_embedding_dimension,
+        ),
+        request.default_vision_llm_provider.as_deref(),
+        request.default_vision_llm_model.as_deref(),
+    )
+    .await?;
     // SPEC-123 / SPEC-041: tenant vision defaults must be writable (cascade leaf).
     if let Some(provider) = request.default_vision_llm_provider {
         let trimmed = provider.trim().to_string();
@@ -472,7 +504,7 @@ pub async fn update_tenant(
             tenant.default_embedding_model = trimmed.to_string();
         }
     }
-    if let Some(dimension) = request.default_embedding_dimension {
+    if let Some(dimension) = card_dimension.or(request.default_embedding_dimension) {
         if dimension > 0 {
             tenant.default_embedding_dimension = dimension;
         }

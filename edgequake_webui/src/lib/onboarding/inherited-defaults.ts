@@ -122,7 +122,7 @@ export function formatInheritModelLabel(args: {
 }): string {
   const prefix =
     args.source === 'tenant'
-      ? (args.tenantPrefix ?? 'Tenant default')
+      ? (args.tenantPrefix ?? 'Organization default')
       : (args.serverPrefix ?? 'Server default');
   if (args.provider && args.model) {
     return `${prefix} (${args.provider}/${args.model})`;

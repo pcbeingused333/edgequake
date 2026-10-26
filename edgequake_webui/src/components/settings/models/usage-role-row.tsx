@@ -104,7 +104,7 @@ export function UsageRoleRow({
           disabled={controlsDisabled || eligible.isPending}
           onChange={(e) => onChange(applyPick(draft, options.find((o) => o.value === e.target.value)))}
         >
-          <option value="">{eligible.isPending ? "Loading models…" : "Inherit the workspace default"}</option>
+          <option value="">{eligible.isPending ? "Loading models…" : "Inherit"}</option>
           {savedButIneligible ? (
             <option value={pairKey(draft.provider, draft.model)} disabled>
               {draft.model} (not eligible)
@@ -140,7 +140,7 @@ export function UsageRoleRow({
           disabled={controlsDisabled}
           onChange={(e) => onChange({ ...draft, connection_id: e.target.value })}
         >
-          <option value="">Inherit / environment</option>
+          <option value="">Inherit</option>
           {selectableConnections(connections).map((c) => (
             <option key={`${c.source}-${c.slug}-${c.id}`} value={c.id}>
               {c.display_name}

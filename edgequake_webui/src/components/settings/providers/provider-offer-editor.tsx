@@ -23,6 +23,19 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ModelSaveBar, saveWithToast } from "@/components/settings/models/model-save-bar";
 import { useServerBackedDraft } from "@/hooks/use-server-backed-draft";
+import { refreshDynamicModels, useAvailableProviders } from "@/hooks/use-providers";
+import { apiClient } from "@/lib/api/client";
+import type { LlmModelItem, LlmModelsResponse } from "@/lib/api/models";
+import {
+  connectionModelBody,
+  showFleetModelRefresh,
+  showProviderModelRefresh,
+  toggleModelId,
+} from "@/lib/settings/fleet-model-refresh";
+import { sectionHref } from "@/lib/settings/registry";
+import Link from "next/link";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useDeploymentProviders,
   useSaveConnectionModels,
@@ -243,15 +256,24 @@ function DeploymentProviders() {
   const query = useDeploymentProviders();
   const withdraw = useWithdrawProvider();
   const rows = query.data?.providers ?? [];
+  const addHref = sectionHref("connections");
   return (
     <Card data-testid="deployment-providers-card">
       <CardContent className="space-y-3 pt-6">
+        <div className="flex justify-end">
+          <Button type="button" variant="outline" size="sm" asChild>
+            <Link href={addHref} data-testid="add-provider-link">Add a provider</Link>
+          </Button>
+        </div>
         {query.isPending ? (
           <p className="text-sm text-muted-foreground" aria-busy="true">Loading providers…</p>
         ) : query.isError ? (
           <p className="text-sm text-destructive" role="alert">Could not load providers.</p>
         ) : rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">This deployment has no providers yet. Add one under Connections.</p>
+          <p className="text-sm text-muted-foreground">
+            This deployment has no providers yet.{" "}
+            <Link href={addHref} className="underline">Add one under Connections.</Link>
+          </p>
         ) : (
           <ul className="divide-y rounded-lg border">
             {rows.map((row) => {
@@ -277,6 +299,9 @@ function DeploymentProviders() {
                         </Button>
                       ) : null}
                     </div>
+                    {row.origin === "env" ? (
+                      <EnvModelRefresh slug={row.slug} probe={row.probe} />
+                    ) : null}
                     {row.origin === "fleet" ? (
                       <FleetModels slug={row.slug} initial={row.models.map((model) => model.id)} enabled={row.probe === "ok"} />
                     ) : null}
@@ -291,11 +316,79 @@ function DeploymentProviders() {
   );
 }
 
+function EnvModelRefresh({ slug, probe }: { slug: string; probe?: string | null }) {
+  const providers = useAvailableProviders();
+  const queryClient = useQueryClient();
+  const refreshable =
+    providers.data?.llm_providers.some((row) => row.id === slug && row.refreshable === true) ?? false;
+  const [busy, setBusy] = useState(false);
+  if (!showProviderModelRefresh({ refreshable, origin: "env", probe })) return null;
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      disabled={busy}
+      data-testid={`env-refresh-${slug}`}
+      onClick={() => {
+        setBusy(true);
+        void refreshDynamicModels(queryClient)
+          .then(() => toast.success("Models refreshed"))
+          .catch(() => toast.error("Could not refresh models"))
+          .finally(() => setBusy(false));
+      }}
+    >
+      {busy ? "Refreshing…" : "Refresh models"}
+    </Button>
+  );
+}
+
+const MODEL_ID_SEPARATOR = "\u0000";
+const savedModelIds = (key: string): string[] => (key ? key.split(MODEL_ID_SEPARATOR) : []);
+
 function FleetModels({ slug, initial, enabled }: { slug: string; initial: string[]; enabled: boolean }) {
   const save = useSaveConnectionModels(slug);
-  const [models, setModels] = useState(initial);
-  const [draft, setDraft] = useState("");
+  const providers = useAvailableProviders();
+  const queryClient = useQueryClient();
+  const refreshable =
+    providers.data?.llm_providers.some((row) => row.id === slug && row.refreshable === true) ?? false;
+  const canRefresh = showFleetModelRefresh(refreshable, enabled);
+  // A string key keeps the draft stable across parent re-renders; it restarts only when the saved ids change.
+  const savedKey = initial.join(MODEL_ID_SEPARATOR);
+  const { draft: models, setDraft: setModels, reset } = useServerBackedDraft(savedKey, savedModelIds);
+  const dirty = models.join(MODEL_ID_SEPARATOR) !== savedKey;
+  const [newId, setNewId] = useState("");
+  const [discovered, setDiscovered] = useState<LlmModelItem[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const fieldId = `${slug}-model`;
+
+  const refresh = async () => {
+    setRefreshing(true);
+    setRefreshError(null);
+    try {
+      await refreshDynamicModels(queryClient);
+      const response = await apiClient<LlmModelsResponse>(
+        `/models/llm?provider=${encodeURIComponent(slug)}`,
+      );
+      setDiscovered(response.models ?? []);
+    } catch {
+      setRefreshError("Could not refresh models.");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const addId = () => {
+    const id = newId.trim();
+    if (!id || models.includes(id)) return;
+    setModels((current) => [...current, id]);
+    setNewId("");
+  };
+
+  const saveModels = () =>
+    saveWithToast(() => save.mutateAsync(connectionModelBody(models, discovered)), "Models saved");
+
   return (
     <div className="flex w-full flex-col gap-2 sm:w-72" data-testid={`fleet-models-${slug}`}>
       <div className="flex flex-wrap gap-1">
@@ -303,32 +396,63 @@ function FleetModels({ slug, initial, enabled }: { slug: string; initial: string
           <Badge key={id} variant="secondary" className="font-normal">{id}</Badge>
         ))}
       </div>
+      {canRefresh ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={refreshing || save.isPending}
+          data-testid={`fleet-refresh-${slug}`}
+          onClick={() => void refresh()}
+        >
+          {refreshing ? "Refreshing…" : "Refresh models"}
+        </Button>
+      ) : null}
+      {refreshError ? (
+        <p className="text-xs text-destructive" data-testid={`fleet-refresh-error-${slug}`}>
+          {refreshError}
+        </p>
+      ) : null}
+      {discovered.length > 0 ? (
+        <ul className="flex max-h-40 flex-col gap-1 overflow-auto" data-testid={`fleet-discovered-${slug}`}>
+          {discovered.map((item) => (
+            <li key={item.name} className="flex items-center gap-2 text-sm">
+              <Checkbox
+                id={`${slug}-${item.name}`}
+                checked={models.includes(item.name)}
+                disabled={save.isPending}
+                onCheckedChange={(checked) =>
+                  setModels((current) => toggleModelId(current, item.name, checked === true))
+                }
+                aria-label={item.display_name || item.name}
+              />
+              <label htmlFor={`${slug}-${item.name}`} className="min-w-0 truncate">
+                {item.display_name || item.name}
+              </label>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <div className="flex gap-2">
         <Input
           id={fieldId}
           aria-label={`Model id for ${slug}`}
-          value={draft}
+          value={newId}
           disabled={!enabled || save.isPending}
           placeholder={enabled ? "Model id" : "Test the connection first"}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => setNewId(event.target.value)}
         />
         <Button
           type="button"
           size="sm"
           variant="outline"
-          disabled={!enabled || save.isPending || draft.trim() === ""}
-          onClick={() => {
-            const id = draft.trim();
-            if (!id || models.includes(id)) return;
-            const next = [...models, id];
-            setModels(next);
-            setDraft("");
-            void saveWithToast(() => save.mutateAsync(next), "Models saved");
-          }}
+          disabled={!enabled || save.isPending || newId.trim() === ""}
+          onClick={addId}
         >
           Add
         </Button>
       </div>
+      <ModelSaveBar dirty={dirty} saving={save.isPending} onSave={() => void saveModels()} onDiscard={reset} />
     </div>
   );
 }

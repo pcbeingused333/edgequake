@@ -8,14 +8,14 @@
 // `return` inside `#[cfg(feature = "postgres")]` blocks keeps both feature builds
 // type-checking, so this lint is allowed for the module.
 
-use axum::extract::{Extension, Path, State};
+use axum::extract::{Path, State};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
-use crate::handlers::auth::RequestAuthContext;
+use crate::handlers::auth::{ApiAuthenticated, RequestAuthContext};
 use crate::middleware::TenantContext;
 use crate::services::clearance::{self, scope_on};
 use crate::state::AppState;
@@ -148,7 +148,7 @@ fn require_owner_or_admin(role: &str) -> Result<(), ApiError> {
 )]
 pub async fn get_clearance_settings(
     State(state): State<AppState>,
-    Extension(auth): Extension<RequestAuthContext>,
+    ApiAuthenticated(auth): ApiAuthenticated,
     Path(workspace_id): Path<Uuid>,
     tenant_ctx: TenantContext,
 ) -> ApiResult<Json<ClearanceSettingsResponse>> {
@@ -210,7 +210,7 @@ async fn caller_can_manage(
 )]
 pub async fn enable_clearance(
     State(state): State<AppState>,
-    Extension(auth): axum::Extension<RequestAuthContext>,
+    ApiAuthenticated(auth): ApiAuthenticated,
     Path(workspace_id): Path<Uuid>,
     tenant_ctx: TenantContext,
     Json(body): Json<EnableClearanceRequest>,
@@ -251,7 +251,7 @@ pub async fn enable_clearance(
 )]
 pub async fn list_clearance_tags(
     State(state): State<AppState>,
-    Extension(auth): Extension<RequestAuthContext>,
+    ApiAuthenticated(auth): ApiAuthenticated,
     Path(workspace_id): Path<Uuid>,
     tenant_ctx: TenantContext,
 ) -> ApiResult<Json<Vec<ClearanceTag>>> {
@@ -300,7 +300,7 @@ pub async fn list_clearance_tags(
 )]
 pub async fn create_clearance_tag(
     State(state): State<AppState>,
-    Extension(auth): Extension<RequestAuthContext>,
+    ApiAuthenticated(auth): ApiAuthenticated,
     Path(workspace_id): Path<Uuid>,
     tenant_ctx: TenantContext,
     Json(body): Json<CreateTagRequest>,
@@ -358,7 +358,7 @@ pub async fn create_clearance_tag(
 )]
 pub async fn delete_clearance_tag(
     State(state): State<AppState>,
-    Extension(auth): Extension<RequestAuthContext>,
+    ApiAuthenticated(auth): ApiAuthenticated,
     Path((workspace_id, tag_id)): Path<(Uuid, Uuid)>,
     tenant_ctx: TenantContext,
 ) -> ApiResult<axum::http::StatusCode> {
@@ -465,7 +465,7 @@ fn group_role_rows(rows: Vec<RoleRuleRow>) -> Vec<SecurityRoleView> {
 )]
 pub async fn list_security_roles(
     State(state): State<AppState>,
-    Extension(auth): Extension<RequestAuthContext>,
+    ApiAuthenticated(auth): ApiAuthenticated,
     Path(workspace_id): Path<Uuid>,
     tenant_ctx: TenantContext,
 ) -> ApiResult<Json<Vec<SecurityRoleView>>> {
@@ -507,7 +507,7 @@ pub async fn list_security_roles(
 )]
 pub async fn create_security_role(
     State(state): State<AppState>,
-    Extension(auth): Extension<RequestAuthContext>,
+    ApiAuthenticated(auth): ApiAuthenticated,
     Path(workspace_id): Path<Uuid>,
     tenant_ctx: TenantContext,
     Json(body): Json<CreateRoleRequest>,
@@ -558,7 +558,7 @@ pub async fn create_security_role(
 )]
 pub async fn put_security_role_rules(
     State(state): State<AppState>,
-    Extension(auth): Extension<RequestAuthContext>,
+    ApiAuthenticated(auth): ApiAuthenticated,
     Path((workspace_id, role_id)): Path<(Uuid, Uuid)>,
     tenant_ctx: TenantContext,
     Json(body): Json<PutRulesRequest>,
@@ -631,7 +631,7 @@ pub async fn put_security_role_rules(
 )]
 pub async fn get_member_clearance_roles(
     State(state): State<AppState>,
-    Extension(auth): Extension<RequestAuthContext>,
+    ApiAuthenticated(auth): ApiAuthenticated,
     Path((workspace_id, user_id)): Path<(Uuid, Uuid)>,
     tenant_ctx: TenantContext,
 ) -> ApiResult<Json<MemberRolesResponse>> {
@@ -681,7 +681,7 @@ pub async fn get_member_clearance_roles(
 )]
 pub async fn put_member_clearance_roles(
     State(state): State<AppState>,
-    Extension(auth): Extension<RequestAuthContext>,
+    ApiAuthenticated(auth): ApiAuthenticated,
     Path((workspace_id, user_id)): Path<(Uuid, Uuid)>,
     tenant_ctx: TenantContext,
     Json(body): Json<AssignRolesRequest>,
@@ -756,7 +756,7 @@ async fn membership_id_for(
 )]
 pub async fn simulate_clearance(
     State(state): State<AppState>,
-    Extension(auth): Extension<RequestAuthContext>,
+    ApiAuthenticated(auth): ApiAuthenticated,
     Path(workspace_id): Path<Uuid>,
     tenant_ctx: TenantContext,
     Json(body): Json<SimulateRequest>,
@@ -818,7 +818,7 @@ pub async fn simulate_clearance(
 )]
 pub async fn patch_document_labels(
     State(state): State<AppState>,
-    Extension(auth): Extension<RequestAuthContext>,
+    ApiAuthenticated(auth): ApiAuthenticated,
     Path(document_id): Path<Uuid>,
     tenant_ctx: TenantContext,
     Json(body): Json<PatchLabelsRequest>,

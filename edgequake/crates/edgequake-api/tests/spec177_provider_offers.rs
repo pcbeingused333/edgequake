@@ -10,11 +10,14 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 async fn pool() -> Option<PgPool> {
-    let pool = postgres_access_pool::test_pool_with_acquire_timeout(std::time::Duration::from_secs(20)).await?;
-    let ready: bool = sqlx::query_scalar("SELECT to_regclass('public.provider_offers') IS NOT NULL")
-        .fetch_one(&pool)
-        .await
-        .unwrap_or(false);
+    let pool =
+        postgres_access_pool::test_pool_with_acquire_timeout(std::time::Duration::from_secs(20))
+            .await?;
+    let ready: bool =
+        sqlx::query_scalar("SELECT to_regclass('public.provider_offers') IS NOT NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap_or(false);
     if !ready {
         eprintln!("SKIP: migration 223 not applied");
         return None;
@@ -23,7 +26,9 @@ async fn pool() -> Option<PgPool> {
 }
 
 fn sqlstate(error: &sqlx::Error) -> Option<String> {
-    error.as_database_error().and_then(|db| db.code().map(|code| code.into_owned()))
+    error
+        .as_database_error()
+        .and_then(|db| db.code().map(|code| code.into_owned()))
 }
 
 #[tokio::test]
@@ -38,7 +43,10 @@ async fn offer_tables_have_no_secret_column() {
     .fetch_all(&pool)
     .await
     .unwrap();
-    assert!(names.is_empty(), "secret columns leaked into offer tables: {names:?}");
+    assert!(
+        names.is_empty(),
+        "secret columns leaked into offer tables: {names:?}"
+    );
 }
 
 #[tokio::test]
@@ -53,7 +61,10 @@ async fn new_tenant_is_unconstrained() {
     .await
     .unwrap();
     let default_value = default_value.unwrap_or_default();
-    assert!(default_value.contains("false"), "default was {default_value}");
+    assert!(
+        default_value.contains("false"),
+        "default was {default_value}"
+    );
 }
 
 #[tokio::test]
@@ -245,15 +256,19 @@ async fn replace_connection_models_requires_a_passing_probe() {
     edgequake_api::services::provider_offer_rows::replace_connection_models(
         &pool,
         "spec177-models",
-        &[("local".into(), true, false, false), ("embed".into(), false, false, true)],
+        &[
+            ("local".into(), true, false, false),
+            ("embed".into(), false, false, true),
+        ],
     )
     .await
     .unwrap();
-    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM connection_models WHERE connection_id = $1")
-        .bind(id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM connection_models WHERE connection_id = $1")
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     sqlx::query("DELETE FROM provider_connections WHERE id = $1")
         .bind(id)
         .execute(&pool)
@@ -321,7 +336,9 @@ async fn delete_does_not_reprocess_or_clear_cache() {
 async fn named_provider_outside_the_offer_does_not_fall_through() {
     use std::sync::Arc;
 
-    use edgequake_api::providers::{LlmResolutionRequest, ProviderResolutionError, WorkspaceProviderResolver};
+    use edgequake_api::providers::{
+        LlmResolutionRequest, ProviderResolutionError, WorkspaceProviderResolver,
+    };
     use edgequake_core::{InMemoryWorkspaceService, Workspace};
 
     let Some(pool) = pool().await else { return };
@@ -336,10 +353,19 @@ async fn named_provider_outside_the_offer_does_not_fall_through() {
     .expect("offer");
     let service = Arc::new(InMemoryWorkspaceService::new());
     let resolver = WorkspaceProviderResolver::new(service).with_pg_pool(Some(pool.clone()));
-    let stranger_name = ["mock", "azure", "bedrock", "gemini", "mistral", "huggingface", "vertexai", "openrouter"]
-        .into_iter()
-        .find(|name| !offer.slugs.contains(*name))
-        .expect("a known provider sits outside this offer");
+    let stranger_name = [
+        "mock",
+        "azure",
+        "bedrock",
+        "gemini",
+        "mistral",
+        "huggingface",
+        "vertexai",
+        "openrouter",
+    ]
+    .into_iter()
+    .find(|name| !offer.slugs.contains(*name))
+    .expect("a known provider sits outside this offer");
 
     let mut stranger = Workspace::new(tenant, "spec177", "spec177-stranger");
     stranger.workspace_id = workspace_id;
@@ -354,7 +380,9 @@ async fn named_provider_outside_the_offer_does_not_fall_through() {
         .resolve_llm_provider_for_workspace(Some(&stranger), &request)
         .await
     {
-        Err(ProviderResolutionError::ProviderCreationFailed { reason, provider, .. }) => {
+        Err(ProviderResolutionError::ProviderCreationFailed {
+            reason, provider, ..
+        }) => {
             assert_eq!(provider, stranger_name);
             assert!(reason.contains("not offered"), "{reason}");
         }
@@ -398,7 +426,9 @@ async fn named_provider_outside_the_offer_does_not_fall_through() {
         .await
         .unwrap();
     match result {
-        Err(ProviderResolutionError::ProviderCreationFailed { reason, provider, .. }) => {
+        Err(ProviderResolutionError::ProviderCreationFailed {
+            reason, provider, ..
+        }) => {
             assert_eq!(provider, hidden);
             assert!(reason.contains("not offered"), "{reason}");
         }

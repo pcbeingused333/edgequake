@@ -1,11 +1,9 @@
 "use client";
 
-import { ProviderIcon } from "@/components/providers/provider-icon";
 import {
   PdfParserBackendField,
   type PdfParserBackendChoice,
 } from "@/components/settings/pdf-parser-backend-field";
-import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -13,13 +11,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  LLMModelSelector,
-  type LLMSelection,
-} from "@/components/workspace/llm-model-selector";
-import { useInheritedModelDefaults } from "@/hooks/use-inherited-model-defaults";
-import { effectiveVisionFromWorkspace } from "@/lib/config/resolve-model-choice";
-import { useTenantStore } from "@/stores/use-tenant-store";
+import type { LLMSelection } from "@/components/workspace/llm-model-selector";
+import { VisionModelField } from "@/components/workspace/vision-model-field";
 import type { Workspace } from "@/types";
 import { AlertTriangle, Eye, Gauge, Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -45,19 +38,6 @@ export function WorkspaceExtendedModelConfig({
   visionLLMChanged,
 }: WorkspaceExtendedModelConfigProps) {
   const { t } = useTranslation();
-  const tenantId = useTenantStore((s) => s.selectedTenantId);
-  const inherited = useInheritedModelDefaults(tenantId);
-  const visionDefaultId =
-    inherited.defaultVisionProvider && inherited.defaultVisionModel
-      ? `${inherited.defaultVisionProvider}/${inherited.defaultVisionModel}`
-      : undefined;
-
-  // SPEC-123: prefer API resolved_* (honest source); fall back to FE mirror.
-  const hasVisionOverride = Boolean(
-    workspace.vision_llm_provider?.trim() || workspace.vision_llm_model?.trim(),
-  );
-  const resolvedVision = effectiveVisionFromWorkspace(workspace);
-  const resolvesToLabel = `${resolvedVision.provider}/${resolvedVision.model}`;
 
   return (
     <div
@@ -79,69 +59,21 @@ export function WorkspaceExtendedModelConfig({
         </CardHeader>
         <CardContent className="flex flex-1 flex-col gap-4">
           <div className="mt-auto space-y-4">
-            {isEditing ? (
-              <>
-                <LLMModelSelector
-                  value={selectedVisionLLM}
-                  onChange={onVisionLlmChange}
-                  showUsageHint
-                />
-                {visionLLMChanged && (
-                  <div className="flex items-center gap-2 p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
-                    <AlertTriangle className="h-4 w-4 text-orange-600 shrink-0" />
-                    <span className="text-sm text-orange-700 dark:text-orange-300">
-                      {t(
-                        "workspace.visionLlmChangeWarning",
-                        "New Vision LLM will be used for all subsequent PDF uploads.",
-                      )}
-                    </span>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 p-3 bg-muted/50 rounded-lg min-h-[3.75rem]">
-                <ProviderIcon
-                  providerId={
-                    workspace.vision_llm_provider ||
-                    resolvedVision.provider ||
-                    visionDefaultId?.split("/")[0]
-                  }
-                />
-                <div className="min-w-0 flex-1 basis-40">
-                  <div className="font-medium truncate">
-                    {hasVisionOverride
-                      ? workspace.vision_llm_model
-                      : t(
-                          "workspace.serverDefaultWithValue",
-                          "Server Default ({{value}})",
-                          {
-                            value:
-                              resolvesToLabel ||
-                              visionDefaultId ||
-                              t("workspace.notConfigured", "not configured"),
-                          },
-                        )}
-                  </div>
-                  <div className="text-sm text-muted-foreground capitalize truncate">
-                    {hasVisionOverride
-                      ? t("workspace.workspaceOverride", "Workspace override")
-                      : t("workspace.resolvesVia", "Resolves via {{source}}", {
-                          source: resolvedVision.source,
-                        })}
-                  </div>
-                </div>
-                <Badge
-                  variant="outline"
-                  className="ml-auto min-w-0 max-w-full shrink font-mono text-xs"
-                  title={`source=${resolvedVision.source}`}
-                  data-testid="vision-llm-resolves-to"
-                >
-                  <span className="truncate">
-                    {t("settings.pdfParser.resolvesTo", "Resolves to {{value}}", {
-                      value: resolvesToLabel,
-                    })}
-                  </span>
-                </Badge>
+            <VisionModelField
+              workspace={workspace}
+              isEditing={isEditing}
+              value={selectedVisionLLM}
+              onChange={onVisionLlmChange}
+            />
+            {isEditing && visionLLMChanged && (
+              <div className="flex items-center gap-2 p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+                <AlertTriangle className="h-4 w-4 text-orange-600 shrink-0" />
+                <span className="text-sm text-orange-700 dark:text-orange-300">
+                  {t(
+                    "workspace.visionLlmChangeWarning",
+                    "New Vision LLM will be used for all subsequent PDF uploads.",
+                  )}
+                </span>
               </div>
             )}
           </div>

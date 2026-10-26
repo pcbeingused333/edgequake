@@ -131,6 +131,9 @@ pub struct ProviderInfo {
     pub config_requirements: Vec<ConfigRequirement>,
     /// Default models for this provider
     pub default_models: DefaultModels,
+    /// Live discovery can refresh this slug (Dynamic or Hybrid). Static-only is false.
+    #[serde(default)]
+    pub refreshable: bool,
 }
 
 /// Configuration requirement for a provider

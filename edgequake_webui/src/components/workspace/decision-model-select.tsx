@@ -65,6 +65,15 @@ export function DecisionModelSelect({
     return list;
   }, [models, current]);
 
+  // A name the host did not list is kept as typed, but it is marked as unverified.
+  const listed = useMemo(() => new Set(models.map((m) => m.name)), [models]);
+  const verifiedBadge = (name: string) =>
+    listed.has(name) ? null : (
+      <Badge variant="outline" className="px-1.5 py-0 text-[10px]" data-testid="decision-model-unverified">
+        {t('extractionMode.engine.notVerified', 'Not verified on host')}
+      </Badge>
+    );
+
   const needle = search.trim().toLowerCase();
   const filtered = needle
     ? sorted.filter((m) => m.name.toLowerCase().includes(needle))
@@ -133,7 +142,10 @@ export function DecisionModelSelect({
                   onSelect={() => pick(custom)}
                   data-testid={`decision-model-option-${custom}`}
                 >
-                  {t('extractionMode.engine.useTag', 'Use {{tag}}', { tag: custom })}
+                  <span className="min-w-0 flex-1 truncate">
+                    {t('extractionMode.engine.useTag', 'Use {{tag}}', { tag: custom })}
+                  </span>
+                  {verifiedBadge(custom)}
                 </CommandItem>
               </CommandGroup>
             ) : null}
@@ -154,6 +166,7 @@ export function DecisionModelSelect({
                       )}
                     />
                     <span className="min-w-0 flex-1 truncate font-mono text-sm">{m.name}</span>
+                    {verifiedBadge(m.name)}
                   </CommandItem>
                 ))}
             </CommandGroup>

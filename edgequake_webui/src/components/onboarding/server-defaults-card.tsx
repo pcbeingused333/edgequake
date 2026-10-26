@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 export interface ResolvedDefaultsDisplay extends ModelDefaultsSlice {
   isLoading?: boolean;
   hasConfiguredDefaults: boolean;
-  /** When set, drives title (“Using tenant defaults” / “Using server defaults”). */
+  /** When set, drives title (“Using organization defaults” / “Using server defaults”). */
   source?: DefaultsSource;
   sourceLabel?: string;
   sourceHint?: string;
@@ -62,7 +62,7 @@ function ServerDefaultsCardView({
   const title =
     sourceLabel ??
     (source === 'tenant'
-      ? t('onboarding.usingTenantDefaults', 'Using tenant defaults')
+      ? t('onboarding.usingTenantDefaults', 'Using organization defaults')
       : hasConfiguredDefaults
         ? t('onboarding.usingServerDefaults', 'Using server defaults')
         : t('onboarding.serverDefaultsMissing', 'Server defaults not fully configured'));

@@ -17,23 +17,24 @@ import { getProviderAuthLabel, getProviderDisplayName } from "@/lib/provider-dis
 import type { ProviderResponse } from "@/lib/api/models";
 import { CheckCircle, ChevronDown, ChevronRight, RefreshCw, Server, XCircle } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 export interface ProviderStatusHubProps {
   providers?: ProviderResponse[];
   isLoading?: boolean;
   onRefresh?: () => void;
-  selectedProvider?: string | null;
-  onSelectProvider?: (providerId: string | null) => void;
+  /** Eligible model count per provider for the query usage. Absent until loaded, never inventory. */
+  eligibleCounts?: Record<string, number>;
 }
 
 export function ProviderStatusHub({
   providers = [],
   isLoading,
   onRefresh,
-  selectedProvider,
-  onSelectProvider,
+  eligibleCounts,
 }: ProviderStatusHubProps) {
-  const [expanded, setExpanded] = useState<string | null>(selectedProvider ?? null);
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   // SPEC-100: tolerate non-array payloads during soft-load / mock drift
   const providerList = Array.isArray(providers) ? providers : [];
@@ -49,7 +50,7 @@ export function ProviderStatusHub({
               Provider Status
             </CardTitle>
             <CardDescription>
-              Click a provider to filter model pickers. Green = reachable with configured credentials.
+              Green = reachable with configured credentials.
             </CardDescription>
           </div>
           {onRefresh && (
@@ -78,23 +79,19 @@ export function ProviderStatusHub({
         ) : (
           enabled.map((provider) => {
             const available = provider.health?.available ?? provider.enabled;
-            const isSelected = selectedProvider === provider.name;
             const isOpen = expanded === provider.name;
             const authLabel = getProviderAuthLabel(provider.name, provider.auth_kind);
             return (
               <div
                 key={provider.name}
                 data-testid={`provider-status-row-${provider.name}`}
-                className={`rounded-lg border p-3 transition-colors ${
-                  isSelected ? "border-primary bg-primary/5" : "border-border"
-                }`}
+                className="rounded-lg border border-border p-3 transition-colors"
               >
                 <button
                   type="button"
                   className="flex w-full items-center justify-between gap-2 text-left"
                   onClick={() => {
                     setExpanded(isOpen ? null : provider.name);
-                    onSelectProvider?.(isSelected ? null : provider.name);
                   }}
                 >
                   <div className="flex items-center gap-2 min-w-0 flex-wrap">
@@ -131,9 +128,14 @@ export function ProviderStatusHub({
                       )}
                       {available ? "online" : "offline"}
                     </Badge>
-                    {provider.models && (
-                      <span className="text-xs text-muted-foreground">
-                        {provider.models.length} models
+                    {eligibleCounts?.[provider.name] !== undefined && (
+                      <span
+                        className="text-xs text-muted-foreground"
+                        data-testid={`provider-status-eligible-${provider.name}`}
+                      >
+                        {t("settings.fleet.eligibleForQueries", "{{count}} eligible for queries", {
+                          count: eligibleCounts[provider.name],
+                        })}
                       </span>
                     )}
                   </div>

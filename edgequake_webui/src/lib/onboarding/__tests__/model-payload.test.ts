@@ -61,7 +61,6 @@ describe('model-payload', () => {
       llm_model: 'x',
       embedding_provider: 'openai',
       embedding_model: 'e',
-      embedding_dimension: 768,
       vision_llm_provider: 'ollama',
       vision_llm_model: 'v',
     });
@@ -100,6 +99,7 @@ describe('model-payload', () => {
       embedding_dimension: 0,
       vision_llm_model: '',
       vision_llm_provider: '',
+      llm_roles: {},
     });
   });
 
@@ -124,9 +124,9 @@ describe('model-payload', () => {
       llm_model: 'gemma4:latest',
       embedding_provider: 'ollama',
       embedding_model: 'embeddinggemma',
-      embedding_dimension: 768,
-      vision_llm_provider: 'ollama',
-      vision_llm_model: 'gemma4:latest',
+      vision_llm_provider: '',
+      vision_llm_model: '',
+      llm_roles: { vlm: { provider: 'ollama', model: 'gemma4:latest' } },
       pdf_parser_backend: 'edgeparse',
       entity_types_strict: false,
       extraction_language: 'Chinese',
@@ -194,6 +194,7 @@ describe('model-payload', () => {
       embedding_dimension: 0,
       vision_llm_model: '',
       vision_llm_provider: '',
+      llm_roles: {},
     });
     expect(payload).not.toHaveProperty('entity_types');
     expect(payload).not.toHaveProperty('relation_types');
@@ -257,5 +258,25 @@ describe('buildWorkspaceIngestPayload', () => {
     expect(payload.pdf_parser_backend).toBe('none');
     expect(payload.chunking_mode).toBe('inherit');
     expect(payload.extract_budget_mode).toBe('inherit');
+  });
+
+  it('a vision save keeps the other saved roles (SPEC-163)', () => {
+    const payload = buildWorkspaceUpdatePayload({
+      useServerDefaults: false,
+      vision: { provider: 'openai', model: 'gpt-4o' },
+      savedLlmRoles: {
+        extract: { provider: 'openai', model: 'gpt-5-nano' },
+        vlm: { provider: 'mistral', model: 'pixtral-large-latest' },
+      },
+      pdfParserBackend: 'none',
+      extractionLanguage: null,
+      entityTypes: ['PERSON'],
+      entityTypesStrict: true,
+      changedKeys: ['vision'],
+    });
+    expect(payload.llm_roles).toEqual({
+      extract: { provider: 'openai', model: 'gpt-5-nano' },
+      vlm: { provider: 'openai', model: 'gpt-4o' },
+    });
   });
 });

@@ -11,6 +11,7 @@
 import {
   fetchEffectiveUsages,
   fetchEligibleModels,
+  fetchScopedEligibleModels,
   fetchTenantModelCatalog,
   getTenantModelPolicy,
   getWorkspaceModelPolicy,
@@ -31,7 +32,10 @@ export const modelPolicyQueryKeys = {
   effectiveRoot: ["effective-usages"] as const,
   effective: (workspaceId: string) => ["effective-usages", workspaceId] as const,
   eligibleRoot: ["eligible-models"] as const,
-  eligible: (workspaceId: string, usage: UsageKey) => ["eligible-models", workspaceId, usage] as const,
+  eligible: (workspaceId: string, usage: UsageKey) =>
+    ["eligible-models", "workspace", workspaceId, usage] as const,
+  eligibleScoped: (scope: string, id: string, usage: UsageKey) =>
+    ["eligible-models", scope, id, usage] as const,
   catalog: (tenantId: string) => ["tenant-model-catalog", tenantId] as const,
   tenantPolicy: (tenantId: string) => ["tenant-model-policy", tenantId] as const,
   workspacePolicy: (workspaceId: string) => ["workspace-model-policy", workspaceId] as const,
@@ -71,13 +75,57 @@ export function useEffectiveUsages(workspaceId: string | null) {
 }
 
 export function useEligibleModels(workspaceId: string | null, usage: UsageKey) {
+  return useScopedEligibleModels({ scope: "workspace", id: workspaceId, usage });
+}
+
+export function useScopedEligibleModels(input: {
+  scope: "workspace" | "tenant" | "deployment";
+  id?: string | null;
+  usage: UsageKey;
+}) {
+  const id = input.scope === "deployment" ? "deployment" : (input.id ?? "");
+  const enabled = input.scope === "deployment" || Boolean(input.id);
   return useQuery({
-    queryKey: modelPolicyQueryKeys.eligible(workspaceId ?? "", usage),
-    queryFn: () => fetchEligibleModels(workspaceId as string, usage),
-    enabled: !!workspaceId,
+    queryKey: modelPolicyQueryKeys.eligibleScoped(input.scope, id, input.usage),
+    queryFn: () => fetchScopedEligibleModels({ scope: input.scope, id: input.id, usage: input.usage }),
+    enabled,
     staleTime: 15_000,
     retry: false,
   });
+}
+
+const CHAT_FAMILY = ["extract", "query", "summary", "keyword"] as const;
+
+/** Intersection of the four chat usages. A view; the save still judges each usage. */
+export function useChatFamilyModels(input: {
+  scope: "workspace" | "tenant" | "deployment";
+  id?: string | null;
+}) {
+  const results = useQueries({
+    queries: CHAT_FAMILY.map((usage) => ({
+      queryKey: modelPolicyQueryKeys.eligibleScoped(
+        input.scope,
+        input.scope === "deployment" ? "deployment" : (input.id ?? ""),
+        usage,
+      ),
+      queryFn: () => fetchScopedEligibleModels({ ...input, usage }),
+      enabled: input.scope === "deployment" || Boolean(input.id),
+      staleTime: 15_000,
+      retry: false,
+    })),
+  });
+  const lists = results.map((result) => result.data?.models ?? []);
+  const [first, ...rest] = lists;
+  const models = (first ?? []).filter((model) =>
+    rest.every((list) =>
+      list.some((other) => other.provider === model.provider && other.model === model.model),
+    ),
+  );
+  return {
+    models,
+    isLoading: results.some((result) => result.isPending && result.fetchStatus !== "idle"),
+    isError: results.some((result) => result.isError),
+  };
 }
 
 /** Eligible models for every usage, keyed by usage. Used by the narrowing editor. */

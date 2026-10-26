@@ -26,6 +26,8 @@ function invalidateAfterOffer(queryClient: ReturnType<typeof useQueryClient>, wo
   void queryClient.invalidateQueries({ queryKey: ["workspace-provider-offer"] });
   void queryClient.invalidateQueries({ queryKey: modelPolicyQueryKeys.eligibleRoot });
   void queryClient.invalidateQueries({ queryKey: modelPolicyQueryKeys.effectiveRoot });
+  void queryClient.invalidateQueries({ queryKey: ["llm-models"] });
+  void queryClient.invalidateQueries({ queryKey: ["embedding-models"] });
   if (workspaceId) {
     void queryClient.invalidateQueries({ queryKey: modelPolicyQueryKeys.workspacePolicy(workspaceId) });
   }
@@ -49,16 +51,14 @@ export function useWithdrawProvider() {
 export function useSaveConnectionModels(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (modelIds: string[]) =>
-      putConnectionModels(
-        slug,
-        modelIds.map((id) => ({
-          id,
-          supports_chat: true,
-          supports_vision: false,
-          supports_embedding: false,
-        })),
-      ),
+    mutationFn: (
+      models: {
+        id: string;
+        supports_chat: boolean;
+        supports_vision: boolean;
+        supports_embedding: boolean;
+      }[],
+    ) => putConnectionModels(slug, models),
     onSuccess: () => invalidateAfterOffer(queryClient),
   });
 }

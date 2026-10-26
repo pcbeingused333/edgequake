@@ -15,7 +15,7 @@ test.describe("SPEC-176 live secret backend", () => {
     expect(shapes.status()).toBe(200);
     const body = (await shapes.json()) as Array<{ id: string }>;
     expect(body.map((shape) => shape.id)).toEqual(
-      expect.arrayContaining(["openai_chat", "anthropic_messages"]),
+      expect.arrayContaining(["openai", "anthropic", "ollama", "openrouter", "mistral"]),
     );
 
     const slug = `spec176-${Date.now()}`;

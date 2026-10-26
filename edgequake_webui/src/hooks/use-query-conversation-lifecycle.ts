@@ -1,8 +1,7 @@
 "use client";
 
 import { useConversation, useConversations } from "@/hooks/use-conversations";
-import { useProvidersHealth } from "@/hooks/use-models";
-import { useLlmModels as useProviderLlmModels } from "@/hooks/use-providers";
+import { useScopedEligibleModels } from "@/hooks/use-model-policy";
 import { isConversationNotFoundError } from "@/lib/query/conversation-errors";
 import {
   isQueryHandoffNewConversation,
@@ -32,12 +31,17 @@ export function useQueryConversationLifecycle({
 
   const querySettings = useSettingsStore((s) => s.querySettings);
   const setQuerySettings = useSettingsStore((s) => s.setQuerySettings);
+  const setWorkspaceQueryModel = useSettingsStore((s) => s.setWorkspaceQueryModel);
   const selectedTenantId = useTenantStore((s) => s.selectedTenantId);
   const selectedWorkspaceId = useTenantStore((s) => s.selectedWorkspaceId);
-  const { data: llmCatalog } = useProviderLlmModels();
-  const { data: providerHealth } = useProvidersHealth({
-    enabled: true,
-    refetchInterval: 60 * 1000,
+  const workspacePair = useSettingsStore((s) =>
+    selectedWorkspaceId ? s.queryModelsByWorkspace[selectedWorkspaceId] : undefined,
+  );
+  const workspaceId = useTenantStore((s) => s.selectedWorkspaceId);
+  const eligible = useScopedEligibleModels({
+    scope: "workspace",
+    id: workspaceId,
+    usage: "query",
   });
 
   const setActiveConversation = useQueryUIStore((s) => s.setActiveConversation);
@@ -73,42 +77,56 @@ export function useQueryConversationLifecycle({
     t,
   ]);
 
+  const shown = workspacePair?.provider || workspacePair?.model
+    ? workspacePair
+    : { provider: querySettings.provider, model: querySettings.model };
+
   useEffect(() => {
     const sanitizedSelection = sanitizeQueryModelSelection(
       {
-        provider: querySettings.provider,
-        model: querySettings.model,
+        provider: shown?.provider,
+        model: shown?.model,
       },
-      llmCatalog?.models,
-      providerHealth,
+      (eligible.data?.models ?? []).map((entry) => ({
+        provider: entry.provider,
+        name: entry.model,
+      })),
+      undefined,
+      eligible.isFetched,
     );
 
     if (
-      sanitizedSelection.provider !== querySettings.provider ||
-      sanitizedSelection.model !== querySettings.model
+      sanitizedSelection.provider !== shown?.provider ||
+      sanitizedSelection.model !== shown?.model
     ) {
-      setQuerySettings(sanitizedSelection);
+      if (selectedWorkspaceId) setWorkspaceQueryModel(selectedWorkspaceId, sanitizedSelection);
+      else setQuerySettings(sanitizedSelection);
 
       if (
         !hasResetUnavailableModelRef.current &&
-        (querySettings.provider || querySettings.model)
+        (shown?.provider || shown?.model)
       ) {
         hasResetUnavailableModelRef.current = true;
         toast.warning(t("query.modelReset", "Model selection reset"), {
           description: t(
             "query.modelResetDesc",
-            "Your previous model is unavailable in this environment, so the server default will be used.",
+            "This model is no longer allowed. Pick another, or use Inherit.",
           ),
         });
       }
     }
   }, [
-    llmCatalog?.models,
-    providerHealth,
+    eligible.data?.models,
+    eligible.isFetched,
     querySettings.model,
     querySettings.provider,
+    selectedWorkspaceId,
     setQuerySettings,
+    setWorkspaceQueryModel,
+    shown?.model,
+    shown?.provider,
     t,
+    workspacePair,
   ]);
 
   useEffect(() => {

@@ -71,8 +71,9 @@ describe('reconfigure persist payload', () => {
       llm_model: 'mistral-small-latest',
       embedding_provider: 'mistral',
       embedding_model: 'mistral-embed',
-      embedding_dimension: 1024,
     });
+    // The server copies the dimension from the model card; the client does not send one.
+    expect(payload).not.toHaveProperty('embedding_dimension');
     expect(payload.llm_model).not.toBe('');
   });
 
@@ -139,7 +140,7 @@ describe('reconfigure persist payload', () => {
 });
 
 describe('embedding live catalog onChange contract', () => {
-  it('buildWorkspaceUpdatePayload resolves dimension when live catalog miss sent 0', () => {
+  it('buildWorkspaceUpdatePayload leaves the dimension to the server when the catalog misses', () => {
     const payload = buildWorkspaceUpdatePayload({
       useServerDefaults: false,
       llm: { provider: 'mistral', model: 'mistral-small-latest' },
@@ -154,7 +155,7 @@ describe('embedding live catalog onChange contract', () => {
       entityTypesStrict: true,
     });
     expect(payload.embedding_model).toBe('mistral-embed-live');
-    expect(payload.embedding_dimension).toBeGreaterThan(0);
+    expect(payload).not.toHaveProperty('embedding_dimension');
   });
 });
 

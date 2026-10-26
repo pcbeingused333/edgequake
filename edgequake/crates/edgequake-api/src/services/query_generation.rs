@@ -13,9 +13,7 @@ use crate::handlers::query::resolve_query_workspace;
 use crate::handlers::query_types::QueryResponse as LegacyQueryResponse;
 use crate::middleware::TenantContext;
 use crate::services::query_context::{build_legacy_query_response, build_legacy_query_sources};
-use crate::services::query_execution::{
-    execute_sota_query_with_auth_fallback, resolve_workspace_query_resources,
-};
+use crate::services::query_execution::{execute_sota_query, resolve_workspace_query_resources};
 use crate::services::query_request_builder::{build_engine_request, QueryExecutionParams};
 use crate::state::AppState;
 
@@ -33,7 +31,7 @@ pub async fn execute_full_query(
     let resources =
         resolve_workspace_query_resources(state, tenant_ctx.workspace_id.as_deref()).await?;
 
-    execute_sota_query_with_auth_fallback(state, engine_request, resources, llm_override).await
+    execute_sota_query(state, engine_request, resources, llm_override).await
 }
 
 /// Execute query and assemble legacy HTTP `QueryResponse` (sources + stats).

@@ -4,10 +4,11 @@
  * On update, empty strings clear workspace overrides (SPEC-013).
  */
 
+import { visionChoicePatch } from '@/lib/workspace/vision-choice';
 import type { UpdateWorkspaceRequest } from '@/lib/api/edgequake/workspaces';
 import type { PdfParserBackendDraft, WizardDraft } from '@/lib/onboarding/wizard-state';
 import type { WorkspaceConfigChangedKey } from '@/lib/onboarding/workspace-config-diff';
-import { resolveEmbeddingDimension } from '@/lib/onboarding/resolve-embedding-dimension';
+import type { Workspace } from '@/types/workspace';
 import { extractionLanguageToUpdatePayload } from '@/constants/extraction-languages';
 import {
   ACC_FAIR_CHUNK_OVERLAP,
@@ -105,11 +106,7 @@ export function buildWorkspaceModelPayload(args: {
   if (args.embedding?.provider && args.embedding?.model) {
     payload.embedding_provider = args.embedding.provider;
     payload.embedding_model = args.embedding.model;
-    payload.embedding_dimension = resolveEmbeddingDimension({
-      provider: args.embedding.provider,
-      model: args.embedding.model,
-      dimension: args.embedding.dimension,
-    });
+    // The server copies the dimension from the model card; the client never guesses it.
   }
   if (args.vision?.provider && args.vision?.model) {
     payload.vision_llm_provider = args.vision.provider;
@@ -126,6 +123,8 @@ export interface WorkspaceUpdatePayloadArgs {
   llm?: ModelSelectionSlash;
   embedding?: ModelSelectionSlash;
   vision?: ModelSelectionSlash;
+  /** The workspace's saved `llm_roles`, so a vision save keeps the other roles. */
+  savedLlmRoles?: Workspace['llm_roles'];
   pdfParserBackend: PdfParserBackendDraft;
   /** SPEC-015V */
   visionExtractImages?: boolean;
@@ -194,6 +193,14 @@ export function buildWorkspaceUpdatePayload(
   const emitModelClears =
     args.useServerDefaults && (sparse ? modelSliceRequested : true);
 
+  // One vision write path: `llm_roles.vlm` plus cleared legacy fields (SPEC-163).
+  if (include('vision')) {
+    Object.assign(
+      payload,
+      visionChoicePatch(args.savedLlmRoles, args.useServerDefaults ? undefined : args.vision),
+    );
+  }
+
   if (emitModelClears) {
     if (include('llm')) {
       payload.llm_model = '';
@@ -204,18 +211,12 @@ export function buildWorkspaceUpdatePayload(
       payload.embedding_provider = '';
       payload.embedding_dimension = 0;
     }
-    if (include('vision')) {
-      payload.vision_llm_model = '';
-      payload.vision_llm_provider = '';
-    }
     if (!sparse) {
       payload.llm_model = '';
       payload.llm_provider = '';
       payload.embedding_model = '';
       payload.embedding_provider = '';
       payload.embedding_dimension = 0;
-      payload.vision_llm_model = '';
-      payload.vision_llm_provider = '';
       return payload;
     }
   } else if (!args.useServerDefaults) {
@@ -226,18 +227,6 @@ export function buildWorkspaceUpdatePayload(
     if (include('embedding')) {
       payload.embedding_model = args.embedding?.model ?? '';
       payload.embedding_provider = args.embedding?.provider ?? '';
-      payload.embedding_dimension =
-        args.embedding?.provider && args.embedding?.model
-          ? resolveEmbeddingDimension({
-              provider: args.embedding.provider,
-              model: args.embedding.model,
-              dimension: args.embedding.dimension,
-            })
-          : 0;
-    }
-    if (include('vision')) {
-      payload.vision_llm_model = args.vision?.model ?? '';
-      payload.vision_llm_provider = args.vision?.provider ?? '';
     }
   }
 

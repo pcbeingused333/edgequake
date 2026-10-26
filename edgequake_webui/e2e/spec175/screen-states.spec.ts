@@ -43,13 +43,13 @@ test.describe("SPEC-175 screen states @spec175", () => {
 
   test("Ingestion keeps the source lowercase and the resolved model readable @spec175", async ({ page }) => {
     await openSettings(page, "workspace_admin", "/settings/workspace/ingestion");
-    const resolves = page.getByTestId("settings-vision-resolves-to");
+    const resolves = page.getByTestId("vision-resolves-to");
     await expect(resolves).toBeVisible();
-    await expect(page.getByText("Server Default", { exact: true })).toBeVisible();
-    const subtitle = page.getByText(/^Resolves via /).first();
-    await expect(subtitle).toBeVisible();
-    // Title-cased copy ("Resolves Via Env") is the bug this guards against: the source stays lowercase.
-    await expect(subtitle).toHaveText(/^Resolves via [a-z]+$/);
+    // The fixture pins a workspace VLM role (ollama/qwen3), so the card names that override and its source.
+    await expect(page.getByText("Workspace override", { exact: true })).toBeVisible();
+    await expect(resolves).toHaveText("Resolves to ollama/qwen3");
+    // Title-cased source ("Source=Workspace") is the bug this guards against: the source stays lowercase.
+    await expect(resolves).toHaveAttribute("title", "source=workspace");
   });
 
   test("Graph node size reads Small / Medium / Large and selects share one width @spec175", async ({ page }) => {

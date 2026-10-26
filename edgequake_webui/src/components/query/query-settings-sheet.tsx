@@ -54,16 +54,15 @@ import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DocumentPickerPopover } from './document-picker-popover';
-import { ProviderModelSelector } from './provider-model-selector';
 import { QueryDocumentFilter } from './query-document-filter';
 import { ReasoningEffortSelect } from '@/components/settings/reasoning-effort-select';
-import { useLlmModels } from '@/hooks/use-providers';
 import {
   effectiveEffortWhenAuto,
   modelSupportsThinking,
   supportedReasoningEffortsForModel,
 } from '@/lib/settings/reasoning-effort-supported';
 import { normalizeModelFullId } from '@/lib/onboarding/model-payload';
+import { useLlmCapabilityModels } from '@/hooks/use-llm-capability-models';
 
 interface QuerySettings {
   stream: boolean;
@@ -85,9 +84,8 @@ interface QuerySettingsSheetProps {
   disabled?: boolean;
   /** Optional trigger button */
   trigger?: ReactNode;
-  /** Provider+model selector — moved from main toolbar for density reduction */
+  /** The chosen query model, read-only here. The composer chip is the one place to change it. */
   providerModel?: string;
-  onProviderModelChange?: (value: string) => void;
   /** Document filter — moved from main toolbar for density reduction */
   documentFilter?: DocumentFilter | undefined;
   onDocumentFilterChange?: (value: DocumentFilter | undefined) => void;
@@ -102,31 +100,30 @@ export function QuerySettingsSheet({
   disabled = false,
   trigger,
   providerModel,
-  onProviderModelChange,
   documentFilter,
   onDocumentFilterChange,
   scopedDocumentIds,
   onScopedDocumentIdsChange,
 }: QuerySettingsSheetProps) {
   const { t } = useTranslation();
-  const { data: llmData } = useLlmModels();
+  const llmModels = useLlmCapabilityModels();
   const reasoningSupported = useMemo(() => {
     if (!providerModel?.trim()) return undefined;
     const { provider, model } = normalizeModelFullId(providerModel);
-    return supportedReasoningEffortsForModel(llmData?.models, provider, model);
-  }, [llmData?.models, providerModel]);
+    return supportedReasoningEffortsForModel(llmModels, provider, model);
+  }, [llmModels, providerModel]);
   const thinkingSupported = useMemo(() => {
     if (!providerModel?.trim()) return undefined;
     const { provider, model } = normalizeModelFullId(providerModel);
-    return modelSupportsThinking(llmData?.models, provider, model);
-  }, [llmData?.models, providerModel]);
+    return modelSupportsThinking(llmModels, provider, model);
+  }, [llmModels, providerModel]);
   const reasoningEffectiveAuto = useMemo(() => {
     if (!providerModel?.trim()) {
       return effectiveEffortWhenAuto(undefined, undefined, undefined, "query");
     }
     const { provider, model } = normalizeModelFullId(providerModel);
-    return effectiveEffortWhenAuto(llmData?.models, provider, model, "query");
-  }, [llmData?.models, providerModel]);
+    return effectiveEffortWhenAuto(llmModels, provider, model, "query");
+  }, [llmModels, providerModel]);
 
   return (
     <Sheet>
@@ -161,22 +158,11 @@ export function QuerySettingsSheet({
         <ScrollArea className="flex-1 min-h-0" showShadows>
           <DrawerBody data-testid="query-settings-scroll-body">
             {/* Context Section — Provider & Document Filter (moved from main toolbar) */}
-            {(onProviderModelChange || onDocumentFilterChange) && (
+            {onDocumentFilterChange && (
               <DrawerSection
                 icon={<Filter className="h-3.5 w-3.5 text-blue-500" />}
                 title={t('query.settings.context', 'Context')}
               >
-                {onProviderModelChange && (
-                  <DrawerField
-                    label={t('query.settings.provider', 'AI Provider & Model')}
-                  >
-                    <ProviderModelSelector
-                      value={providerModel ?? ''}
-                      onChange={onProviderModelChange}
-                      disabled={disabled}
-                    />
-                  </DrawerField>
-                )}
                 {onDocumentFilterChange && (
                   <DrawerField
                     label={t('query.settings.documentFilter', 'Document Filter')}

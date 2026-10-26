@@ -3,16 +3,19 @@
  */
 'use client';
 
-import { embeddingModelToPickerOption } from '@/components/models/model-picker-mappers';
 import { mergePickerOptions } from '@/components/models/model-picker-options';
+import { ModelsStatus } from '@/components/models/models-status';
 import {
   ModelPickerPanel,
+  formatModelFullId,
+  type ModelPickerOption,
   type ModelPickerValue,
 } from '@/components/models/model-picker-panel';
-import { useEmbeddingModels } from '@/hooks/use-providers';
-import { resolveEmbeddingDimension } from '@/lib/onboarding/resolve-embedding-dimension';
+import { useScopedEligibleModels } from '@/hooks/use-model-policy';
+import type { EligibleModel } from '@/lib/api/edgequake/model-catalog';
 import { cn } from '@/lib/utils';
-import { Brain, Loader2 } from 'lucide-react';
+import { useTenantStore } from '@/stores/use-tenant-store';
+import { Brain } from 'lucide-react';
 
 export interface EmbeddingSelection {
   model: string;
@@ -29,6 +32,23 @@ interface EmbeddingModelSelectorProps {
   showProviderFilters?: boolean;
   /** LAW-101-13 inherit chip; overrides fleet catalog default label. */
   inheritLabel?: string;
+  choiceScope?: 'workspace' | 'tenant' | 'deployment';
+}
+
+function toOption(model: EligibleModel): ModelPickerOption {
+  return {
+    provider: model.provider,
+    providerDisplayName: model.provider_display_name || model.provider,
+    name: model.model,
+    displayName: model.display_name || model.model,
+    fullId: formatModelFullId(model.provider, model.model),
+    contextLength: 0,
+    supportsVision: false,
+    supportsTools: false,
+    supportsStreaming: false,
+    dimension: model.embedding_dimension ?? undefined,
+    available: true,
+  };
 }
 
 export function EmbeddingModelSelector({
@@ -37,33 +57,34 @@ export function EmbeddingModelSelector({
   disabled,
   className,
   inheritLabel,
+  choiceScope = 'workspace',
 }: EmbeddingModelSelectorProps) {
-  const { data: embeddingData, isLoading, error } = useEmbeddingModels();
+  const workspaceId = useTenantStore((s) => s.selectedWorkspaceId);
+  const tenantId = useTenantStore((s) => s.selectedTenantId);
+  const id = choiceScope === 'tenant' ? tenantId : choiceScope === 'workspace' ? workspaceId : null;
+  const { data, isLoading, error, refetch } = useScopedEligibleModels({
+    scope: choiceScope,
+    id,
+    usage: 'embedding',
+  });
 
   if (isLoading) {
     return (
-      <div
-        className={cn('flex items-center gap-2 px-3 py-2 bg-muted rounded-lg', className)}
-        data-testid="embedding-model-selector-loading"
-      >
-        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-        <span className="text-sm text-muted-foreground">Loading embedding models...</span>
+      <div data-testid="embedding-model-selector-loading">
+        <ModelsStatus state="loading" className={className} />
       </div>
     );
   }
 
-  if (error || !embeddingData) {
+  if (error || !data) {
     return (
-      <div
-        className={cn('px-3 py-2 bg-muted rounded-lg text-sm text-muted-foreground', className)}
-        data-testid="embedding-model-selector"
-      >
-        Could not load embedding models. Will use server default.
+      <div data-testid="embedding-model-selector">
+        <ModelsStatus state="error" onRetry={() => void refetch()} className={className} />
       </div>
     );
   }
 
-  const options = mergePickerOptions(embeddingData.models.map(embeddingModelToPickerOption));
+  const options = mergePickerOptions(data.models.map(toOption));
 
   const pickerValue: ModelPickerValue | undefined = value
     ? {
@@ -73,30 +94,18 @@ export function EmbeddingModelSelector({
       }
     : undefined;
 
-  const defaultLabel =
-    inheritLabel ??
-    (embeddingData.default_provider && embeddingData.default_model
-      ? `Server default (${embeddingData.default_provider}/${embeddingData.default_model})`
-      : 'Server default');
+  const defaultLabel = inheritLabel ?? 'Inherit';
 
   const handleChange = (v: ModelPickerValue | undefined) => {
     if (!v) {
       onChange?.(undefined);
       return;
     }
-    const match = embeddingData.models.find(
-      (m) => m.provider === v.provider && m.name === v.model,
-    );
-    const catalogDim = match?.dimension ?? options.find((o) => o.fullId === v.fullId)?.dimension;
-    const dimension = resolveEmbeddingDimension({
-      provider: v.provider,
-      model: v.model,
-      catalogDimension: catalogDim,
-    });
+    const match = data.models.find((m) => m.provider === v.provider && m.model === v.model);
     onChange?.({
       provider: v.provider,
       model: v.model,
-      dimension,
+      dimension: match?.embedding_dimension ?? 0,
     });
   };
 
