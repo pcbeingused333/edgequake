@@ -207,53 +207,90 @@ export function stepsForWizard(
   return withDocumentParsingAfterModels(steps);
 }
 
+/** Why “Next” is disabled — SSOT for validation and for the footer hint. */
+export type WizardBlockerCode =
+  | 'admin_invalid'
+  | 'tenant_name_required'
+  | 'workspace_name_required'
+  | 'models_not_eligible'
+  | 'defaults_incomplete'
+  | 'models_incomplete'
+  | 'chunking_invalid'
+  | 'extract_budget_invalid'
+  | 'no_changes';
+
+export interface WizardGateOptions {
+  hasConfiguredDefaults: boolean;
+  advancedModelsValid: boolean;
+  /** When false (reconfigure), Apply requires at least one config diff. */
+  hasConfigChanges?: boolean;
+  /** SPEC-179: false when the pair to save is not offered or has no vector size. */
+  eligibilityOk?: boolean;
+}
+
+const OPEN_GATE: WizardGateOptions = {
+  hasConfiguredDefaults: true,
+  advancedModelsValid: true,
+};
+
+function modelsBlocker(
+  draft: WizardDraft,
+  opts: WizardGateOptions,
+): WizardBlockerCode | null {
+  if (opts.eligibilityOk === false) return 'models_not_eligible';
+  if (draft.useServerDefaults) {
+    return opts.hasConfiguredDefaults ? null : 'defaults_incomplete';
+  }
+  return opts.advancedModelsValid ? null : 'models_incomplete';
+}
+
+function adminBlocker(draft: WizardDraft): WizardBlockerCode | null {
+  const userOk = draft.adminUsername.trim().length >= 3;
+  const passOk = draft.adminPassword.length >= 8;
+  const match = draft.adminPassword === draft.adminPasswordConfirm;
+  return userOk && passOk && match ? null : 'admin_invalid';
+}
+
+function reviewBlocker(opts: WizardGateOptions): WizardBlockerCode | null {
+  if (opts.eligibilityOk === false) return 'models_not_eligible';
+  return opts.hasConfigChanges === false ? 'no_changes' : null;
+}
+
+/** The first reason `step` cannot advance, or `null` when it can. */
+export function wizardBlocker(
+  step: WizardStepId,
+  draft: WizardDraft,
+  opts: WizardGateOptions = OPEN_GATE,
+): WizardBlockerCode | null {
+  switch (step) {
+    case 'admin':
+      return adminBlocker(draft);
+    case 'tenant-basics':
+      return draft.tenantName.trim() ? null : 'tenant_name_required';
+    case 'workspace-basics':
+      return draft.workspaceName.trim() ? null : 'workspace_name_required';
+    case 'models':
+      return modelsBlocker(draft, opts);
+    case 'chunking':
+      return isChunkingDraftValid(draft) ? null : 'chunking_invalid';
+    case 'extract-budget':
+      return isExtractBudgetDraftValid(draft) ? null : 'extract_budget_invalid';
+    case 'review':
+      return reviewBlocker(opts);
+    case 'document-parsing':
+    case 'extraction':
+      return null;
+    default:
+      return 'no_changes';
+  }
+}
+
 export function canProceed(
   step: WizardStepId,
   draft: WizardDraft,
-  opts: {
-    hasConfiguredDefaults: boolean;
-    advancedModelsValid: boolean;
-    /** When true (reconfigure), Apply requires at least one config diff. */
-    hasConfigChanges?: boolean;
-    /** SPEC-179: false when the pair to save is not offered or has no vector size. */
-    eligibilityOk?: boolean;
-  } = {
-    hasConfiguredDefaults: true,
-    advancedModelsValid: true,
-  },
+  opts: WizardGateOptions = OPEN_GATE,
 ): boolean {
-  switch (step) {
-    case 'admin': {
-      const userOk = draft.adminUsername.trim().length >= 3;
-      const passOk = draft.adminPassword.length >= 8;
-      const match = draft.adminPassword === draft.adminPasswordConfirm;
-      return userOk && passOk && match;
-    }
-    case 'tenant-basics':
-      return draft.tenantName.trim().length > 0;
-    case 'workspace-basics':
-      return draft.workspaceName.trim().length > 0;
-    case 'models':
-      if (opts.eligibilityOk === false) return false;
-      if (draft.useServerDefaults) {
-        return opts.hasConfiguredDefaults;
-      }
-      return opts.advancedModelsValid;
-    case 'document-parsing':
-      return true;
-    case 'chunking':
-      return isChunkingDraftValid(draft);
-    case 'extract-budget':
-      return isExtractBudgetDraftValid(draft);
-    case 'extraction':
-      return true;
-    case 'review':
-      if (opts.eligibilityOk === false) return false;
-      if (opts.hasConfigChanges === false) return false;
-      return true;
-    default:
-      return false;
-  }
+  return wizardBlocker(step, draft, opts) === null;
 }
 
 export function clampStepIndex(index: number, stepCount: number): number {

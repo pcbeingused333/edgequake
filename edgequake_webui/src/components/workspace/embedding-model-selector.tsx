@@ -3,7 +3,7 @@
  */
 'use client';
 
-import { mergePickerOptions } from '@/components/models/model-picker-options';
+import { mergePickerOptions, pairInCatalog } from '@/components/models/model-picker-options';
 import { ModelsStatus } from '@/components/models/models-status';
 import {
   ModelPickerPanel,
@@ -28,10 +28,14 @@ interface EmbeddingModelSelectorProps {
   onChange?: (selection: EmbeddingSelection | undefined) => void;
   disabled?: boolean;
   className?: string;
+  /** Layout hook for the provider + model panel (e.g. side by side in wide forms). */
+  panelClassName?: string;
   /** @deprecated Ignored — provider is a dedicated select. */
   showProviderFilters?: boolean;
   /** LAW-101-13 inherit chip; overrides fleet catalog default label. */
   inheritLabel?: string;
+  /** Inherited pair. The "use default" link is hidden when this pair is not eligible. */
+  inheritPair?: { provider?: string; model?: string };
   choiceScope?: 'workspace' | 'tenant' | 'deployment';
 }
 
@@ -56,7 +60,9 @@ export function EmbeddingModelSelector({
   onChange,
   disabled,
   className,
+  panelClassName,
   inheritLabel,
+  inheritPair,
   choiceScope = 'workspace',
 }: EmbeddingModelSelectorProps) {
   const workspaceId = useTenantStore((s) => s.selectedWorkspaceId);
@@ -112,12 +118,18 @@ export function EmbeddingModelSelector({
   return (
     <div className={cn('space-y-1', className)} data-testid="embedding-model-selector">
       <ModelPickerPanel
+        className={panelClassName}
         variant="embedding"
         options={options}
         value={pickerValue}
         onChange={handleChange}
         disabled={disabled}
         serverDefaultLabel={defaultLabel}
+        allowServerDefault={
+          !inheritPair?.provider ||
+          !inheritPair.model ||
+          pairInCatalog(inheritPair.provider, inheritPair.model, options)
+        }
         placeholder="Search embedding models…"
         testId="embedding-model-picker-panel"
       />

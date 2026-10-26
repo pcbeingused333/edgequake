@@ -3,7 +3,9 @@ import type { ModelPickerOption } from "../model-picker-panel";
 import {
   ensureSelectedInPickerOptions,
   mergePickerOptions,
+  pairInCatalog,
   pickerOptionKey,
+  providerInCatalog,
 } from "../model-picker-options";
 
 function option(
@@ -57,5 +59,18 @@ describe("ensureSelectedInPickerOptions", () => {
       fullId: "mistral/mistral-large-2512",
     }, list);
     expect(result).toHaveLength(1);
+  });
+
+  it("does not pin a model whose provider is absent from the eligible catalog", () => {
+    const catalog = [option("ollama", "gemma4:latest")];
+    const result = ensureSelectedInPickerOptions(catalog, {
+      provider: "mistral",
+      model: "mistral-embed",
+      fullId: "mistral/mistral-embed",
+    }, catalog);
+    expect(result.map((row) => row.fullId)).toEqual(["ollama/gemma4:latest"]);
+    expect(providerInCatalog("mistral", catalog)).toBe(false);
+    expect(pairInCatalog("mistral", "mistral-embed", catalog)).toBe(false);
+    expect(pairInCatalog("ollama", "gemma4:latest", catalog)).toBe(true);
   });
 });

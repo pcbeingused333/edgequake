@@ -1,7 +1,7 @@
 'use client';
 
 import { WizardShell } from '@/components/onboarding/wizard-shell';
-import { STEP_META } from '@/components/onboarding/step-meta';
+import { resolveStepLabels, resolveStepMeta } from '@/components/onboarding/step-meta';
 import { DocumentParsingStep } from '@/components/onboarding/steps/document-parsing-step';
 import { ModelDefaultsStep } from '@/components/onboarding/steps/model-defaults-step';
 import { ReviewStep } from '@/components/onboarding/steps/review-step';
@@ -13,7 +13,8 @@ import { ENTITY_PRESETS } from '@/constants/entity-presets';
 import { EDGE_PRESETS, RELATION_PRESETS } from '@/constants/kg-schema-presets';
 import { useInheritedModelDefaults } from '@/hooks/use-inherited-model-defaults';
 import { useSettingsAccess } from '@/hooks/use-settings-context';
-import { useWizardEligibility } from '@/hooks/use-wizard-eligibility';
+import { useWizardGate } from '@/hooks/use-wizard-gate';
+import { useWizardSteps } from '@/hooks/use-wizard-steps';
 import { describeCreateFailure } from '@/lib/onboarding/create-error';
 import { useWizardDraftPicks } from '@/hooks/use-wizard-draft-picks';
 import { createWorkspace } from '@/lib/api/edgequake';
@@ -21,12 +22,9 @@ import { buildWorkspaceIngestPayload, buildWorkspaceModelPayload } from '@/lib/o
 import { useWizardDraftPersistence } from '@/lib/onboarding/use-wizard-draft-persistence';
 import {
   EMPTY_WIZARD_DRAFT,
-  canProceed,
-  clampStepIndex,
   draftForStorage,
   stepsForWizard,
   type WizardDraft,
-  type WizardStepId,
 } from '@/lib/onboarding/wizard-state';
 import type { Workspace } from '@/types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -65,7 +63,8 @@ export function CreateWorkspaceWizard({
     [],
   );
   const baselineRef = useRef(initialWorkspaceDraft());
-  const [stepIndex, setStepIndex] = useState(0);
+  const nav = useWizardSteps(steps);
+  const { stepIndex, setStepIndex, stepId, goToStep } = nav;
   const [draft, setDraft] = useState<WizardDraft>(initialWorkspaceDraft);
   const [submitting, setSubmitting] = useState(false);
   const inherited = useInheritedModelDefaults(tenantId);
@@ -91,8 +90,8 @@ export function CreateWorkspaceWizard({
     steps.length,
   );
 
-  const stepId = steps[clampStepIndex(stepIndex, steps.length)];
-  const meta = STEP_META[stepId];
+  const meta = resolveStepMeta(stepId, 'create-workspace');
+  const stepLabels = useMemo(() => resolveStepLabels(steps, t), [steps, t]);
 
   const patchDraft = useCallback((patch: Partial<WizardDraft>) => {
     setDraft((d) => ({ ...d, ...patch }));
@@ -115,23 +114,18 @@ export function CreateWorkspaceWizard({
     languagePrefillDone.current = true;
   }, [open, inherited.isLoading, inherited.extractionLanguage]);
 
-  const advancedValid = Boolean(llm?.provider && embedding?.provider && vision?.provider);
+  const access = useSettingsAccess(tenantId, null);
   // SPEC-179: the pair that will be saved must belong to this organization's offer.
-  const eligibility = useWizardEligibility({
+  const { eligibility, eligibilityOk, canGoNext, blockedReason } = useWizardGate({
     scope: 'tenant',
     id: tenantId,
-    useDefaults: draft.useServerDefaults,
+    stepId,
+    draft,
     inherited,
     llm,
     embedding,
     vision,
-  });
-  const access = useSettingsAccess(tenantId, null);
-  const eligibilityOk = !eligibility.blocked && !eligibility.nothingOffered;
-  const canGoNext = canProceed(stepId, draft, {
     hasConfiguredDefaults,
-    advancedModelsValid: advancedValid,
-    eligibilityOk,
   });
 
   const isDirty =
@@ -143,7 +137,7 @@ export function CreateWorkspaceWizard({
     const next = initialWorkspaceDraft();
     baselineRef.current = next;
     languagePrefillDone.current = false;
-    setStepIndex(0);
+    nav.restart();
     setDraft(next);
     clearDraft();
   }, [clearDraft]);
@@ -151,11 +145,6 @@ export function CreateWorkspaceWizard({
   const handleOpenChange = (next: boolean) => {
     if (!next) reset();
     onOpenChange(next);
-  };
-
-  const goToStep = (target: WizardStepId) => {
-    const idx = steps.indexOf(target);
-    if (idx >= 0) setStepIndex(idx);
   };
 
   const finalize = async () => {
@@ -200,11 +189,11 @@ export function CreateWorkspaceWizard({
   };
 
   const onNext = () => {
-    if (stepIndex >= steps.length - 1) {
+    if (nav.isLastStep) {
       void finalize();
       return;
     }
-    setStepIndex((i) => clampStepIndex(i + 1, steps.length));
+    nav.advance();
   };
 
   const body = (() => {
@@ -270,10 +259,13 @@ export function CreateWorkspaceWizard({
       stepTitle={t(meta.titleKey, meta.title)}
       stepDescription={t(meta.descriptionKey, meta.description)}
       canGoNext={canGoNext}
-      isLastStep={stepIndex >= steps.length - 1}
+      stepLabels={stepLabels}
+      onStepSelect={nav.goToIndex}
+      blockedReason={blockedReason}
+      isLastStep={nav.isLastStep}
       isSubmitting={submitting}
       isDirty={isDirty}
-      onBack={() => setStepIndex((i) => clampStepIndex(i - 1, steps.length))}
+      onBack={nav.goBack}
       onNext={onNext}
       finishLabel={t('onboarding.createWorkspace', 'Create workspace')}
       testId="create-workspace-wizard"

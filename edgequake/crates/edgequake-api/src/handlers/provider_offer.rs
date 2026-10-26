@@ -16,6 +16,8 @@ use crate::handlers::connections::env_connections;
 use crate::handlers::model_policy::workspace_or_404;
 use crate::handlers::workspaces::tenant_access::{require_tenant_access, TenantAccess};
 use crate::services::model_policy_catalog::load_catalog;
+#[cfg(feature = "postgres")]
+use crate::services::provider_offer_rows::current_offer_revision;
 use crate::services::provider_offer_rows::{
     load_global_offer, load_tenant_offer, load_workspace_offer, offer_hash,
     provider_assignment_count, replace_offer, set_withdrawn, write_provider_audit, ScopeOffer,
@@ -595,23 +597,9 @@ async fn offer_revision(state: &AppState, tenant_id: Uuid, workspace_id: Option<
         let Some(pool) = state.optional_pg_pool() else {
             return 1;
         };
-        let (sql, id) = if let Some(workspace_id) = workspace_id {
-            (
-                "SELECT provider_offer_revision FROM workspaces WHERE workspace_id = $1",
-                workspace_id,
-            )
-        } else {
-            (
-                "SELECT provider_offer_revision FROM tenants WHERE tenant_id = $1",
-                tenant_id,
-            )
-        };
-        if let Ok(Some(value)) = sqlx::query_scalar::<_, i32>(sql)
-            .bind(id)
-            .fetch_optional(pool)
-            .await
-        {
-            return i64::from(value);
+        let id = workspace_id.unwrap_or(tenant_id);
+        if let Ok(value) = current_offer_revision(pool, workspace_id.is_some(), id).await {
+            return value;
         }
     }
     let _ = (state, tenant_id, workspace_id);

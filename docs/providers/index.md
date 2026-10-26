@@ -5,7 +5,7 @@ description: Choose and connect a cloud or local model server to EdgeQuake, test
 
 EdgeQuake needs two models. A chat model extracts entities and writes answers. An embedding model turns text into vectors. This section shows how to point each one at a cloud API or a local server, and how to check the link before you ingest documents.
 
-> Product release: v0.32.2. Connections, `edgequake doctor` and `POST /api/v1/providers/test` are new in the next release (v0.33.0, SPEC-163).
+> Product release: v0.38.2. The model that runs is the eligible set from Deployment, Organization, and Workspace. Saving a provider key needs `EDGEQUAKE_SECRETS_KEY`. The server still boots when that key is unset.
 
 ## Start in one of four ways
 

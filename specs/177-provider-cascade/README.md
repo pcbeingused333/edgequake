@@ -1,6 +1,6 @@
 # SPEC-177 — Provider cascade
 
-> **Status:** Specified (W0). No product code in this pack.
+> **Status:** Shipped in v0.38.1.
 > **Product pin:** EdgeQuake v0.38.0. Migration file head is
 > [222_spec176_secret_manager.sql](../../edgequake/migrations/222_spec176_secret_manager.sql).
 > This pack reserves migration **223**.

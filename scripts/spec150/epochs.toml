@@ -3,7 +3,8 @@
 # v0.35.1 owns schema 207. v0.35.2 through v0.35.7 serve that migration set.
 # v0.36.0 owns schema 214.
 # v0.37.0 owns schema 218.
-# v0.38.0 owns schema 219. v0.38.1 owns schema 224
+# v0.38.0 owns schema 219. v0.38.1 owns schema 224.
+# v0.38.2 serves that same migration set.
 # (SPEC-174 clearance through SPEC-179 provider refresh).
 
 [unreleased]
@@ -362,4 +363,13 @@ pg_majors = [16,17,18]
 key = true
 replay = true
 # max mig 224 (SPEC-179 provider refresh; migrations 220–224)
+# hash 73af5a1576afcbd3 (222 numbered migration files)
+
+[[epoch]]
+tag = "v0.38.2"
+mode = "image"
+pg_majors = [16,17,18]
+key = true
+replay = true
+# max mig 224 (same set as v0.38.1; no new migration)
 # hash 73af5a1576afcbd3 (222 numbered migration files)

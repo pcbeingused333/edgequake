@@ -97,14 +97,27 @@ export function getWorkspaceEmbeddingSelection(
   };
 }
 
-/** The saved vision choice: `llm_roles.vlm` (canonical), then the legacy vision fields. */
+/**
+ * The saved vision choice: `llm_roles.vlm` (canonical), then the legacy vision fields.
+ * With `overridesOnly`, painted legacy fields count only when provenance is the workspace.
+ * A complete `llm_roles.vlm` row is stored on the workspace, so it still counts.
+ */
 export function getWorkspaceVisionSelection(
   workspace?: Workspace | null,
+  opts: WorkspaceSelectionOpts = {},
 ): LLMSelection | undefined {
   const role = savedVisionRole(workspace);
   const rawProvider = role?.provider ?? workspace?.vision_llm_provider;
   const model = role?.model ?? workspace?.vision_llm_model;
   if (!rawProvider || !model) {
+    return undefined;
+  }
+  const storedRole = Boolean(role?.provider && role?.model);
+  if (
+    opts.overridesOnly &&
+    !storedRole &&
+    !isWorkspaceResolutionSource(workspace?.vision_llm_resolution_source)
+  ) {
     return undefined;
   }
 

@@ -1,6 +1,6 @@
 # SPEC-174 — Document security (RBAC x tag ABAC)
 
-> **Status:** Specified (W0). No product code in this pack.
+> **Status:** Shipped in v0.38.1.
 > **Product pin:** EdgeQuake v0.38.0 (migration head 219).
 > **Scope:** Document-level visibility inside a workspace. Tags carry a
 > classification and compartments such as department. Security roles carry

@@ -53,7 +53,11 @@ pub fn from_llm(item: &LlmModelItem) -> CatalogItem {
 
 pub fn from_embedding(item: &EmbeddingModelItem) -> CatalogItem {
     let model = &item.model;
-    let dim = model.capabilities.embedding_dimension;
+    let dim = crate::model_catalog::resolved_embedding_dimension(
+        &model.name,
+        model.capabilities.embedding_dimension,
+        item.dimension,
+    );
     CatalogItem {
         entry: CatalogEntry {
             provider: item.provider.to_lowercase(),
@@ -123,6 +127,12 @@ pub async fn append_connection_models(
         {
             continue;
         }
+        let dimension = dimension.filter(|value| *value > 0).or_else(|| {
+            embedding
+                .then(|| edgequake_core::Workspace::known_embedding_dimension(&model))
+                .flatten()
+                .map(|value| value as i32)
+        });
         catalog.push(CatalogItem {
             display_name: model.clone(),
             provider_display_name: slug.clone(),

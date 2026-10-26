@@ -3,7 +3,7 @@ title: "What's new"
 description: "Per-release highlights moved out of the README."
 ---
 
-This page lists the highlights of each release from v0.38.0 back to v0.24.0, newest first. Most entries name the schema number, so you can plan a database migration before you upgrade. For the full change list, see the [CHANGELOG](CHANGELOG.md), and for the upgrade steps, see the linked upgrade guide. A plain-English [picture tour](https://edgequake.com/tutorial/) of the UI is on the marketing site.
+This page lists the highlights of each release from v0.38.2 back to v0.24.0, newest first. Most entries name the schema number, so you can plan a database migration before you upgrade. For the full change list, see the [CHANGELOG](CHANGELOG.md), and for the upgrade steps, see the linked upgrade guide. A plain-English [picture tour](https://edgequake.com/tutorial/) of the UI is on the marketing site.
 
 ## Schema train at a glance
 
@@ -30,11 +30,37 @@ timeline
     v0.36.0 : 214
     v0.37.0 : 218
     v0.38.0 : 219
+    v0.38.1 : 224
+    v0.38.2 : 224 pinned
 ```
 
-The timeline shows the schema number each release leaves the database at, from v0.23.0 through v0.38.0.
+The timeline shows the schema number each release leaves the database at, from v0.23.0 through v0.38.2.
 
 Run `edgequake migrate` when you move to a release with a higher number. The [upgrading guide](operations/upgrading.md) covers the steps.
+
+### What's new in 0.38.2
+
+Patch on v0.38.1. Schema stays **224**. Upgrade from 0.38.1 applies no new migration. Restart replicas after the image bump.
+
+- A live model list that omits the embedding size keeps the known size. `mistral-embed` stays 1024.
+- Saving a provider offer reads the revision as a 32-bit integer, so `If-Match` matches.
+- The workspace wizard and the model picker follow the eligible set.
+- SPEC-001 Acc was not re-scored. The pack [`medical-mid-20261024T031725Z`](../specs/001-benchmark/e2e/artifacts/history/medical-mid-20261024T031725Z/) stays the valid score: EdgeQuake **0.8084** vs LightRAG **0.7681**, a statistical tie. EdgeQuake does not claim a win.
+
+Upgrade: **[upgrade-to-0.38.2.md](operations/upgrade-to-0.38.2.md)** · changelog: [CHANGELOG.md](CHANGELOG.md).
+
+### What's new in 0.38.1
+
+Document clearance, a secret manager, and one model choice from Deployment down to the workspace (SPEC-174 through SPEC-179). Schema moves **219 → 224**. Upgrade from 0.38.0 runs migrations **220** through **224**. All five are expand-only. Restart replicas after migrate.
+
+- Clearance stays off until a workspace owner turns it on. Existing documents stay readable.
+- An empty model catalog still runs the previous assignment. The first ceiling row is what constrains a tenant.
+- New provider keys need `EDGEQUAKE_SECRETS_KEY`. The server still boots without it. Infisical stays optional.
+- Deployment offers providers. The organization and the workspace each take a subset. The default is unconstrained.
+- List, save, and run use the same model gate. Withdraw and delete report who breaks and do not retarget those assignments.
+- SPEC-001 Acc was not re-scored. The v0.37.0 pack [`medical-mid-20261024T031725Z`](../specs/001-benchmark/e2e/artifacts/history/medical-mid-20261024T031725Z/) stays the valid score: EdgeQuake **0.8084** vs LightRAG **0.7681**, a statistical tie. EdgeQuake does not claim a win.
+
+Upgrade: **[upgrade-to-0.38.1.md](operations/upgrade-to-0.38.1.md)** · changelog: [CHANGELOG.md](CHANGELOG.md).
 
 ### What's new in 0.38.0
 

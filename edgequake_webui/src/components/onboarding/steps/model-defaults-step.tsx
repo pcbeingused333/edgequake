@@ -1,33 +1,18 @@
 'use client';
 
-import { useLlmCapabilityModels } from "@/hooks/use-llm-capability-models";
-import { ServerDefaultsCard } from '@/components/onboarding/server-defaults-card';
-import { WizardEligibilityNotice } from '@/components/onboarding/wizard-eligibility-notice';
-import type { WizardEligibility } from '@/hooks/use-wizard-eligibility';
-import type { WizardRole } from '@/lib/onboarding/defaults-eligibility';
-import { ReasoningEffortSelect } from '@/components/settings/reasoning-effort-select';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
+import { CustomModelPickers } from '@/components/onboarding/steps/custom-model-pickers';
+import { ModelSourceChoice } from '@/components/onboarding/steps/model-source-choice';
 import { DecisionEngineFields } from '@/components/workspace/decision-engine-fields';
-import {
-  EmbeddingModelSelector,
-  type EmbeddingSelection,
-} from '@/components/workspace/embedding-model-selector';
-import {
-  LLMModelSelector,
-  type LLMSelection,
-} from '@/components/workspace/llm-model-selector';
-import { useInheritedModelDefaults } from '@/hooks/use-inherited-model-defaults';
+import type { EmbeddingSelection } from '@/components/workspace/embedding-model-selector';
+import type { LLMSelection } from '@/components/workspace/llm-model-selector';
 import { useDecisionModels, useDecisionStatus } from '@/hooks/use-decision-status';
+import { useInheritedModelDefaults } from '@/hooks/use-inherited-model-defaults';
+import type { WizardEligibility } from '@/hooks/use-wizard-eligibility';
+import { blockedRoles, type WizardRole } from '@/lib/onboarding/defaults-eligibility';
 import { formatInheritModelLabel } from '@/lib/onboarding/inherited-defaults';
 import type { WizardDraft } from '@/lib/onboarding/wizard-state';
-import {
-  effectiveEffortWhenAuto,
-  modelSupportsThinking,
-  supportedReasoningEffortsForModel,
-} from '@/lib/settings/reasoning-effort-supported';
 import { draftIssue, type ExtractionModeDraft } from '@/lib/workspace/extraction-mode-draft';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export interface ModelDefaultsStepProps {
@@ -54,9 +39,33 @@ export interface ModelDefaultsStepProps {
   canManageProviders?: boolean;
 }
 
+type Inherited = ReturnType<typeof useInheritedModelDefaults>;
+
+/** Roles whose inherited default can seed a custom pick (set, and not refused by the offer). */
+function seedableRoles(
+  inherited: Inherited,
+  eligibility?: WizardEligibility,
+): Record<WizardRole, boolean> {
+  // Wait until the offer has been judged. Seeding earlier copies a pair the workspace may refuse.
+  if (eligibility?.isLoading) {
+    return { llm: false, embedding: false, vision: false };
+  }
+  const refused = new Set(eligibility ? blockedRoles(eligibility.verdicts) : []);
+  return {
+    llm: Boolean(inherited.defaultLlmProvider && inherited.defaultLlmModel) && !refused.has('llm'),
+    embedding:
+      Boolean(inherited.defaultEmbeddingProvider && inherited.defaultEmbeddingModel) &&
+      !refused.has('embedding'),
+    vision:
+      Boolean(inherited.defaultVisionProvider && inherited.defaultVisionModel) &&
+      !refused.has('vision'),
+  };
+}
+
 /**
  * SPEC-101 — Defaults-first model step (LAW-101-2 / LAW-101-3).
- * Happy path never mounts pickers. Advanced uses two-step provider → model.
+ * One choice (follow defaults / choose models); pickers mount only for the second.
+ * Choosing models starts from the usable defaults, so the user changes only what they need.
  */
 export function ModelDefaultsStep({
   draft,
@@ -75,34 +84,8 @@ export function ModelDefaultsStep({
   canManageProviders = false,
 }: ModelDefaultsStepProps) {
   const { t } = useTranslation();
-  const useTenantLadder = Boolean(tenantId);
   const pickerScope = choiceScope ?? (tenantId ? 'tenant' : 'deployment');
   const inherited = useInheritedModelDefaults(tenantId ?? null);
-  const llmModels = useLlmCapabilityModels();
-  const reasoningSupported = useMemo(
-    () =>
-      supportedReasoningEffortsForModel(
-        llmModels,
-        llm?.provider,
-        llm?.model,
-      ),
-    [llmModels, llm?.provider, llm?.model],
-  );
-  const thinkingSupported = useMemo(
-    () => modelSupportsThinking(llmModels, llm?.provider, llm?.model),
-    [llmModels, llm?.provider, llm?.model],
-  );
-  const reasoningEffectiveAuto = useMemo(
-    () =>
-      effectiveEffortWhenAuto(
-        llmModels,
-        llm?.provider,
-        llm?.model,
-        'fleet',
-      ),
-    [llmModels, llm?.provider, llm?.model],
-  );
-
   const { isLoading, hasConfiguredDefaults } = inherited;
   const decisionStatus = useDecisionStatus(draft.decisionModel);
   const decisionModels = useDecisionModels();
@@ -122,189 +105,102 @@ export function ModelDefaultsStep({
       onChange({ useServerDefaults: false });
       onAdvancedOpenChange(true);
     }
-  }, [
-    isLoading,
-    hasConfiguredDefaults,
-    draft.useServerDefaults,
-    onChange,
-    onAdvancedOpenChange,
-  ]);
+  }, [isLoading, hasConfiguredDefaults, draft.useServerDefaults, onChange, onAdvancedOpenChange]);
 
   const showAdvanced = advancedOpen && !isLoading;
-  /** One click from "not offered" to the picker, with the stale pick cleared. */
-  const chooseAnother = (role: WizardRole) => {
+  const [focusRequest, setFocusRequest] = useState<{ role: WizardRole; nonce: number } | null>(null);
+
+  const useDefaults = () => {
+    onChange({ useServerDefaults: true });
+    onLlmChange(undefined);
+    onEmbeddingChange(undefined);
+    onVisionChange(undefined);
+    onAdvancedOpenChange(false);
+  };
+
+  const customize = () => {
     onChange({ useServerDefaults: false });
     onAdvancedOpenChange(true);
-    if (role === 'llm') onLlmChange(undefined);
-    if (role === 'embedding') onEmbeddingChange(undefined);
-    if (role === 'vision') onVisionChange(undefined);
+    const seed = seedableRoles(inherited, eligibility);
+    if (seed.llm && !llm) {
+      onLlmChange({
+        provider: inherited.defaultLlmProvider!,
+        model: inherited.defaultLlmModel!,
+        fullId: `${inherited.defaultLlmProvider}/${inherited.defaultLlmModel}`,
+      });
+    }
+    if (seed.embedding && !embedding) {
+      onEmbeddingChange({
+        provider: inherited.defaultEmbeddingProvider!,
+        model: inherited.defaultEmbeddingModel!,
+        dimension: inherited.defaultEmbeddingDimension ?? 0,
+      });
+    }
+    if (seed.vision && !vision) {
+      onVisionChange({
+        provider: inherited.defaultVisionProvider!,
+        model: inherited.defaultVisionModel!,
+        fullId: `${inherited.defaultVisionProvider}/${inherited.defaultVisionModel}`,
+      });
+    }
   };
+
+  const chooseAnother = (role: WizardRole) => {
+    customize();
+    setFocusRequest((current) => ({ role, nonce: (current?.nonce ?? 0) + 1 }));
+  };
+
   const tenantPrefix = t('onboarding.tenantDefaultShort', 'Organization default');
   const serverPrefix = t('onboarding.serverDefaultShort', 'Server default');
-  const llmInheritLabel = formatInheritModelLabel({
-    source: inherited.source,
-    provider: inherited.defaultLlmProvider,
-    model: inherited.defaultLlmModel,
-    tenantPrefix,
-    serverPrefix,
-  });
-  const embeddingInheritLabel = formatInheritModelLabel({
-    source: inherited.source,
-    provider: inherited.defaultEmbeddingProvider,
-    model: inherited.defaultEmbeddingModel,
-    tenantPrefix,
-    serverPrefix,
-  });
-  const visionInheritLabel = formatInheritModelLabel({
-    source: inherited.source,
-    provider: inherited.defaultVisionProvider,
-    model: inherited.defaultVisionModel,
-    tenantPrefix,
-    serverPrefix,
-  });
+  const inheritLabel = (provider?: string, model?: string) =>
+    formatInheritModelLabel({ source: inherited.source, provider, model, tenantPrefix, serverPrefix });
 
   return (
-    <div className="space-y-3" data-testid="wizard-step-models">
-      <ServerDefaultsCard
-        showCustomize={!showAdvanced}
-        overridden={showAdvanced}
-        defaults={{
-          isLoading: inherited.isLoading,
-          hasConfiguredDefaults: inherited.hasConfiguredDefaults,
-          source: inherited.source,
-          defaultLlmProvider: inherited.defaultLlmProvider,
-          defaultLlmModel: inherited.defaultLlmModel,
-          defaultEmbeddingProvider: inherited.defaultEmbeddingProvider,
-          defaultEmbeddingModel: inherited.defaultEmbeddingModel,
-          defaultVisionProvider: inherited.defaultVisionProvider,
-          defaultVisionModel: inherited.defaultVisionModel,
-          verdicts:
-            eligibility && draft.useServerDefaults && !eligibility.nothingOffered
-              ? eligibility.verdicts
-              : undefined,
-        }}
-        onCustomize={() => {
-          onChange({ useServerDefaults: false });
-          onAdvancedOpenChange(true);
-        }}
+    <div className="space-y-4" data-testid="wizard-step-models">
+      <ModelSourceChoice
+        inherited={inherited}
+        followsDefaults={!showAdvanced}
+        onUseDefaults={useDefaults}
+        onCustomize={customize}
+        eligibility={eligibility}
+        canManageProviders={canManageProviders}
+        offerScope={pickerScope}
+        onChooseAnother={chooseAnother}
       />
 
-      {eligibility ? (
-        <WizardEligibilityNotice
-          eligibility={eligibility}
-          canManageProviders={canManageProviders}
-          onChooseAnother={chooseAnother}
-        />
-      ) : null}
-
-      <div data-testid="wizard-decision-engine">
-        <DecisionEngineFields
-          draft={decisionDraft}
-          onChange={(patch) =>
-            onChange({
-              ...(patch.enabled !== undefined ? { decisionEnabled: patch.enabled } : {}),
-              ...(patch.model !== undefined ? { decisionModel: patch.model } : {}),
-              ...(patch.preset !== undefined ? { decisionPreset: patch.preset } : {}),
-              ...(patch.packSize !== undefined ? { decisionPackSize: patch.packSize } : {}),
-            })
-          }
-          limits={decisionStatus.data?.limits}
-          issue={decisionIssue}
-          forcedOn={decisionStatus.data?.activation === 'forced'}
-          lockedByAdmin={decisionStatus.data?.activation === 'locked'}
-          models={decisionModels.data?.models}
-          modelsLoading={decisionModels.isLoading}
-          host={
-            decisionStatus.data?.provider?.base_url_host ??
-            decisionStatus.data?.backend?.base_url_host ??
-            null
-          }
-          status={decisionStatus.data}
-          statusLoading={decisionStatus.isLoading}
-          statusError={decisionStatus.isError}
-          onRetryStatus={() => void decisionStatus.refetch()}
-          statusRetrying={decisionStatus.isFetching}
-        />
-      </div>
-
       {showAdvanced ? (
-        <div className="space-y-3" data-testid="wizard-models-advanced">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-medium">
-              {t('onboarding.customModels', 'Custom model selection')}
-            </p>
-            {hasConfiguredDefaults ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-auto px-2 py-1 text-xs"
-                onClick={() => {
-                  onChange({ useServerDefaults: true });
-                  onLlmChange(undefined);
-                  onEmbeddingChange(undefined);
-                  onVisionChange(undefined);
-                  onAdvancedOpenChange(false);
-                }}
-                data-testid="wizard-models-use-defaults"
-              >
-                {useTenantLadder
-                  ? t('onboarding.backToInheritedDefaults', 'Use organization defaults')
-                  : t('onboarding.backToServerDefaults', 'Use server defaults')}
-              </Button>
-            ) : null}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {t(
-              'onboarding.customModelsHint',
-              'Choose a provider, then a model.',
-            )}
-          </p>
-          <div className="grid gap-3">
-            <div className="grid gap-2">
-              <Label>{t('workspace.llmModel', 'LLM Model')}</Label>
-              <LLMModelSelector
-                value={llm}
-                onChange={onLlmChange}
-                showCapabilityFilters={false}
-                showUsageHint
-                inheritLabel={llmInheritLabel}
-                choiceScope={pickerScope}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label>{t('workspace.embeddingModel', 'Embedding Model')}</Label>
-              <EmbeddingModelSelector
-                value={embedding}
-                onChange={onEmbeddingChange}
-                inheritLabel={embeddingInheritLabel}
-                choiceScope={pickerScope}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label>{t('workspace.visionLLM', 'Vision LLM')}</Label>
-              <LLMModelSelector
-                value={vision}
-                onChange={onVisionChange}
-                filterVision
-                showCapabilityFilters={false}
-                showUsageHint
-                choiceScope={pickerScope}
-                usage="vlm"
-                inheritLabel={visionInheritLabel}
-              />
-            </div>
-            <ReasoningEffortSelect
-              value={draft.reasoningEffort}
-              onChange={(reasoningEffort) => onChange({ reasoningEffort })}
-              supported={reasoningSupported}
-              thinkingSupported={thinkingSupported}
-              effectiveWhenAuto={reasoningEffectiveAuto}
-              label={t('onboarding.reasoningEffort', 'Default reasoning effort')}
-              data-testid="wizard-reasoning-effort"
-            />
-          </div>
-        </div>
+        <CustomModelPickers
+          llm={llm}
+          embedding={embedding}
+          vision={vision}
+          onLlmChange={onLlmChange}
+          onEmbeddingChange={onEmbeddingChange}
+          onVisionChange={onVisionChange}
+          pickerScope={pickerScope}
+          inheritLabels={{
+            llm: inheritLabel(inherited.defaultLlmProvider, inherited.defaultLlmModel),
+            embedding: inheritLabel(
+              inherited.defaultEmbeddingProvider,
+              inherited.defaultEmbeddingModel,
+            ),
+            vision: inheritLabel(inherited.defaultVisionProvider, inherited.defaultVisionModel),
+          }}
+          inheritPairs={{
+            llm: { provider: inherited.defaultLlmProvider, model: inherited.defaultLlmModel },
+            embedding: {
+              provider: inherited.defaultEmbeddingProvider,
+              model: inherited.defaultEmbeddingModel,
+            },
+            vision: {
+              provider: inherited.defaultVisionProvider,
+              model: inherited.defaultVisionModel,
+            },
+          }}
+          reasoningEffort={draft.reasoningEffort}
+          onReasoningEffortChange={(reasoningEffort) => onChange({ reasoningEffort })}
+          focusRole={focusRequest?.role}
+          focusNonce={focusRequest?.nonce ?? 0}
+        />
       ) : null}
 
       {!isLoading && !hasConfiguredDefaults && !showAdvanced ? (
@@ -314,12 +210,50 @@ export function ModelDefaultsStep({
         >
           {t(
             'onboarding.modelsRequiredHint',
-            useTenantLadder
-              ? 'Organization and server defaults are incomplete. Customize models to continue.'
-              : 'Server defaults are incomplete. Customize models to continue.',
+            tenantId
+              ? 'Organization and server defaults are incomplete. Choose models to continue.'
+              : 'Server defaults are incomplete. Choose models to continue.',
           )}
         </p>
       ) : null}
+
+      <section className="space-y-2" aria-labelledby="wizard-decision-heading">
+        <h4
+          id="wizard-decision-heading"
+          className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+        >
+          {t('onboarding.decisionSection', 'Extraction engine')}
+        </h4>
+        <div data-testid="wizard-decision-engine">
+          <DecisionEngineFields
+            draft={decisionDraft}
+            onChange={(patch) =>
+              onChange({
+                ...(patch.enabled !== undefined ? { decisionEnabled: patch.enabled } : {}),
+                ...(patch.model !== undefined ? { decisionModel: patch.model } : {}),
+                ...(patch.preset !== undefined ? { decisionPreset: patch.preset } : {}),
+                ...(patch.packSize !== undefined ? { decisionPackSize: patch.packSize } : {}),
+              })
+            }
+            limits={decisionStatus.data?.limits}
+            issue={decisionIssue}
+            forcedOn={decisionStatus.data?.activation === 'forced'}
+            lockedByAdmin={decisionStatus.data?.activation === 'locked'}
+            models={decisionModels.data?.models}
+            modelsLoading={decisionModels.isLoading}
+            host={
+              decisionStatus.data?.provider?.base_url_host ??
+              decisionStatus.data?.backend?.base_url_host ??
+              null
+            }
+            status={decisionStatus.data}
+            statusLoading={decisionStatus.isLoading}
+            statusError={decisionStatus.isError}
+            onRetryStatus={() => void decisionStatus.refetch()}
+            statusRetrying={decisionStatus.isFetching}
+          />
+        </div>
+      </section>
     </div>
   );
 }

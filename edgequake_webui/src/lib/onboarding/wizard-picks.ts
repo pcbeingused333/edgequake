@@ -1,5 +1,6 @@
 import type { EmbeddingSelection } from '@/components/workspace/embedding-model-selector';
 import type { LLMSelection } from '@/components/workspace/llm-model-selector';
+import type { WizardRole } from '@/lib/onboarding/defaults-eligibility';
 import type { WizardDraft, WizardModelPick } from '@/lib/onboarding/wizard-state';
 
 export function llmSelectionFromPick(
@@ -98,4 +99,14 @@ export function draftPatchAfterVisionPick(
     visionPick: undefined,
     useServerDefaults: remaining ? draft.useServerDefaults : true,
   };
+}
+
+type PickLike = { provider?: string; model?: string } | undefined;
+
+/**
+ * Custom models need at least one real pick. A role left unpicked inherits the default
+ * (the pickers offer exactly that), so a partial override is valid on its own.
+ */
+export function hasAnyModelPick(picks: Record<WizardRole, PickLike>): boolean {
+  return Object.values(picks).some((pick) => Boolean(pick?.provider && pick?.model));
 }

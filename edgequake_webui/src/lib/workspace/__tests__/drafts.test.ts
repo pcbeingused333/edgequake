@@ -3,6 +3,7 @@ import type { Workspace } from '@/types';
 import {
   getWorkspaceEmbeddingSelection,
   getWorkspaceLlmSelection,
+  getWorkspaceVisionSelection,
   isWorkspaceResolutionSource,
 } from '../drafts';
 
@@ -53,6 +54,45 @@ describe('getWorkspaceLlmSelection overridesOnly', () => {
         overridesOnly: true,
       })?.provider,
     ).toBe('ollama');
+  });
+});
+
+describe('getWorkspaceVisionSelection overridesOnly', () => {
+  it('ignores painted legacy fields whose source is not the workspace', () => {
+    expect(
+      getWorkspaceVisionSelection(
+        ws({
+          vision_llm_provider: 'mistral',
+          vision_llm_model: 'mistral-small-latest',
+          vision_llm_resolution_source: 'tenant',
+        }),
+        { overridesOnly: true },
+      ),
+    ).toBeUndefined();
+  });
+
+  it('keeps a painted pair when the source is the workspace', () => {
+    expect(
+      getWorkspaceVisionSelection(
+        ws({
+          vision_llm_provider: 'mistral',
+          vision_llm_model: 'mistral-small-latest',
+          vision_llm_resolution_source: 'workspace',
+        }),
+        { overridesOnly: true },
+      )?.model,
+    ).toBe('mistral-small-latest');
+  });
+
+  it('keeps a canonical llm_roles.vlm row stored on the workspace', () => {
+    expect(
+      getWorkspaceVisionSelection(
+        ws({
+          llm_roles: { vlm: { provider: 'ollama', model: 'qwen3' } },
+        }),
+        { overridesOnly: true },
+      )?.fullId,
+    ).toBe('ollama/qwen3');
   });
 });
 

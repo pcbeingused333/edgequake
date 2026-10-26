@@ -22,10 +22,37 @@ import { sectionHref } from '@/lib/settings/registry';
 const pairLabel = (pair: ModelPair) =>
   pair.provider && pair.model ? `${pair.provider}/${pair.model}` : '';
 
+function notOfferedText(
+  t: ReturnType<typeof useTranslation>['t'],
+  scope: 'deployment' | 'tenant' | 'workspace' | undefined,
+  model: string,
+): string {
+  if (scope === 'workspace') {
+    return t(
+      'onboarding.eligibility.notOfferedWorkspace',
+      '{{model}} is not offered to this workspace. Choose a model this workspace can use.',
+      { model },
+    );
+  }
+  if (scope === 'deployment') {
+    return t(
+      'onboarding.eligibility.notOfferedDeployment',
+      '{{model}} is not offered on this deployment.',
+      { model },
+    );
+  }
+  return t(
+    'onboarding.eligibility.notOffered',
+    '{{model}} is not offered to this organization any more.',
+    { model },
+  );
+}
+
 function reasonText(
   t: ReturnType<typeof useTranslation>['t'],
   status: RoleStatus,
   pair: ModelPair,
+  scope: 'deployment' | 'tenant' | 'workspace' | undefined,
 ): string {
   if (status === 'dimension_missing') {
     return t(
@@ -34,21 +61,19 @@ function reasonText(
       { model: pairLabel(pair) },
     );
   }
-  return t(
-    'onboarding.eligibility.notOffered',
-    '{{model}} is not offered to this organization any more.',
-    { model: pairLabel(pair) },
-  );
+  return notOfferedText(t, scope, pairLabel(pair));
 }
 
 export function WizardEligibilityNotice({
   eligibility,
   canManageProviders,
+  offerScope,
   onChooseAnother,
 }: {
   eligibility: WizardEligibility;
   /** Organization admins get a link to the offer; everyone else is told whom to ask. */
   canManageProviders: boolean;
+  offerScope?: 'deployment' | 'tenant' | 'workspace';
   /** Opens the custom pickers so the user can replace the blocked role. */
   onChooseAnother: (role: WizardRole) => void;
 }) {
@@ -64,6 +89,7 @@ export function WizardEligibilityNotice({
   }
 
   if (eligibility.nothingOffered) {
+    const workspaceScope = offerScope === 'workspace';
     return (
       <div
         role="alert"
@@ -71,17 +97,31 @@ export function WizardEligibilityNotice({
         data-testid="wizard-nothing-offered"
       >
         <p className="font-medium">
-          {t('onboarding.eligibility.nothingTitle', 'No provider is offered to this organization yet')}
+          {workspaceScope
+            ? t('onboarding.eligibility.nothingTitleWorkspace', 'No provider is offered to this workspace yet')
+            : t('onboarding.eligibility.nothingTitle', 'No provider is offered to this organization yet')}
         </p>
         <p className="text-muted-foreground">
           {canManageProviders
-            ? t('onboarding.eligibility.nothingAdmin', 'Turn on at least one provider, then come back to create the workspace.')
-            : t('onboarding.eligibility.nothingMember', 'Ask an organization admin to turn on a provider.')}
+            ? workspaceScope
+              ? t(
+                  'onboarding.eligibility.nothingAdminWorkspace',
+                  'Turn on at least one provider for this workspace, then come back.',
+                )
+              : t('onboarding.eligibility.nothingAdmin', 'Turn on at least one provider, then come back to create the workspace.')
+            : workspaceScope
+              ? t('onboarding.eligibility.nothingMemberWorkspace', 'Ask a workspace admin to turn on a provider.')
+              : t('onboarding.eligibility.nothingMember', 'Ask an organization admin to turn on a provider.')}
         </p>
         {canManageProviders ? (
           <Button asChild size="sm" variant="outline">
-            <Link href={sectionHref('org-providers')} data-testid="wizard-open-providers">
-              {t('onboarding.eligibility.openProviders', 'Open organization providers')}
+            <Link
+              href={sectionHref(workspaceScope ? 'models' : 'org-providers')}
+              data-testid={workspaceScope ? 'wizard-open-workspace-models' : 'wizard-open-providers'}
+            >
+              {workspaceScope
+                ? t('onboarding.eligibility.openWorkspaceModels', 'Open workspace models')
+                : t('onboarding.eligibility.openProviders', 'Open organization providers')}
             </Link>
           </Button>
         ) : null}
@@ -103,12 +143,34 @@ export function WizardEligibilityNotice({
             <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden />
             <span>
               <span className="font-medium">{ROLE_LABEL[role]}. </span>
-              {reasonText(t, eligibility.verdicts[role], eligibility.pairs[role])}
+              {reasonText(t, eligibility.verdicts[role], eligibility.pairs[role], offerScope)}
             </span>
           </span>
-          <Button type="button" size="sm" variant="outline" onClick={() => onChooseAnother(role)}>
-            {t('onboarding.eligibility.chooseAnother', 'Choose another')}
-          </Button>
+          <span className="flex flex-wrap items-center gap-2">
+            {offerScope === 'workspace' && eligibility.verdicts[role] === 'not_eligible' ? (
+              canManageProviders ? (
+                <Button asChild size="sm" variant="outline">
+                  <Link
+                    href={sectionHref('models')}
+                    data-testid="wizard-open-workspace-models"
+                  >
+                    {t('onboarding.eligibility.turnOnProvider', 'Turn on {{provider}} for this workspace', {
+                      provider: eligibility.pairs[role].provider || t('onboarding.eligibility.thisProvider', 'this provider'),
+                    })}
+                  </Link>
+                </Button>
+              ) : (
+                <span className="text-muted-foreground" data-testid="wizard-ask-workspace-admin">
+                  {t('onboarding.eligibility.askWorkspaceAdmin', 'Ask a workspace admin to turn on {{provider}}.', {
+                    provider: eligibility.pairs[role].provider || t('onboarding.eligibility.thisProvider', 'this provider'),
+                  })}
+                </span>
+              )
+            ) : null}
+            <Button type="button" size="sm" variant="outline" onClick={() => onChooseAnother(role)}>
+              {t('onboarding.eligibility.chooseAnother', 'Choose another')}
+            </Button>
+          </span>
         </li>
       ))}
     </ul>

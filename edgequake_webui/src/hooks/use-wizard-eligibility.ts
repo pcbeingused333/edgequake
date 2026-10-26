@@ -48,17 +48,23 @@ export function useWizardEligibility(input: WizardEligibilityInput): WizardEligi
   const { useDefaults, inherited, llm, embedding, vision } = input;
 
   return useMemo(() => {
+    const inheritedPairs: Record<WizardRole, ModelPair> = {
+      llm: { provider: inherited.defaultLlmProvider, model: inherited.defaultLlmModel },
+      embedding: {
+        provider: inherited.defaultEmbeddingProvider,
+        model: inherited.defaultEmbeddingModel,
+        dimension: inherited.defaultEmbeddingDimension,
+      },
+      vision: { provider: inherited.defaultVisionProvider, model: inherited.defaultVisionModel },
+    };
+    // A role the user did not pick inherits, so the inherited pair is what gets judged.
     const pairs: Record<WizardRole, ModelPair> = useDefaults
-      ? {
-          llm: { provider: inherited.defaultLlmProvider, model: inherited.defaultLlmModel },
-          embedding: {
-            provider: inherited.defaultEmbeddingProvider,
-            model: inherited.defaultEmbeddingModel,
-            dimension: inherited.defaultEmbeddingDimension,
-          },
-          vision: { provider: inherited.defaultVisionProvider, model: inherited.defaultVisionModel },
-        }
-      : { llm: llm ?? {}, embedding: embedding ?? {}, vision: vision ?? {} };
+      ? inheritedPairs
+      : {
+          llm: llm?.model ? llm : inheritedPairs.llm,
+          embedding: embedding?.model ? embedding : inheritedPairs.embedding,
+          vision: vision?.model ? vision : inheritedPairs.vision,
+        };
     const lists: Record<WizardRole, RoleList> = {
       llm: { models: chat.models, loading: chat.isLoading },
       embedding: { models: embeddingQuery.data?.models ?? [], loading: embeddingQuery.isLoading },

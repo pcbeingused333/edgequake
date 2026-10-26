@@ -1,7 +1,7 @@
 'use client';
 
 import { WizardShell } from '@/components/onboarding/wizard-shell';
-import { STEP_META } from '@/components/onboarding/step-meta';
+import { STEP_META, resolveStepLabels } from '@/components/onboarding/step-meta';
 import { DocumentParsingStep } from '@/components/onboarding/steps/document-parsing-step';
 import { ModelDefaultsStep } from '@/components/onboarding/steps/model-defaults-step';
 import { ReviewStep } from '@/components/onboarding/steps/review-step';
@@ -25,13 +25,14 @@ import { buildTenantModelPayload, buildWorkspaceIngestPayload, buildWorkspaceMod
 import { useWizardDraftPersistence } from '@/lib/onboarding/use-wizard-draft-persistence';
 import {
   EMPTY_WIZARD_DRAFT,
-  canProceed,
+  wizardBlocker,
   clampStepIndex,
   draftForStorage,
   stepsForWizard,
   type WizardDraft,
   type WizardStepId,
 } from '@/lib/onboarding/wizard-state';
+import { describeBlocker, type BlockerTranslate } from '@/lib/onboarding/wizard-blocker-message';
 import type { Tenant, Workspace } from '@/types';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -95,10 +96,13 @@ export function CreateTenantWizard({ open, onOpenChange, onCreated }: CreateTena
 
   const advancedValid = Boolean(llm?.provider && embedding?.provider && vision?.provider);
 
-  const canGoNext = canProceed(stepId, draft, {
+  const blocker = wizardBlocker(stepId, draft, {
     hasConfiguredDefaults,
     advancedModelsValid: advancedValid,
   });
+  const canGoNext = blocker === null;
+  const blockedReason = describeBlocker(blocker, t as BlockerTranslate);
+  const stepLabels = useMemo(() => resolveStepLabels(steps, t), [steps, t]);
 
   const isDirty =
     stepIndex > 0 ||
@@ -255,6 +259,8 @@ export function CreateTenantWizard({ open, onOpenChange, onCreated }: CreateTena
       stepCount={steps.length}
       stepTitle={t(meta.titleKey, meta.title)}
       stepDescription={t(meta.descriptionKey, meta.description)}
+      stepLabels={stepLabels}
+      blockedReason={blockedReason}
       canGoNext={canGoNext}
       isLastStep={stepIndex >= steps.length - 1}
       isSubmitting={submitting}

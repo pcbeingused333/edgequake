@@ -10,6 +10,10 @@
 import snippets.caddy
 
 {$EDGEQUAKE_HOSTNAME} {
+	log {
+		output stdout
+		format json
+	}
 	header {
 		Strict-Transport-Security "max-age=15552000"
 		X-Content-Type-Options "nosniff"

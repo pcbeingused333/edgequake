@@ -1,11 +1,19 @@
 'use client';
 
-import { Button } from '@/components/ui/button';
+import { OptionCard } from '@/components/onboarding/option-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useServerModelDefaults } from '@/hooks/use-server-model-defaults';
-import type { DefaultsSource, ModelDefaultsSlice } from '@/lib/onboarding/inherited-defaults';
+import type {
+  DefaultsSource,
+  ModelDefaultsSlice,
+} from '@/lib/onboarding/inherited-defaults';
 import { cn } from '@/lib/utils';
-import type { RoleStatus, WizardRole } from '@/lib/onboarding/defaults-eligibility';
+import {
+  BLOCKING,
+  knownEmbeddingDimension,
+  type RoleStatus,
+  type WizardRole,
+} from '@/lib/onboarding/defaults-eligibility';
 import { useTranslation } from 'react-i18next';
 
 export interface ResolvedDefaultsDisplay extends ModelDefaultsSlice {
@@ -21,11 +29,10 @@ export interface ResolvedDefaultsDisplay extends ModelDefaultsSlice {
 
 export interface ServerDefaultsCardProps {
   className?: string;
-  onCustomize?: () => void;
-  customizeLabel?: string;
-  showCustomize?: boolean;
-  /** When true, show an "Overridden" badge (Advanced custom models active). */
-  overridden?: boolean;
+  /** Radio state: true when the workspace follows these defaults. */
+  selected?: boolean;
+  /** Choose “use the defaults”. */
+  onSelect?: () => void;
   /**
    * When provided, render these resolved lines instead of calling useServerModelDefaults.
    * Used by Create Workspace (tenant → server ladder).
@@ -54,18 +61,49 @@ function VerdictBadge({ status }: { status?: RoleStatus }) {
   );
 }
 
+function DefaultRow({
+  role,
+  testId,
+  value,
+  detail,
+  status,
+}: {
+  role: string;
+  testId: string;
+  value: string;
+  detail?: string;
+  status?: RoleStatus;
+}) {
+  return (
+    <div
+      className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-baseline gap-2"
+      data-testid={testId}
+    >
+      <dt className="text-xs font-medium text-muted-foreground">{role}</dt>
+      <dd className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-xs">
+        <span className="break-all">{value}</span>
+        {detail ? (
+          <span className="font-sans text-[11px] text-muted-foreground">
+            {detail}
+          </span>
+        ) : null}
+        <VerdictBadge status={status} />
+      </dd>
+    </div>
+  );
+}
+
 function ServerDefaultsCardView({
   className,
-  onCustomize,
-  customizeLabel,
-  showCustomize = true,
-  overridden = false,
+  selected = true,
+  onSelect,
   isLoading,
   hasConfiguredDefaults,
   defaultLlmProvider,
   defaultLlmModel,
   defaultEmbeddingProvider,
   defaultEmbeddingModel,
+  defaultEmbeddingDimension,
   defaultVisionProvider,
   defaultVisionModel,
   source = 'server',
@@ -81,27 +119,27 @@ function ServerDefaultsCardView({
   const title =
     sourceLabel ??
     (source === 'tenant'
-      ? t('onboarding.usingTenantDefaults', 'Using organization defaults')
+      ? t('onboarding.useTenantDefaults', 'Use organization defaults')
       : hasConfiguredDefaults
-        ? t('onboarding.usingServerDefaults', 'Using server defaults')
-        : t('onboarding.serverDefaultsMissing', 'Server defaults not fully configured'));
+        ? t('onboarding.useServerDefaults', 'Use server defaults')
+        : t(
+            'onboarding.serverDefaultsMissing',
+            'Defaults not fully configured',
+          ));
 
   const hint =
     sourceHint ??
     (source === 'tenant'
       ? t(
-          'onboarding.tenantDefaultsSource',
-          'Inherits from the current tenant (falls back to server). Can be overridden for this workspace.',
+          'onboarding.tenantDefaultsHint',
+          'Inherited from your organization, then the server.',
         )
-      : t(
-          'onboarding.serverDefaultsSource',
-          'Source: environment / server config. Can be overridden per tenant or workspace.',
-        ));
+      : t('onboarding.serverDefaultsHint', 'Set by the server configuration.'));
 
   if (isLoading) {
     return (
       <div
-        className={cn('rounded-lg border p-3 space-y-2', className)}
+        className={cn('space-y-2 rounded-xl border p-3.5', className)}
         data-testid="server-defaults-card-loading"
       >
         <Skeleton className="h-4 w-40" />
@@ -112,65 +150,68 @@ function ServerDefaultsCardView({
     );
   }
 
+  const refused = Object.values(verdicts ?? {}).some((status) => BLOCKING.includes(status));
+  const dimension =
+    defaultEmbeddingDimension ||
+    knownEmbeddingDimension(defaultEmbeddingModel ?? '');
+
   return (
     <div
-      className={cn('rounded-lg border p-3 space-y-2', className)}
+      className={className}
       data-testid="server-defaults-card"
       data-configured={hasConfiguredDefaults ? 'true' : 'false'}
-      data-overridden={overridden ? 'true' : 'false'}
+      data-overridden={selected ? 'false' : 'true'}
       data-source={source}
     >
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-medium">{title}</p>
-        {overridden ? (
-          <span
-            className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground"
-            data-testid="server-defaults-overridden"
-          >
-            {t('onboarding.overriddenDefaults', 'Overridden')}
-          </span>
-        ) : null}
-      </div>
-      <dl className="space-y-1 text-xs font-mono text-muted-foreground">
-        <div className="flex gap-2" data-testid="server-defaults-llm">
-          <dt className="w-20 shrink-0 font-sans font-medium text-foreground/80">LLM</dt>
-          <dd className="flex flex-wrap items-center gap-2">
-            {formatId(defaultLlmProvider, defaultLlmModel)}
-            <VerdictBadge status={verdicts?.llm} />
-          </dd>
-        </div>
-        <div className="flex gap-2" data-testid="server-defaults-embedding">
-          <dt className="w-20 shrink-0 font-sans font-medium text-foreground/80">Embedding</dt>
-          <dd className="flex flex-wrap items-center gap-2">
-            {formatId(defaultEmbeddingProvider, defaultEmbeddingModel)}
-            <VerdictBadge status={verdicts?.embedding} />
-          </dd>
-        </div>
-        <div className="flex gap-2" data-testid="server-defaults-vision">
-          <dt className="w-20 shrink-0 font-sans font-medium text-foreground/80">Vision</dt>
-          <dd className="flex flex-wrap items-center gap-2">
-            {formatId(defaultVisionProvider, defaultVisionModel)}
-            <VerdictBadge status={verdicts?.vision} />
-          </dd>
-        </div>
-      </dl>
-      <p className="text-xs text-muted-foreground">{hint}</p>
-      {showCustomize && onCustomize ? (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={onCustomize}
-          data-testid="server-defaults-customize"
-        >
-          {customizeLabel ?? t('onboarding.customizeModels', 'Customize models')}
-        </Button>
-      ) : null}
+      <OptionCard
+        className="h-full"
+        selected={selected}
+        onSelect={() => onSelect?.()}
+        disabled={!hasConfiguredDefaults || !onSelect}
+        title={title}
+        badge={
+          hasConfiguredDefaults && !refused
+            ? t('onboarding.recommended', 'Recommended')
+            : undefined
+        }
+        data-testid="wizard-models-use-defaults"
+      >
+        <dl className="space-y-1.5">
+          <DefaultRow
+            role="LLM"
+            testId="server-defaults-llm"
+            value={formatId(defaultLlmProvider, defaultLlmModel)}
+            status={verdicts?.llm}
+          />
+          <DefaultRow
+            role="Embedding"
+            testId="server-defaults-embedding"
+            value={formatId(defaultEmbeddingProvider, defaultEmbeddingModel)}
+            detail={
+              dimension > 0
+                ? t('onboarding.dimensions', '{{dimension}} dims', {
+                    dimension: String(dimension),
+                  })
+                : undefined
+            }
+            status={verdicts?.embedding}
+          />
+          <DefaultRow
+            role="Vision"
+            testId="server-defaults-vision"
+            value={formatId(defaultVisionProvider, defaultVisionModel)}
+            status={verdicts?.vision}
+          />
+        </dl>
+        <p className="text-xs text-muted-foreground">{hint}</p>
+      </OptionCard>
     </div>
   );
 }
 
-function ServerDefaultsCardFromServer(props: Omit<ServerDefaultsCardProps, 'defaults'>) {
+function ServerDefaultsCardFromServer(
+  props: Omit<ServerDefaultsCardProps, 'defaults'>,
+) {
   const server = useServerModelDefaults();
   return (
     <ServerDefaultsCardView
@@ -192,7 +233,10 @@ function ServerDefaultsCardFromServer(props: Omit<ServerDefaultsCardProps, 'defa
  * SPEC-101 — Explicit defaults for LLM · Embedding · Vision (LAW-101-2).
  * Presentational when `defaults` prop is set; otherwise loads server defaults.
  */
-export function ServerDefaultsCard({ defaults, ...rest }: ServerDefaultsCardProps) {
+export function ServerDefaultsCard({
+  defaults,
+  ...rest
+}: ServerDefaultsCardProps) {
   if (defaults) {
     return (
       <ServerDefaultsCardView
@@ -203,6 +247,7 @@ export function ServerDefaultsCard({ defaults, ...rest }: ServerDefaultsCardProp
         defaultLlmModel={defaults.defaultLlmModel}
         defaultEmbeddingProvider={defaults.defaultEmbeddingProvider}
         defaultEmbeddingModel={defaults.defaultEmbeddingModel}
+        defaultEmbeddingDimension={defaults.defaultEmbeddingDimension}
         defaultVisionProvider={defaults.defaultVisionProvider}
         defaultVisionModel={defaults.defaultVisionModel}
         source={defaults.source ?? 'server'}

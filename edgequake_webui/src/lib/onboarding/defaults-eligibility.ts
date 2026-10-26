@@ -28,6 +28,37 @@ export interface RoleList {
 
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
+/**
+ * Sizes the provider list omits. Mistral's model list does not include them.
+ * Must stay aligned with `Workspace::known_embedding_dimension`.
+ */
+export function knownEmbeddingDimension(model: string): number {
+  const name = model.trim().toLowerCase();
+  switch (name) {
+    case 'text-embedding-3-small':
+    case 'text-embedding-ada-002':
+      return 1536;
+    case 'text-embedding-3-large':
+      return 3072;
+    case 'embeddinggemma:latest':
+    case 'nomic-embed-text':
+    case 'nomic-embed-text:latest':
+      return 768;
+    case 'mistral-embed':
+    case 'mistral-embed-2312':
+    case 'codestral-embed':
+    case 'codestral-embed-2505':
+    case 'mxbai-embed-large':
+    case 'mxbai-embed-large:latest':
+      return 1024;
+    default:
+      if (name.includes('768')) return 768;
+      if (name.includes('1024')) return 1024;
+      if (name.includes('3072')) return 3072;
+      return 0;
+  }
+}
+
 export function judgeRole(role: WizardRole, pair: ModelPair, list: RoleList): RoleStatus {
   if (!pair.provider?.trim() || !pair.model?.trim()) return 'unset';
   if (list.loading) return 'loading';
@@ -36,7 +67,9 @@ export function judgeRole(role: WizardRole, pair: ModelPair, list: RoleList): Ro
   );
   if (!match) return 'not_eligible';
   if (role === 'embedding') {
-    const dimension = match.embedding_dimension ?? pair.dimension ?? 0;
+    const card = match.embedding_dimension ?? 0;
+    const inherited = pair.dimension ?? 0;
+    const dimension = card > 0 ? card : inherited > 0 ? inherited : knownEmbeddingDimension(pair.model as string);
     if (!(dimension > 0)) return 'dimension_missing';
   }
   return 'ok';

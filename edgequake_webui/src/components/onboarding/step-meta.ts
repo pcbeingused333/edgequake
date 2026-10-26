@@ -1,4 +1,4 @@
-import type { WizardStepId } from '@/lib/onboarding/wizard-state';
+import type { WizardKind, WizardStepId } from '@/lib/onboarding/wizard-state';
 
 export const STEP_META: Record<
   WizardStepId,
@@ -67,3 +67,35 @@ export const RECONFIGURE_REVIEW_META = {
   descriptionKey: 'onboarding.reconfigureReviewSubtitle',
   description: 'Confirm changes. Rebuild may be required for existing docs.',
 } as const;
+
+/** Short stepper label per step (the long title stays in the step header). */
+export const STEP_LABEL: Record<WizardStepId, { key: string; label: string }> = {
+  admin: { key: 'onboarding.stepAdmin', label: 'Admin' },
+  'tenant-basics': { key: 'onboarding.stepTenant', label: 'Organization' },
+  models: { key: 'onboarding.stepModels', label: 'Models' },
+  'workspace-basics': { key: 'onboarding.stepWorkspace', label: 'Name' },
+  'document-parsing': { key: 'onboarding.stepParsing', label: 'Parsing' },
+  chunking: { key: 'onboarding.stepChunking', label: 'Chunking' },
+  'extract-budget': { key: 'onboarding.stepBudget', label: 'Budget' },
+  extraction: { key: 'onboarding.stepExtraction', label: 'Extraction' },
+  review: { key: 'onboarding.stepReview', label: 'Review' },
+};
+
+type StepMeta = (typeof STEP_META)[WizardStepId];
+
+/** Title + description for a step, honouring Apply-style review copy on reconfigure. */
+export function resolveStepMeta(
+  stepId: WizardStepId,
+  kind: WizardKind,
+): StepMeta | typeof RECONFIGURE_REVIEW_META {
+  return stepId === 'review' && kind === 'reconfigure-workspace'
+    ? RECONFIGURE_REVIEW_META
+    : STEP_META[stepId];
+}
+
+export function resolveStepLabels(
+  steps: readonly WizardStepId[],
+  t: (key: string, fallback: string) => string,
+): string[] {
+  return steps.map((id) => t(STEP_LABEL[id].key, STEP_LABEL[id].label));
+}

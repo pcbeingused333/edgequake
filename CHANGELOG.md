@@ -4,6 +4,71 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.38.2] — 2026-10-26
+
+Patch on v0.38.1. Schema stays **224**. An upgrade from 0.38.1 applies no new migration:
+[`docs/operations/upgrade-to-0.38.2.md`](docs/operations/upgrade-to-0.38.2.md).
+
+**CD:** GHCR `edgequake`, `edgequake-frontend`, `edgequake-postgres` (`0.38.2`, `-pg16`, `-pg17`, `-pg18`), and `edgequake-keycloak` on tag `v0.38.2`.
+
+**SPEC-001 Acc:** not re-scored on this cut. This patch does not change mix retrieval. The latest valid medical-mid n=200 pack remains
+[`medical-mid-20261024T031725Z`](specs/001-benchmark/e2e/artifacts/history/medical-mid-20261024T031725Z/)
+(`valid: true`). EdgeQuake **0.8084**, LightRAG **0.7681**, delta **+0.0403**
+(95% bootstrap CI [-0.0241, +0.1036], n_paired 72). The interval includes 0,
+so this is a statistical tie. EdgeQuake does not claim a win.
+
+### Fixed
+
+- A live model list that omits the embedding size keeps the static card, then the known-model table. `mistral-embed` stays 1024. A size the provider reports still wins.
+- `provider_offer_revision` is read as a 32-bit integer. An `If-Match` save no longer fails because that column was decoded as a 64-bit integer.
+
+### Changed
+
+- The workspace wizard and the model picker follow the eligible set. A person chooses a source, then a model the gate will run.
+
+### Ops
+
+- The demo Compose stack writes JSON logs and sends API and Caddy traces to an in-stack OpenTelemetry collector. `roles/cloudtrace.agent` is in the Terraform file. The deploy job copies the Compose directory. It does not apply Terraform.
+
+## [0.38.1] — 2026-10-26
+
+Document clearance, a secret manager, and one model choice from Deployment through the workspace. Schema moves from **219** to **224**. An upgrade from 0.38.0 runs migrations **220** through **224**:
+[`docs/operations/upgrade-to-0.38.1.md`](docs/operations/upgrade-to-0.38.1.md).
+
+**CD:** GHCR `edgequake`, `edgequake-frontend`, `edgequake-postgres` (`0.38.1`, `-pg16`, `-pg17`, `-pg18`), and `edgequake-keycloak` on tag `v0.38.1`.
+
+**SPEC-001 Acc:** not re-scored on this cut. Clearance stays off until a workspace turns it on, and an empty model-catalog policy still runs the previous assignment. The Acc harness still pins `EDGEQUAKE_LLM_MODEL=mistral-small-latest` and leaves the extract and keyword locks empty, so they follow that pin. Mix retrieval is unchanged. The latest valid medical-mid n=200 pack remains
+[`medical-mid-20261024T031725Z`](specs/001-benchmark/e2e/artifacts/history/medical-mid-20261024T031725Z/)
+(`valid: true`). EdgeQuake **0.8084**, LightRAG **0.7681**, delta **+0.0403**
+(95% bootstrap CI [-0.0241, +0.1036], n_paired 72). The interval includes 0,
+so this is a statistical tie. EdgeQuake does not claim a win.
+
+### Added (SPEC-174 — document clearance)
+
+- A workspace can label documents with a classification and compartments, and bind those labels to security roles. Enforcement stays off until an owner turns it on. Migration **220** defaults `enforcement` to false. While the flag is off, `clearance_covers` stays true, so existing documents stay readable. Query, graph, chat, MCP, and downloads use the same predicate.
+
+### Added (SPEC-175 — model catalog policy)
+
+- Tenant and workspace policy rows decide which models a usage may run. An empty `model_catalog_policy` table means unconstrained: every healthy, capability-matched model stays eligible, and existing workspace assignments keep running. The first ceiling row is the switch to a constrained catalog. Migration **221**.
+
+### Added (SPEC-176 — secret manager)
+
+- New provider keys are stored as a reference. The default backend encrypts them in `managed_secrets` with `EDGEQUAKE_SECRETS_KEY` (AES-256-GCM). The server still boots when that variable is unset. Saving a key without it is refused. Infisical is optional, chosen per tenant, and is not contacted at startup. A failed Infisical call is not copied into the database. Migration **222**. Existing `provider_connections` ciphertext stays readable.
+
+### Added (SPEC-177 — provider offers)
+
+- Deployment offers providers. The organization takes a subset. The workspace takes a subset of the organization. `provider_offer_constrained` defaults to false, which means every provider the parent offers. Turning the flag on stores the enabled slugs. An empty slug list with the flag on offers nothing. Migration **223**.
+
+### Added (SPEC-179 — one model gate)
+
+- List, save, and run call the same gate. A stored pair the gate refuses fails the task. Nothing else runs. A Platform Admin can refresh one provider's live model list. Those ids stay discovery until they are registered. Withdraw, narrow, and delete return who would break. Confirm marks those assignments broken. It does not retarget them. Migration **224** adds the refresh cache, the offer revision, and a unique fleet connection slug.
+
+### Limits
+
+- Migrations **220** through **224** are expand-only. Restart every API replica after `edgequake migrate`.
+- Clearance does not hide documents until a workspace owner enables it.
+- Amazon S3, GCS, and Azure originals remain implemented and unproven on a live account, as in v0.37.0.
+
 ## [0.38.0] — 2026-10-24
 
 Agents can upload a file, including a PDF, through a checksum-bound PUT URL. Schema moves from **218** to **219**. An upgrade from 0.37.0 runs migration **219** only:

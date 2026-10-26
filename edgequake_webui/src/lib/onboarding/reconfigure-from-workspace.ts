@@ -116,7 +116,7 @@ export function prefillReconfigureFromWorkspace(workspace: Workspace): Reconfigu
   const embedding = getWorkspaceEmbeddingSelection(workspace, {
     overridesOnly: true,
   });
-  const vision = getWorkspaceVisionSelection(workspace);
+  const vision = getWorkspaceVisionSelection(workspace, { overridesOnly: true });
   const pdfParserBackend = getWorkspacePdfParserBackend(workspace);
   const hasOverrides = Boolean(llm || embedding || vision);
 

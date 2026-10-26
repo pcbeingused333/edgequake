@@ -33,6 +33,10 @@ describe('judgeRole', () => {
     expect(judgeRole('embedding', { provider: 'ollama', model: 'embed', dimension: 768 }, missing)).toBe('ok');
     const sized = list([{ provider: 'ollama', model: 'embed', embedding_dimension: 1024 }]);
     expect(judgeRole('embedding', { provider: 'ollama', model: 'embed' }, sized)).toBe('ok');
+    const mistral = list([{ provider: 'mistral', model: 'mistral-embed', embedding_dimension: null }]);
+    expect(judgeRole('embedding', { provider: 'mistral', model: 'mistral-embed' }, mistral)).toBe('ok');
+    const zero = list([{ provider: 'mistral', model: 'mistral-embed', embedding_dimension: 0 }]);
+    expect(judgeRole('embedding', { provider: 'mistral', model: 'mistral-embed' }, zero)).toBe('ok');
   });
 });
 

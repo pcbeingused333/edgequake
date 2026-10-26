@@ -40,6 +40,12 @@ resource "google_project_iam_member" "gce_monitoring" {
   member  = "serviceAccount:${google_service_account.gce.email}"
 }
 
+resource "google_project_iam_member" "gce_trace" {
+  project = var.project_id
+  role    = "roles/cloudtrace.agent"
+  member  = "serviceAccount:${google_service_account.gce.email}"
+}
+
 resource "google_storage_bucket_iam_member" "gce_artifacts" {
   bucket = google_storage_bucket.artifacts.name
   role   = "roles/storage.objectViewer"

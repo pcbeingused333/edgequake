@@ -1,6 +1,6 @@
 # SPEC-178 — One choice set
 
-> **Status:** Specified (W0). No product code in this pack.
+> **Status:** Shipped in v0.38.1.
 > **Product pin:** EdgeQuake v0.38.0. Migration file head is
 > [223_spec177_provider_offers.sql](../../edgequake/migrations/223_spec177_provider_offers.sql).
 > This pack reserves **no** migration.

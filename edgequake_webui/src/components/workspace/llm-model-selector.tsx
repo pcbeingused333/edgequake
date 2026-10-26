@@ -3,7 +3,7 @@
  */
 'use client';
 
-import { mergePickerOptions } from '@/components/models/model-picker-options';
+import { mergePickerOptions, pairInCatalog } from '@/components/models/model-picker-options';
 import { ModelsStatus } from '@/components/models/models-status';
 import {
   ModelPickerPanel,
@@ -28,12 +28,16 @@ interface LLMModelSelectorProps {
   onChange?: (selection: LLMSelection | undefined) => void;
   disabled?: boolean;
   className?: string;
+  /** Layout hook for the provider + model panel (e.g. side by side in wide forms). */
+  panelClassName?: string;
   showUsageHint?: boolean;
   filterVision?: boolean;
   /** @deprecated Ignored — provider is a dedicated select. */
   showProviderFilters?: boolean;
   showCapabilityFilters?: boolean;
   inheritLabel?: string;
+  /** Inherited pair. The "use default" link is hidden when this pair is not eligible. */
+  inheritPair?: { provider?: string; model?: string };
   /** Defaults to the workspace on screen. */
   choiceScope?: 'workspace' | 'tenant' | 'deployment';
   usage?: UsageKey;
@@ -59,10 +63,12 @@ export function LLMModelSelector({
   onChange,
   disabled,
   className,
+  panelClassName,
   showUsageHint = true,
   filterVision = false,
   showCapabilityFilters,
   inheritLabel,
+  inheritPair,
   choiceScope = 'workspace',
   usage,
 }: LLMModelSelectorProps) {
@@ -93,6 +99,7 @@ export function LLMModelSelector({
   return (
     <div className={cn('space-y-1', className)} data-testid="llm-model-selector">
       <ModelPickerPanel
+        className={panelClassName}
         options={options}
         value={pickerValue}
         onChange={(next) =>
@@ -106,6 +113,11 @@ export function LLMModelSelector({
           showCapabilityFilters !== undefined ? showCapabilityFilters : !filterVision
         }
         serverDefaultLabel={inheritLabel ?? 'Inherit'}
+        allowServerDefault={
+          !inheritPair?.provider ||
+          !inheritPair.model ||
+          pairInCatalog(inheritPair.provider, inheritPair.model, options)
+        }
         placeholder="Search models…"
         enableRemoteSearch={false}
       />

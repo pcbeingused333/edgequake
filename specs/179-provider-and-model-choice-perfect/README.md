@@ -1,6 +1,6 @@
 # SPEC-179 — Provider and model choice, made true
 
-> **Status:** Implementing. Spec and product land in the same change.
+> **Status:** Shipped in v0.38.1.
 > **Product pin:** EdgeQuake v0.38.0. Migration file head before this pack is
 > [223_spec177_provider_offers.sql](../../edgequake/migrations/223_spec177_provider_offers.sql).
 > This pack reserves migration **224**.

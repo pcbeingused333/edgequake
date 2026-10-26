@@ -3,17 +3,12 @@
  * fixable in one click, an empty offer is explained, a refused create returns to the models step.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { openCreateWorkspaceDialog } from "../helpers/spec013-bootstrap";
-import { openSettings } from "../spec175/helpers/open-settings";
 import { applyTheme, setViewport, shot } from "./helpers/shots";
-import { installWizardFixture, type WizardFixtureOptions } from "./helpers/wizard-fixture";
+import type { WizardFixtureOptions } from "./helpers/wizard-fixture";
+import { openCreateWizard, type WizardRole } from "./helpers/wizard-open";
 
-async function openWizard(page: Page, options: WizardFixtureOptions = {}, role: "super_admin" | "workspace_admin" = "super_admin") {
-  await openSettings(page, role, "/settings/workspace/models");
-  const recorder = await installWizardFixture(page, options);
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(page.locator('[data-testid="workspace-selector"]:visible').first()).toBeVisible({ timeout: 30_000 });
-  await openCreateWorkspaceDialog(page);
+async function openWizard(page: Page, options: WizardFixtureOptions = {}, role: WizardRole = "super_admin") {
+  const recorder = await openCreateWizard(page, options, role);
   await page.getByTestId("wizard-workspace-name").fill("Research");
   await page.getByTestId("wizard-next").click();
   await expect(page.getByTestId("wizard-step-models")).toBeVisible();
@@ -55,6 +50,7 @@ test.describe("SPEC-179 create workspace wizard @spec179", () => {
 
     await page.getByTestId("wizard-blocked-llm").getByRole("button", { name: "Choose another" }).click();
     await expect(page.getByTestId("wizard-models-advanced")).toBeVisible();
+    await expect(page.locator('[data-wizard-model-role="llm"]').getByTestId("model-picker-provider-trigger")).toHaveAttribute("aria-expanded", "true");
   });
 
   test("an embedding model with no vector size blocks Next", async ({ page }) => {

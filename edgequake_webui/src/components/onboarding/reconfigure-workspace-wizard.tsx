@@ -1,10 +1,7 @@
 'use client';
 
 import { WizardShell } from '@/components/onboarding/wizard-shell';
-import {
-  RECONFIGURE_REVIEW_META,
-  STEP_META,
-} from '@/components/onboarding/step-meta';
+import { resolveStepLabels, resolveStepMeta } from '@/components/onboarding/step-meta';
 import { DocumentParsingStep } from '@/components/onboarding/steps/document-parsing-step';
 import { ModelDefaultsStep } from '@/components/onboarding/steps/model-defaults-step';
 import { ReviewStep } from '@/components/onboarding/steps/review-step';
@@ -13,7 +10,9 @@ import { WorkspaceExtractBudgetStep } from '@/components/onboarding/steps/worksp
 import { WorkspaceExtractionStep } from '@/components/onboarding/steps/workspace-extraction-step';
 import { useInheritedModelDefaults } from '@/hooks/use-inherited-model-defaults';
 import { useSettingsAccess } from '@/hooks/use-settings-context';
-import { useWizardEligibility } from '@/hooks/use-wizard-eligibility';
+import { toSettingsAccess } from '@/lib/settings/access';
+import { useWizardGate } from '@/hooks/use-wizard-gate';
+import { useWizardSteps } from '@/hooks/use-wizard-steps';
 import { useWizardDraftPicks } from '@/hooks/use-wizard-draft-picks';
 import { updateWorkspace } from '@/lib/api/edgequake';
 import { buildWorkspaceUpdatePayload } from '@/lib/onboarding/model-payload';
@@ -35,12 +34,10 @@ import {
 } from '@/lib/onboarding/workspace-config-diff';
 import {
   EMPTY_WIZARD_DRAFT,
-  canProceed,
   clampStepIndex,
   draftForStorage,
   stepsForWizard,
   type WizardDraft,
-  type WizardStepId,
 } from '@/lib/onboarding/wizard-state';
 import type { Workspace } from '@/types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -76,13 +73,17 @@ export function ReconfigureWorkspaceWizard({
   const steps = useMemo(() => stepsForWizard('reconfigure-workspace'), []);
   const baselineRef = useRef(EMPTY_WIZARD_DRAFT);
   const baselineSnapshotRef = useRef<WorkspaceConfigSnapshot | null>(null);
-  const [stepIndex, setStepIndex] = useState(0);
+  const nav = useWizardSteps(steps);
+  const { stepIndex, setStepIndex, stepId, goToStep } = nav;
   const [draft, setDraft] = useState<WizardDraft>(EMPTY_WIZARD_DRAFT);
   const [submitting, setSubmitting] = useState(false);
   const workspaceId = workspace?.id ?? null;
   const inherited = useInheritedModelDefaults(tenantId);
   const { hasConfiguredDefaults } = inherited;
   const prefilledForId = useRef<string | null>(null);
+  // Persist only after the workspace prefill ran; otherwise the empty first-render draft is saved
+  // and then "restored" over the prefill, wiping the workspace's own models and settings.
+  const [draftReady, setDraftReady] = useState(false);
   const {
     llm,
     embedding,
@@ -96,7 +97,7 @@ export function ReconfigureWorkspaceWizard({
 
   const { clearDraft } = useWizardDraftPersistence(
     'reconfigure-workspace',
-    open,
+    open && draftReady,
     draft,
     setDraft,
     stepIndex,
@@ -109,7 +110,10 @@ export function ReconfigureWorkspaceWizard({
   // Prefill from workspace, or restore session draft for this workspace id.
   useEffect(() => {
     if (!open || !workspace) {
-      if (!open) prefilledForId.current = null;
+      if (!open) {
+        prefilledForId.current = null;
+        setDraftReady(false);
+      }
       return;
     }
     if (prefilledForId.current === workspace.id) return;
@@ -149,13 +153,11 @@ export function ReconfigureWorkspaceWizard({
       setStepIndex(0);
     }
     prefilledForId.current = workspace.id;
+    setDraftReady(true);
   }, [open, workspace, steps.length]);
 
-  const stepId = steps[clampStepIndex(stepIndex, steps.length)];
-  const meta =
-    stepId === 'review'
-      ? RECONFIGURE_REVIEW_META
-      : STEP_META[stepId];
+  const meta = resolveStepMeta(stepId, 'reconfigure-workspace');
+  const stepLabels = useMemo(() => resolveStepLabels(steps, t), [steps, t]);
 
   const patchDraft = useCallback((patch: Partial<WizardDraft>) => {
     setDraft((d) => ({ ...d, ...patch }));
@@ -176,29 +178,18 @@ export function ReconfigureWorkspaceWizard({
     return diffWorkspaceConfig(baseline, currentSnapshot, { documentCount });
   }, [currentSnapshot, documentCount]);
 
-  // Vision optional on reconfigure (empty clears override → server default).
-  // LLM + embedding require both provider and model (two-step picker).
-  const advancedValid = Boolean(
-    llm?.provider &&
-      llm?.model &&
-      embedding?.provider &&
-      embedding?.model,
-  );
-  const eligibility = useWizardEligibility({
+  const access = useSettingsAccess(tenantId, workspaceId);
+  // Vision is optional on reconfigure (empty clears the override → server default).
+  const { eligibility, canGoNext, blockedReason } = useWizardGate({
     scope: 'workspace',
     id: workspaceId,
-    useDefaults: draft.useServerDefaults,
+    stepId,
+    draft,
     inherited,
     llm,
     embedding,
     vision,
-  });
-  const access = useSettingsAccess(tenantId, workspaceId);
-  const eligibilityOk = !eligibility.blocked && !eligibility.nothingOffered;
-  const canGoNext = canProceed(stepId, draft, {
     hasConfiguredDefaults,
-    advancedModelsValid: advancedValid,
-    eligibilityOk,
     hasConfigChanges: stepId === 'review' ? impact.hasChanges : undefined,
   });
 
@@ -210,9 +201,10 @@ export function ReconfigureWorkspaceWizard({
 
   const reset = useCallback(() => {
     prefilledForId.current = null;
+    setDraftReady(false);
     baselineRef.current = EMPTY_WIZARD_DRAFT;
     baselineSnapshotRef.current = null;
-    setStepIndex(0);
+    nav.restart();
     setDraft(EMPTY_WIZARD_DRAFT);
     clearDraft();
   }, [clearDraft]);
@@ -220,11 +212,6 @@ export function ReconfigureWorkspaceWizard({
   const handleOpenChange = (next: boolean) => {
     if (!next) reset();
     onOpenChange(next);
-  };
-
-  const goToStep = (target: WizardStepId) => {
-    const idx = steps.indexOf(target);
-    if (idx >= 0) setStepIndex(idx);
   };
 
   const finalize = async () => {
@@ -314,11 +301,11 @@ export function ReconfigureWorkspaceWizard({
   };
 
   const onNext = () => {
-    if (stepIndex >= steps.length - 1) {
+    if (nav.isLastStep) {
       void finalize();
       return;
     }
-    setStepIndex((i) => clampStepIndex(i + 1, steps.length));
+    nav.advance();
   };
 
   const body = (() => {
@@ -339,7 +326,7 @@ export function ReconfigureWorkspaceWizard({
             advancedOpen={advancedOpen}
             onAdvancedOpenChange={setAdvancedOpen}
             eligibility={eligibility}
-            canManageProviders={access.data?.tenant_manage === true}
+            canManageProviders={access.data ? toSettingsAccess(access.data).workspaceManage : false}
           />
         );
       case 'document-parsing':
@@ -388,10 +375,13 @@ export function ReconfigureWorkspaceWizard({
       stepTitle={t(meta.titleKey, meta.title)}
       stepDescription={t(meta.descriptionKey, meta.description)}
       canGoNext={canGoNext}
-      isLastStep={stepIndex >= steps.length - 1}
+      stepLabels={stepLabels}
+      onStepSelect={nav.goToIndex}
+      blockedReason={blockedReason}
+      isLastStep={nav.isLastStep}
       isSubmitting={submitting}
       isDirty={isDirty}
-      onBack={() => setStepIndex((i) => clampStepIndex(i - 1, steps.length))}
+      onBack={nav.goBack}
       onNext={onNext}
       finishLabel={t('onboarding.applyChanges', 'Apply')}
       testId="reconfigure-workspace-wizard"

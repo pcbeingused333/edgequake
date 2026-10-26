@@ -22,6 +22,7 @@ function PopoverContent({
   className,
   align = "center",
   sideOffset = 4,
+  style,
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Content>) {
   return (
@@ -35,6 +36,9 @@ function PopoverContent({
           "z-[100] w-72 origin-(--radix-popover-content-transform-origin) p-4 outline-hidden",
           className
         )}
+        // A modal dialog sets document.body { pointer-events: none }. Radix spreads
+        // this `style` after its own pointer-events, so auto here keeps the menu clickable.
+        style={{ ...style, pointerEvents: "auto" }}
         {...props}
       />
     </PopoverPrimitive.Portal>

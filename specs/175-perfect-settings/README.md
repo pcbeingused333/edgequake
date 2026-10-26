@@ -1,6 +1,6 @@
 # SPEC-175 — Perfect settings
 
-> **Status:** Specified (W0). No product code in this pack.
+> **Status:** Shipped in v0.38.1.
 > **Product pin:** EdgeQuake v0.38.0. Migration file head is
 > [220_spec174_document_clearance.sql](../../edgequake/migrations/220_spec174_document_clearance.sql).
 > This pack reserves migration **221**.

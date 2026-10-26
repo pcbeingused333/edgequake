@@ -41,14 +41,39 @@ export function mergePickerOptions(
   return Array.from(byKey.values());
 }
 
-/** Ensure the current value appears once in the list (after dedupe). */
+const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/** True when this provider has at least one model in the eligible catalog. */
+export function providerInCatalog(
+  provider: string | undefined,
+  catalog: ReadonlyArray<{ provider: string }>,
+): boolean {
+  if (!provider?.trim()) return false;
+  return catalog.some((option) => sameName(option.provider, provider));
+}
+
+/** True when this exact pair is in the eligible catalog. */
+export function pairInCatalog(
+  provider: string | undefined,
+  model: string | undefined,
+  catalog: ReadonlyArray<{ fullId: string }>,
+): boolean {
+  if (!provider?.trim() || !model?.trim()) return false;
+  const fullId = `${provider}/${model}`;
+  return catalog.some((option) => pickerOptionKey(option.fullId) === pickerOptionKey(fullId));
+}
+
+/**
+ * Ensure the current value appears once in the list (after dedupe).
+ * A pair whose provider is not in the eligible catalog is not a choice, so it is not pinned.
+ */
 export function ensureSelectedInPickerOptions(
   list: ModelPickerOption[],
   value: ModelPickerValue | undefined,
   catalog: ReadonlyArray<ModelPickerOption>,
 ): ModelPickerOption[] {
   const deduped = mergePickerOptions(list);
-  if (!value) return deduped;
+  if (!value || !providerInCatalog(value.provider, catalog)) return deduped;
 
   const key = pickerOptionKey(value.fullId);
   if (deduped.some((o) => pickerOptionKey(o.fullId) === key)) {

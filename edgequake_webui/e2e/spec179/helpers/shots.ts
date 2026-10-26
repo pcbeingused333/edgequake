@@ -4,7 +4,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { applyTheme, setViewport, type Theme } from "../../spec168/helpers/shots";
 
 export { applyTheme, setViewport };
@@ -52,5 +52,21 @@ export async function shot(
     timeout: 15_000,
   });
   if (original) await page.setViewportSize(original);
+  return file;
+}
+
+/** Screenshot one element (a dialog) under the round folder, same naming as `shot`. */
+export async function shotLocator(
+  page: Page,
+  target: Locator,
+  name: string,
+  opts: { theme?: Theme; width?: number } = {},
+): Promise<string> {
+  const theme = opts.theme ?? "light";
+  const width = opts.width ?? page.viewportSize()?.width ?? 1440;
+  const dir = path.join(SPEC179_SHOTS_ROOT, ROUND);
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${name}-${theme}-${width}.png`);
+  await target.screenshot({ path: file, animations: "disabled", caret: "hide", timeout: 15_000 });
   return file;
 }

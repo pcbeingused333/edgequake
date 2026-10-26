@@ -81,7 +81,7 @@ function Row({
 }) {
   return (
     <div className="flex gap-2 text-sm items-start">
-      <dt className="w-24 shrink-0 text-muted-foreground">{label}</dt>
+      <dt className="w-32 shrink-0 text-muted-foreground">{label}</dt>
       <dd className={`font-medium break-all flex-1 ${mono ? 'font-mono text-xs' : ''}`}>
         {value || '—'}
       </dd>

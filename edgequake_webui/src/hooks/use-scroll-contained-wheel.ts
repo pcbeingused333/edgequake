@@ -40,8 +40,15 @@ export function scrollSelectedCmdkItemIntoView(
   const list = listRef.current;
   if (!list) return;
   const selected = list.querySelector(CMDK_SELECTED_ITEM_SELECTOR);
-  if (selected instanceof HTMLElement) {
-    selected.scrollIntoView({ block: "nearest" });
+  if (!(selected instanceof HTMLElement)) return;
+  // scrollIntoView walks every scrollable ancestor. Inside a wizard dialog that
+  // moves the portaled menu on every highlight and the click never lands.
+  const listRect = list.getBoundingClientRect();
+  const itemRect = selected.getBoundingClientRect();
+  if (itemRect.top < listRect.top) {
+    list.scrollTop -= listRect.top - itemRect.top;
+  } else if (itemRect.bottom > listRect.bottom) {
+    list.scrollTop += itemRect.bottom - listRect.bottom;
   }
 }
 

@@ -229,6 +229,19 @@ fn model_key(provider: &str, name: &str) -> (String, String) {
     (provider.to_lowercase(), name.to_string())
 }
 
+/// Live lists often omit vector size. Mistral `/v1/models` does.
+/// A size the provider reports wins. Otherwise keep the static card, then the
+/// known-model table (`mistral-embed` is 1024). Zero means still unknown.
+pub fn resolved_embedding_dimension(model_id: &str, discovered: usize, retained: usize) -> usize {
+    if discovered > 0 {
+        return discovered;
+    }
+    if retained > 0 {
+        return retained;
+    }
+    edgequake_core::Workspace::known_embedding_dimension(model_id).unwrap_or(0)
+}
+
 fn merge_model_response(static_model: &ModelResponse, dynamic: &DiscoveredModel) -> ModelResponse {
     let mut merged = discovered_to_response(dynamic);
     if static_model.description.is_empty() {
@@ -508,9 +521,17 @@ impl ModelCatalog {
         {
             let provider = model.provider.to_lowercase();
             let key = model_key(&provider, &model.id);
-            let dimension = model.capabilities.embedding_dimension;
+            let discovered_dim = model.capabilities.embedding_dimension;
             if let Some(existing) = merged.get(&key) {
-                let updated = merge_model_response(&existing.model, &model);
+                let mut updated = merge_model_response(&existing.model, &model);
+                let dimension = resolved_embedding_dimension(
+                    &model.id,
+                    discovered_dim,
+                    existing
+                        .dimension
+                        .max(existing.model.capabilities.embedding_dimension),
+                );
+                updated.capabilities.embedding_dimension = dimension;
                 merged.insert(
                     key,
                     EmbeddingModelItem {
@@ -521,13 +542,16 @@ impl ModelCatalog {
                     },
                 );
             } else {
+                let mut item = discovered_to_response(&model);
+                let dimension = resolved_embedding_dimension(&model.id, discovered_dim, 0);
+                item.capabilities.embedding_dimension = dimension;
                 merged.insert(
                     key,
                     EmbeddingModelItem {
                         provider: provider.clone(),
                         provider_display_name: provider_display_name(config, &provider),
                         dimension,
-                        model: discovered_to_response(&model),
+                        model: item,
                     },
                 );
             }
@@ -722,6 +746,17 @@ mod tests {
         assert!(merged.capabilities.supports_vision);
         assert_eq!(merged.description, "Static desc");
         assert_eq!(merged.discovery_source.as_deref(), Some("hybrid"));
+    }
+
+    #[test]
+    fn discovery_without_a_size_keeps_the_static_card_and_known_table() {
+        assert_eq!(resolved_embedding_dimension("mistral-embed", 0, 1024), 1024);
+        assert_eq!(resolved_embedding_dimension("mistral-embed", 0, 0), 1024);
+        assert_eq!(
+            resolved_embedding_dimension("mistral-embed", 512, 1024),
+            512
+        );
+        assert_eq!(resolved_embedding_dimension("embed-x", 0, 0), 0);
     }
 
     #[test]

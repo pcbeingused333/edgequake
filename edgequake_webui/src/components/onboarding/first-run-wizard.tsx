@@ -1,7 +1,7 @@
 'use client';
 
 import { WizardShell } from '@/components/onboarding/wizard-shell';
-import { STEP_META } from '@/components/onboarding/step-meta';
+import { STEP_META, resolveStepLabels } from '@/components/onboarding/step-meta';
 import { AdminCredentialsStep } from '@/components/onboarding/steps/admin-credentials-step';
 import { DocumentParsingStep } from '@/components/onboarding/steps/document-parsing-step';
 import { ModelDefaultsStep } from '@/components/onboarding/steps/model-defaults-step';
@@ -30,12 +30,13 @@ import { buildTenantModelPayload, buildWorkspaceIngestPayload } from '@/lib/onbo
 import { useWizardDraftPersistence } from '@/lib/onboarding/use-wizard-draft-persistence';
 import {
   EMPTY_WIZARD_DRAFT,
-  canProceed,
+  wizardBlocker,
   clampStepIndex,
   stepsForWizard,
   type WizardDraft,
   type WizardStepId,
 } from '@/lib/onboarding/wizard-state';
+import { describeBlocker, type BlockerTranslate } from '@/lib/onboarding/wizard-blocker-message';
 import { useAuthStore } from '@/stores/use-auth-store';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useQueryClient } from '@tanstack/react-query';
@@ -134,10 +135,13 @@ export function FirstRunWizard({ surface = 'dashboard' }: FirstRunWizardProps) {
   }, []);
 
   const advancedValid = Boolean(llm?.provider && embedding?.provider && vision?.provider);
-  const canGoNext = canProceed(stepId, draft, {
+  const blocker = wizardBlocker(stepId, draft, {
     hasConfiguredDefaults,
     advancedModelsValid: advancedValid,
   });
+  const canGoNext = blocker === null;
+  const blockedReason = describeBlocker(blocker, t as BlockerTranslate);
+  const stepLabels = useMemo(() => resolveStepLabels(steps, t), [steps, t]);
 
   const goToStep = (target: WizardStepId) => {
     const idx = steps.indexOf(target);
@@ -314,6 +318,8 @@ export function FirstRunWizard({ surface = 'dashboard' }: FirstRunWizardProps) {
       stepCount={steps.length}
       stepTitle={t(meta.titleKey, meta.title)}
       stepDescription={t(meta.descriptionKey, meta.description)}
+      stepLabels={stepLabels}
+      blockedReason={blockedReason}
       canGoNext={canGoNext}
       isLastStep={stepIndex >= steps.length - 1}
       isSubmitting={submitting}

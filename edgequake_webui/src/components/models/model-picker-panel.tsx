@@ -34,6 +34,7 @@ import {
 import {
   ensureSelectedInPickerOptions,
   mergePickerOptions,
+  providerInCatalog,
 } from "@/components/models/model-picker-options";
 import { CHOICE_POPOVER } from "@/components/models/choice-menu-surface";
 import { Check, ChevronDown, Loader2 } from "lucide-react";
@@ -188,6 +189,13 @@ export function ModelPickerPanel({
   const { onWheel, className: scrollContainedClass } = useScrollContainedWheel();
   useScrollSelectedIntoView(listRef, modelOpen);
 
+  const valueOffered = providerInCatalog(value?.provider, options);
+  /** A stored pair outside the eligible catalog is not a selection. */
+  const activeProvider =
+    selectedProvider && (isLoading || providerInCatalog(selectedProvider, options))
+      ? selectedProvider
+      : null;
+
   const buildDisplayOptions = useCallback(
     (
       primary: ModelPickerOption[],
@@ -195,18 +203,25 @@ export function ModelPickerPanel({
     ): ModelPickerOption[] =>
       ensureSelectedInPickerOptions(
         mergePickerOptions(primary, secondary),
-        value,
+        valueOffered ? value : undefined,
         options,
       ),
-    [options, value],
+    [options, value, valueOffered],
   );
 
-  // Sync provider from selection (e.g. parent sets value).
+  // Sync provider from selection (e.g. parent sets value). An unoffered slug never opens the model step.
   useEffect(() => {
-    if (value?.provider) {
+    if (!value?.provider) return;
+    if (providerInCatalog(value.provider, options)) {
       setSelectedProvider(value.provider);
+      return;
     }
-  }, [value?.provider]);
+    if (!isLoading) {
+      setSelectedProvider((current) =>
+        current?.toLowerCase() === value.provider.toLowerCase() ? null : current,
+      );
+    }
+  }, [value?.provider, options, isLoading]);
 
   const providers = useMemo((): ProviderEntry[] => {
     const map = new Map<string, number>();
@@ -234,6 +249,7 @@ export function ModelPickerPanel({
     );
   }, [providers, providerSearch]);
 
+  const modelOpenTicket = useRef(0);
   const handleProviderSelect = useCallback(
     (providerId: string) => {
       setSelectedProvider(providerId);
@@ -245,8 +261,11 @@ export function ModelPickerPanel({
       if (value && value.provider !== providerId) {
         onChange?.(undefined);
       }
-      // Open model picker next for fluid two-step flow.
-      requestAnimationFrame(() => setModelOpen(true));
+      // Open the model step next. A choice made before that frame must keep the menu closed.
+      const ticket = ++modelOpenTicket.current;
+      requestAnimationFrame(() => {
+        if (modelOpenTicket.current === ticket) setModelOpen(true);
+      });
     },
     [value, onChange],
   );
@@ -263,7 +282,7 @@ export function ModelPickerPanel({
     if (
       !modelOpen ||
       !remoteSearch ||
-      !selectedProvider ||
+      !activeProvider ||
       search.trim().length >= 2
     ) {
       setProviderCatalogHits(null);
@@ -275,7 +294,7 @@ export function ModelPickerPanel({
       setProviderCatalogLoading(true);
       try {
         const params = new URLSearchParams({
-          provider: selectedProvider,
+          provider: activeProvider,
           limit: "50",
         });
         if (filterVision || capabilityFilters.has("vision")) {
@@ -301,7 +320,7 @@ export function ModelPickerPanel({
     };
   }, [
     modelOpen,
-    selectedProvider,
+    activeProvider,
     capabilityFilters,
     filterVision,
     remoteSearch,
@@ -309,7 +328,7 @@ export function ModelPickerPanel({
   ]);
 
   useEffect(() => {
-    if (!modelOpen || !remoteSearch || !selectedProvider) return;
+    if (!modelOpen || !remoteSearch || !activeProvider) return;
     const q = search.trim();
     if (q.length < 2) {
       setRemoteHits(null);
@@ -323,7 +342,7 @@ export function ModelPickerPanel({
           q,
           fuzzy: "true",
           limit: "40",
-          provider: selectedProvider,
+          provider: activeProvider,
         });
         if (filterVision || capabilityFilters.has("vision")) {
           params.set("requires_vision", "true");
@@ -345,7 +364,7 @@ export function ModelPickerPanel({
     return () => clearTimeout(timer);
   }, [
     search,
-    selectedProvider,
+    activeProvider,
     capabilityFilters,
     filterVision,
     modelOpen,
@@ -353,8 +372,8 @@ export function ModelPickerPanel({
   ]);
 
   const filteredOptions = useMemo(() => {
-    if (!selectedProvider) return [];
-    let list = options.filter((o) => o.provider === selectedProvider);
+    if (!activeProvider) return [];
+    let list = options.filter((o) => o.provider === activeProvider);
     if (filterVision) list = list.filter((o) => o.supportsVision);
     if (capabilityFilters.has("vision")) list = list.filter((o) => o.supportsVision);
     if (capabilityFilters.has("tools")) list = list.filter((o) => o.supportsTools);
@@ -372,7 +391,7 @@ export function ModelPickerPanel({
     return mergePickerOptions(list);
   }, [
     options,
-    selectedProvider,
+    activeProvider,
     capabilityFilters,
     filterVision,
     search,
@@ -380,11 +399,11 @@ export function ModelPickerPanel({
   ]);
 
   const displayOptions = useMemo(() => {
-    if (!selectedProvider) return [];
+    if (!activeProvider) return [];
     if (remoteHits && search.trim().length >= 2) {
       return buildDisplayOptions(
         searchHitsToPickerOptions(remoteHits).filter(
-          (o) => o.provider === selectedProvider,
+          (o) => o.provider === activeProvider,
         ),
       );
     }
@@ -399,7 +418,7 @@ export function ModelPickerPanel({
     remoteHits,
     search,
     providerCatalogHits,
-    selectedProvider,
+    activeProvider,
     filteredOptions,
     buildDisplayOptions,
   ]);
@@ -414,6 +433,7 @@ export function ModelPickerPanel({
   }, []);
 
   const handleModelSelect = (fullId: string) => {
+    modelOpenTicket.current += 1;
     const { provider, model } = parseModelFullId(fullId);
     onChange?.({ provider, model, fullId });
     setModelOpen(false);
@@ -428,11 +448,11 @@ export function ModelPickerPanel({
       displayOptions.find((o) => o.fullId === value.fullId)
     : undefined;
 
-  const selectedProviderEntry = selectedProvider
-    ? providers.find((p) => p.id === selectedProvider)
+  const selectedProviderEntry = activeProvider
+    ? providers.find((p) => p.id === activeProvider)
     : undefined;
 
-  const modelDisabled = disabled || isLoading || !selectedProvider;
+  const modelDisabled = disabled || isLoading || !activeProvider;
   const usingServerDefault = !value && !selectedProvider;
   /** Empty triggers name what is in effect, matching the "Using …" chip below them. */
   const inheritedLabel = allowServerDefault && usingServerDefault ? serverDefaultLabel : null;
@@ -445,6 +465,7 @@ export function ModelPickerPanel({
           Provider
         </Label>
         <Popover
+          modal
           open={providerOpen}
           onOpenChange={(next) => {
             setProviderOpen(next);
@@ -518,7 +539,7 @@ export function ModelPickerPanel({
                       <Check
                         className={cn(
                           "mr-2 h-4 w-4 shrink-0",
-                          selectedProvider === p.id ? "opacity-100" : "opacity-0",
+                          activeProvider === p.id ? "opacity-100" : "opacity-0",
                         )}
                       />
                       <ProviderIcon providerId={p.id} className="mr-2 shrink-0" />
@@ -545,9 +566,10 @@ export function ModelPickerPanel({
           Model
         </Label>
         <Popover
+          modal
           open={modelOpen}
           onOpenChange={(next) => {
-            if (!selectedProvider && next) return;
+            if (!activeProvider && next) return;
             setModelOpen(next);
             if (!next) {
               setSearch("");
@@ -571,9 +593,9 @@ export function ModelPickerPanel({
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Loading models…
                 </span>
-              ) : !selectedProvider ? (
+              ) : !activeProvider ? (
                 <span className="text-muted-foreground">{inheritedLabel ?? "Select a provider first"}</span>
-              ) : value && selectedOption ? (
+              ) : value && valueOffered && selectedOption ? (
                 <span className="flex flex-col items-start truncate min-w-0 text-left">
                   <span className="truncate font-medium w-full">
                     {selectedOption.displayName}
@@ -582,7 +604,7 @@ export function ModelPickerPanel({
                     {formatOptionSubline(selectedOption, isEmbedding)}
                   </span>
                 </span>
-              ) : value ? (
+              ) : value && valueOffered ? (
                 <span className="truncate font-medium">{value.model}</span>
               ) : (
                 <span className="text-muted-foreground">Select a model…</span>
@@ -637,14 +659,14 @@ export function ModelPickerPanel({
                     data-testid={`${testId}-list-loading`}
                   >
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    {providerCatalogLoading && selectedProvider
-                      ? `Loading ${getProviderDisplayName(selectedProvider)} models…`
+                    {providerCatalogLoading && activeProvider
+                      ? `Loading ${getProviderDisplayName(activeProvider)} models…`
                       : "Searching…"}
                   </div>
                 )}
                 <CommandEmpty>
-                  {selectedProvider
-                    ? `No models for ${getProviderDisplayName(selectedProvider)}. Type 2+ characters to search.`
+                  {activeProvider
+                    ? `No models for ${getProviderDisplayName(activeProvider)}. Type 2+ characters to search.`
                     : "Select a provider first."}
                 </CommandEmpty>
                 <CommandGroup>

@@ -63,6 +63,9 @@ services:
       EDGEQUAKE_DECISION_BASE_URL: ${EDGEQUAKE_DECISION_BASE_URL:-http://host.docker.internal:11434}
       PDFIUM_AUTO_CACHE_DIR: /tmp/edgequake-pdfium-cache
       RUST_LOG: ${RUST_LOG:-info}
+      EDGEQUAKE_LOG_FORMAT: json
+      OTEL_SERVICE_NAME: edgequake-api
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       EDGEQUAKE_DEV_MODE: "false"
       EDGEQUAKE_AUTH_ENABLED: "true"
       EDGEQUAKE_PUBLIC_URL: ${EDGEQUAKE_PUBLIC_URL:-${EDGEQUAKE_API_URL}}
@@ -132,9 +135,24 @@ services:
     environment:
       CADDY_ACME_EMAIL: ${CADDY_ACME_EMAIL:-}
       EDGEQUAKE_HOSTNAME: ${EDGEQUAKE_HOSTNAME:-}
+      OTEL_SERVICE_NAME: edgequake-caddy
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_TRACES_EXPORTER: otlp
     depends_on:
       - api
       - frontend
+      - otel-collector
+    networks:
+      - edgequake
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.136.0
+    container_name: edgequake-otel
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol/config.yaml:ro
     networks:
       - edgequake
 

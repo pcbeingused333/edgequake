@@ -28,6 +28,26 @@ fn internal(error: sqlx::Error) -> ApiError {
     ApiError::Internal(error.to_string())
 }
 
+/// `provider_offer_revision` is `integer` (INT4). Callers compare it with the
+/// `i64` sent in `If-Match`; decoding the column itself as `i64` fails the save.
+#[cfg(feature = "postgres")]
+pub async fn current_offer_revision<'e, E>(
+    executor: E,
+    workspace: bool,
+    id: Uuid,
+) -> Result<i64, sqlx::Error>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+{
+    let sql = if workspace {
+        "SELECT provider_offer_revision FROM workspaces WHERE workspace_id = $1"
+    } else {
+        "SELECT provider_offer_revision FROM tenants WHERE tenant_id = $1"
+    };
+    let current: i32 = sqlx::query_scalar(sql).bind(id).fetch_one(executor).await?;
+    Ok(i64::from(current))
+}
+
 #[cfg(feature = "postgres")]
 pub async fn load_workspace_offer_from_pool(
     pool: &sqlx::PgPool,
@@ -193,14 +213,7 @@ pub async fn replace_offer(
     let mut tx = pool.begin().await.map_err(internal)?;
     let id_for_revision = workspace.unwrap_or(tenant);
     if let Some(expected) = expected_revision {
-        let current_sql = if workspace.is_some() {
-            "SELECT provider_offer_revision FROM workspaces WHERE workspace_id = $1"
-        } else {
-            "SELECT provider_offer_revision FROM tenants WHERE tenant_id = $1"
-        };
-        let current: i64 = sqlx::query_scalar(current_sql)
-            .bind(id_for_revision)
-            .fetch_one(&mut *tx)
+        let current = current_offer_revision(&mut *tx, workspace.is_some(), id_for_revision)
             .await
             .map_err(internal)?;
         if current != expected {
@@ -397,17 +410,10 @@ pub async fn touch_scope_revision(
         let pool = pool(state)?;
         let id = workspace.unwrap_or(tenant);
         if let Some(expected) = expected {
-            let current_sql = if workspace.is_some() {
-                "SELECT provider_offer_revision FROM workspaces WHERE workspace_id = $1"
-            } else {
-                "SELECT provider_offer_revision FROM tenants WHERE tenant_id = $1"
-            };
-            let current: i32 = sqlx::query_scalar(current_sql)
-                .bind(id)
-                .fetch_one(pool)
+            let current = current_offer_revision(pool, workspace.is_some(), id)
                 .await
                 .map_err(internal)?;
-            if i64::from(current) != expected {
+            if current != expected {
                 return Err(ApiError::Coded {
                     code: "stale_revision",
                     message: "the offer changed; reload and try again".into(),

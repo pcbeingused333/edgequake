@@ -278,6 +278,40 @@ async fn replace_connection_models_requires_a_passing_probe() {
 }
 
 #[tokio::test]
+async fn offer_revision_decodes_from_int4() {
+    let Some(pool) = pool().await else { return };
+    let ready: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns \
+         WHERE table_schema = 'public' AND table_name = 'tenants' \
+           AND column_name = 'provider_offer_revision')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap_or(false);
+    if !ready {
+        eprintln!("SKIP: provider_offer_revision column is absent");
+        return;
+    }
+    let tenant = Uuid::new_v4();
+    sqlx::query("INSERT INTO tenants (tenant_id, name, slug) VALUES ($1, 'spec177-rev', $2)")
+        .bind(tenant)
+        .bind(format!("spec177-rev-{tenant}"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    let revision =
+        edgequake_api::services::provider_offer_rows::current_offer_revision(&pool, false, tenant)
+            .await
+            .unwrap();
+    sqlx::query("DELETE FROM tenants WHERE tenant_id = $1")
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(revision, 1);
+}
+
+#[tokio::test]
 async fn delete_connection_removes_offer_rows() {
     let Some(pool) = pool().await else { return };
     let tenant = Uuid::new_v4();

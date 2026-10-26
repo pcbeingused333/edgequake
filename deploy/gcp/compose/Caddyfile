@@ -14,6 +14,10 @@ import snippets.caddy
 }
 
 :443 {
+	log {
+		output stdout
+		format json
+	}
 	tls /etc/caddy/certs/tls.crt /etc/caddy/certs/tls.key
 	import app
 }

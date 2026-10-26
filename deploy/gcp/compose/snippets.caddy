@@ -1,55 +1,63 @@
 (app) {
 	# LAW-148-13: reverse-proxy only on the HTTPS site that imports this snippet.
 	# Do not gzip: Next.js + SSE (text/event-stream) must not be buffered.
+	# `route` keeps `tracing` outside the exclusive `handle` matchers so every
+	# request becomes one span. Caddy exports it with OTEL_EXPORTER_OTLP_*.
 
-	# Slash-bounded: /api* also matches WebUI /api-explorer (SPEC-035).
-	handle /api/* {
-		reverse_proxy api:8080
-	}
-	# MCP Streamable HTTP + OAuth discovery (RFC 9728 / RFC 8414) — must not hit Next.js.
-	handle /mcp {
-		reverse_proxy api:8080
-	}
-	handle /.well-known/oauth-protected-resource* {
-		reverse_proxy api:8080
-	}
-	handle /.well-known/oauth-authorization-server* {
-		reverse_proxy api:8080
-	}
-	handle /.well-known/openid-configuration {
-		reverse_proxy api:8080
-	}
-	handle /.well-known/mcp/* {
-		reverse_proxy api:8080
-	}
-	handle /oauth/* {
-		reverse_proxy api:8080
-	}
-	handle /health {
-		reverse_proxy api:8080
-	}
-	handle /live {
-		reverse_proxy api:8080
-	}
-	handle /ready {
-		reverse_proxy api:8080
-	}
-	handle /metrics {
-		reverse_proxy api:8080
-	}
-	handle /version {
-		reverse_proxy api:8080
-	}
-	handle /swagger-ui* {
-		reverse_proxy api:8080
-	}
-	handle /api-docs* {
-		reverse_proxy api:8080
-	}
-	handle /ws* {
-		reverse_proxy api:8080
-	}
-	handle {
-		reverse_proxy frontend:3000
+	route {
+		tracing {
+			span edgequake
+		}
+
+		# Slash-bounded: /api* also matches WebUI /api-explorer (SPEC-035).
+		handle /api/* {
+			reverse_proxy api:8080
+		}
+		# MCP Streamable HTTP + OAuth discovery (RFC 9728 / RFC 8414) — must not hit Next.js.
+		handle /mcp {
+			reverse_proxy api:8080
+		}
+		handle /.well-known/oauth-protected-resource* {
+			reverse_proxy api:8080
+		}
+		handle /.well-known/oauth-authorization-server* {
+			reverse_proxy api:8080
+		}
+		handle /.well-known/openid-configuration {
+			reverse_proxy api:8080
+		}
+		handle /.well-known/mcp/* {
+			reverse_proxy api:8080
+		}
+		handle /oauth/* {
+			reverse_proxy api:8080
+		}
+		handle /health {
+			reverse_proxy api:8080
+		}
+		handle /live {
+			reverse_proxy api:8080
+		}
+		handle /ready {
+			reverse_proxy api:8080
+		}
+		handle /metrics {
+			reverse_proxy api:8080
+		}
+		handle /version {
+			reverse_proxy api:8080
+		}
+		handle /swagger-ui* {
+			reverse_proxy api:8080
+		}
+		handle /api-docs* {
+			reverse_proxy api:8080
+		}
+		handle /ws* {
+			reverse_proxy api:8080
+		}
+		handle {
+			reverse_proxy frontend:3000
+		}
 	}
 }

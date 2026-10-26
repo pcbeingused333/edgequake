@@ -1,5 +1,7 @@
 # SPEC-176 Secret manager and custom providers
 
+> **Status:** Shipped in v0.38.1.
+
 Provider API keys are stored through a tenant secret backend. The product runs with no Infisical deployment.
 
 ## Backends
