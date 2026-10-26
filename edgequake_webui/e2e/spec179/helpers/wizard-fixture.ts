@@ -1,0 +1,106 @@
+/**
+ * SPEC-179 hermetic fixture for the Create / Reconfigure Workspace wizards:
+ * an organization with defaults, an offer per usage, and a create route that can refuse.
+ */
+import type { Page, Route } from "@playwright/test";
+
+export interface OfferedModel {
+  provider: string;
+  model: string;
+  display_name?: string;
+  supports_vision?: boolean;
+  embedding_dimension?: number | null;
+}
+
+export interface WizardFixtureOptions {
+  /** What the organization offers, per usage group. Missing groups default to a healthy offer. */
+  offered?: { chat?: OfferedModel[]; embedding?: OfferedModel[]; vlm?: OfferedModel[] };
+  /** Organization defaults the wizard inherits. */
+  defaults?: {
+    llm: [string, string];
+    embedding: [string, string, number];
+    vision: [string, string];
+  };
+  /** Create answers this refusal instead of succeeding. */
+  refuseCreate?: { status: number; code: string; message: string };
+}
+
+const CHAT: OfferedModel[] = [
+  { provider: "openai", model: "gpt-5-nano", display_name: "GPT-5 nano" },
+  { provider: "openai", model: "gpt-5.2", display_name: "GPT-5.2", supports_vision: true },
+];
+const EMBEDDING: OfferedModel[] = [
+  { provider: "openai", model: "text-embedding-3-small", display_name: "Embedding 3 small", embedding_dimension: 1536 },
+];
+const VLM: OfferedModel[] = [{ provider: "openai", model: "gpt-5.2", display_name: "GPT-5.2", supports_vision: true }];
+
+export interface WizardRecorder {
+  creates: unknown[];
+  eligibleAsks: string[];
+}
+
+const usageGroup = (usage: string): "chat" | "embedding" | "vlm" =>
+  usage === "embedding" ? "embedding" : usage === "vlm" ? "vlm" : "chat";
+
+export async function installWizardFixture(page: Page, options: WizardFixtureOptions = {}): Promise<WizardRecorder> {
+  const recorder: WizardRecorder = { creates: [], eligibleAsks: [] };
+  const defaults = options.defaults ?? {
+    llm: ["openai", "gpt-5-nano"],
+    embedding: ["openai", "text-embedding-3-small", 1536],
+    vision: ["openai", "gpt-5.2"],
+  };
+  const offered = {
+    chat: options.offered?.chat ?? CHAT,
+    embedding: options.offered?.embedding ?? EMBEDDING,
+    vlm: options.offered?.vlm ?? VLM,
+  };
+
+  await page.route(/\/api\/v1\/tenants\/[^/?]+\/?(\?.*)?$/, (route: Route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const id = new URL(route.request().url()).pathname.split("/").filter(Boolean).at(-1);
+    return route.fulfill({
+      json: {
+        id,
+        name: "SPEC155 Tenant",
+        slug: "spec155-tenant",
+        plan: "free",
+        default_llm_provider: defaults.llm[0],
+        default_llm_model: defaults.llm[1],
+        default_embedding_provider: defaults.embedding[0],
+        default_embedding_model: defaults.embedding[1],
+        default_embedding_dimension: defaults.embedding[2],
+        default_vision_llm_provider: defaults.vision[0],
+        default_vision_llm_model: defaults.vision[1],
+      },
+    });
+  });
+
+  await page.route("**/api/v1/models/eligible**", (route) => {
+    const url = new URL(route.request().url());
+    const usage = url.searchParams.get("usage") ?? "query";
+    recorder.eligibleAsks.push(url.search);
+    const models = offered[usageGroup(usage)].map((m) => ({
+      provider: m.provider,
+      provider_display_name: m.provider,
+      model: m.model,
+      display_name: m.display_name ?? m.model,
+      supports_vision: m.supports_vision ?? false,
+      embedding_dimension: m.embedding_dimension ?? null,
+    }));
+    return route.fulfill({ json: { usage, scope: "tenant", policy_mode: "constrained", models } });
+  });
+
+  await page.route(/\/api\/v1\/tenants\/[^/]+\/workspaces\/?$/, (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    recorder.creates.push(route.request().postDataJSON());
+    if (options.refuseCreate) {
+      const { status, code, message } = options.refuseCreate;
+      return route.fulfill({ status, contentType: "application/json", json: { code, message, status } });
+    }
+    return route.fulfill({
+      status: 201,
+      json: { id: "ws-new", tenant_id: "t", name: "New", slug: "new", is_active: true },
+    });
+  });
+  return recorder;
+}
