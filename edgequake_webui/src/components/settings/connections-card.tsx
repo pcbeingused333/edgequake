@@ -5,8 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiClient } from '@/lib/api/client';
+import { ConnectionRow, type ConnectionRowData } from '@/components/settings/connection-row';
+import { ConnectionDeleteDialog, type DeletableConnection } from '@/components/settings/connection-delete-dialog';
 import { connectionLocality } from '@/components/settings/connection-locality';
-import { connectionSummary } from '@/lib/settings/connection-summary';
 import { cn } from '@/lib/utils';
 import { PlugZap } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -15,18 +16,7 @@ import { toast } from 'sonner';
 
 const CONNECTIONS_KEY = ['connections'] as const;
 
-interface ConnectionView {
-  id: string;
-  slug: string;
-  display_name: string;
-  api_shape: string;
-  base_url: string;
-  source: string;
-  key_configured: boolean;
-  key_fingerprint?: string | null;
-  secret_backend?: string | null;
-  last_test_ok?: boolean | null;
-}
+type ConnectionView = ConnectionRowData;
 
 interface ConnectionShape {
   id: string;
@@ -62,14 +52,6 @@ const BUILT_IN_SHAPES: ConnectionShape[] = [
   { id: 'cohere', label: 'Cohere', default_base_url: 'https://api.cohere.com/v1', hint: 'API key required.' },
   { id: 'bedrock', label: 'AWS Bedrock', default_base_url: 'https://bedrock-runtime.us-east-1.amazonaws.com', hint: 'Server credentials.' },
 ];
-
-function storedIn(row: ConnectionView): string | null {
-  if (row.source === 'env') return null;
-  if (row.secret_backend === 'infisical') return 'Stored in Infisical';
-  if (row.secret_backend === 'legacy') return 'Stored with the server key';
-  if (row.key_configured) return 'Stored in the database';
-  return null;
-}
 
 interface ProbeResponse {
   ok: boolean;
@@ -119,12 +101,15 @@ export function ConnectionsCard() {
   });
   const usingBuiltInShapes = !shapesQuery.isPending && !shapesQuery.data?.length;
   const shapes = shapesQuery.data?.length ? shapesQuery.data : BUILT_IN_SHAPES;
-  const [shape, setShape] = useState('openai');
+  const [chosenShape, setShape] = useState('openai');
+  // A server list that does not carry the default id must not leave the select blank.
+  const shape = shapes.some((item) => item.id === chosenShape) ? chosenShape : (shapes[0]?.id ?? chosenShape);
   const [baseUrl, setBaseUrl] = useState('https://api.openai.com/v1');
   const [slug, setSlug] = useState('local');
   const [apiKey, setApiKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<DeletableConnection | null>(null);
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: CONNECTIONS_KEY });
 
@@ -292,7 +277,11 @@ export function ConnectionsCard() {
           <ConnectionField
             id={`${fieldId}-key`}
             label="API key"
-            hint="Optional. Encrypted at rest and never shown again."
+            hint={
+              editingId
+                ? "Leave the key blank to keep the current key. A new key replaces it."
+                : "Optional. Encrypted at rest and never shown again."
+            }
             className="md:col-span-2"
           >
             <Input
@@ -326,46 +315,32 @@ export function ConnectionsCard() {
             </Button>
           ) : null}
         </div>
-        <ul className="space-y-1 text-sm text-muted-foreground">
-          {rows.map((r) => (
-            <li key={`${r.source}-${r.id}-${r.slug}`} className="flex items-start justify-between gap-3">
-              <span className="flex min-w-0 flex-col">
-                <span className="font-medium text-foreground">{r.display_name}</span>
-                <span className="text-xs text-muted-foreground break-all">{connectionSummary(r)}</span>
-                {storedIn(r) ? (
-                  <span className="text-xs text-muted-foreground" data-testid="connection-stored-in">
-                    {storedIn(r)}
-                  </span>
-                ) : null}
-              </span>
-              {r.source !== 'env' && r.id !== '00000000-0000-0000-0000-000000000000' ? (
-                <span className="flex shrink-0 gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    data-testid={`connection-update-${r.slug}`}
-                    onClick={() => beginUpdate(r)}
-                  >
-                    Update
-                  </Button>
-                  <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void testStored(r.id)}>
-                    Test
-                  </Button>
-                </span>
-              ) : null}
-            </li>
-          ))}
-          {connections.isPending ? (
-            <li className="h-5" aria-busy="true">Loading connections…</li>
-          ) : connections.isError ? (
-            <li role="alert" className="text-destructive">Could not load connections. Refresh the page to try again.</li>
-          ) : rows.length === 0 ? (
-            <li>No saved connections. Env providers appear here when set.</li>
-          ) : null}
-        </ul>
+        <section aria-labelledby={`${fieldId}-saved`} className="border-t pt-4">
+          <h3 id={`${fieldId}-saved`} className="text-sm font-medium">
+            Saved connections
+          </h3>
+          <ul className="divide-y text-sm text-muted-foreground">
+            {rows.map((r) => (
+              <ConnectionRow
+                key={`${r.source}-${r.id}-${r.slug}`}
+                row={r}
+                busy={busy}
+                onUpdate={() => beginUpdate(r)}
+                onTest={() => void testStored(r.id)}
+                onDelete={() => setDeleting({ id: r.id, display_name: r.display_name })}
+              />
+            ))}
+            {connections.isPending ? (
+              <li className="h-5 py-3" aria-busy="true">Loading connections…</li>
+            ) : connections.isError ? (
+              <li role="alert" className="py-3 text-destructive">Could not load connections. Refresh the page to try again.</li>
+            ) : rows.length === 0 ? (
+              <li className="py-3">No saved connections. Env providers appear here when set.</li>
+            ) : null}
+          </ul>
+        </section>
       </CardContent>
+      <ConnectionDeleteDialog connection={deleting} onClose={() => setDeleting(null)} onDeleted={refresh} />
     </Card>
   );
 }

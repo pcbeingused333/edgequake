@@ -20,10 +20,9 @@ export function embeddingSelectionFromPick(
   return {
     provider: pick.provider,
     model: pick.model,
+    // SPEC-179: never guess a vector size. 0 means "not registered"; the wizard blocks on it.
     dimension:
-      typeof pick.dimension === 'number' && pick.dimension > 0
-        ? pick.dimension
-        : 768,
+      typeof pick.dimension === 'number' && pick.dimension > 0 ? pick.dimension : 0,
   };
 }
 

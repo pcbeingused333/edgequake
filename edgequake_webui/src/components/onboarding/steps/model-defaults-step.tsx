@@ -2,6 +2,9 @@
 
 import { useLlmCapabilityModels } from "@/hooks/use-llm-capability-models";
 import { ServerDefaultsCard } from '@/components/onboarding/server-defaults-card';
+import { WizardEligibilityNotice } from '@/components/onboarding/wizard-eligibility-notice';
+import type { WizardEligibility } from '@/hooks/use-wizard-eligibility';
+import type { WizardRole } from '@/lib/onboarding/defaults-eligibility';
 import { ReasoningEffortSelect } from '@/components/settings/reasoning-effort-select';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -40,6 +43,15 @@ export interface ModelDefaultsStepProps {
   onAdvancedOpenChange: (open: boolean) => void;
   /** When set, resolve LLM/Embed/Vision via tenant → server ladder (Create Workspace). */
   tenantId?: string | null;
+  /**
+   * Which eligible set the advanced pickers read.
+   * First-run has no tenant, so the default is deployment until a tenant id exists.
+   */
+  choiceScope?: 'deployment' | 'tenant' | 'workspace';
+  /** SPEC-179: verdicts on the pair this step will save. Absent on surfaces that do not judge yet. */
+  eligibility?: WizardEligibility;
+  /** Organization admins can open the offer from here. */
+  canManageProviders?: boolean;
 }
 
 /**
@@ -58,9 +70,13 @@ export function ModelDefaultsStep({
   advancedOpen,
   onAdvancedOpenChange,
   tenantId,
+  choiceScope,
+  eligibility,
+  canManageProviders = false,
 }: ModelDefaultsStepProps) {
   const { t } = useTranslation();
   const useTenantLadder = Boolean(tenantId);
+  const pickerScope = choiceScope ?? (tenantId ? 'tenant' : 'deployment');
   const inherited = useInheritedModelDefaults(tenantId ?? null);
   const llmModels = useLlmCapabilityModels();
   const reasoningSupported = useMemo(
@@ -115,6 +131,14 @@ export function ModelDefaultsStep({
   ]);
 
   const showAdvanced = advancedOpen && !isLoading;
+  /** One click from "not offered" to the picker, with the stale pick cleared. */
+  const chooseAnother = (role: WizardRole) => {
+    onChange({ useServerDefaults: false });
+    onAdvancedOpenChange(true);
+    if (role === 'llm') onLlmChange(undefined);
+    if (role === 'embedding') onEmbeddingChange(undefined);
+    if (role === 'vision') onVisionChange(undefined);
+  };
   const tenantPrefix = t('onboarding.tenantDefaultShort', 'Organization default');
   const serverPrefix = t('onboarding.serverDefaultShort', 'Server default');
   const llmInheritLabel = formatInheritModelLabel({
@@ -154,12 +178,24 @@ export function ModelDefaultsStep({
           defaultEmbeddingModel: inherited.defaultEmbeddingModel,
           defaultVisionProvider: inherited.defaultVisionProvider,
           defaultVisionModel: inherited.defaultVisionModel,
+          verdicts:
+            eligibility && draft.useServerDefaults && !eligibility.nothingOffered
+              ? eligibility.verdicts
+              : undefined,
         }}
         onCustomize={() => {
           onChange({ useServerDefaults: false });
           onAdvancedOpenChange(true);
         }}
       />
+
+      {eligibility ? (
+        <WizardEligibilityNotice
+          eligibility={eligibility}
+          canManageProviders={canManageProviders}
+          onChooseAnother={chooseAnother}
+        />
+      ) : null}
 
       <div data-testid="wizard-decision-engine">
         <DecisionEngineFields
@@ -233,7 +269,7 @@ export function ModelDefaultsStep({
                 showCapabilityFilters={false}
                 showUsageHint
                 inheritLabel={llmInheritLabel}
-                choiceScope="tenant"
+                choiceScope={pickerScope}
               />
             </div>
             <div className="grid gap-2">
@@ -242,7 +278,7 @@ export function ModelDefaultsStep({
                 value={embedding}
                 onChange={onEmbeddingChange}
                 inheritLabel={embeddingInheritLabel}
-                choiceScope="tenant"
+                choiceScope={pickerScope}
               />
             </div>
             <div className="grid gap-2">
@@ -253,7 +289,7 @@ export function ModelDefaultsStep({
                 filterVision
                 showCapabilityFilters={false}
                 showUsageHint
-                choiceScope="tenant"
+                choiceScope={pickerScope}
                 usage="vlm"
                 inheritLabel={visionInheritLabel}
               />

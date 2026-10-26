@@ -23,7 +23,8 @@ describe("eligibleModelsPath (EC-178-15)", () => {
     const root = join(here, "../../../../..");
     for (const rel of ["components/onboarding/steps/model-defaults-step.tsx"]) {
       const src = readFileSync(join(root, "src", rel), "utf8");
-      expect(src, rel).toContain('choiceScope="tenant"');
+      expect(src, rel).toContain("tenantId ? 'tenant' : 'deployment'");
+      expect(src, rel).toContain("choiceScope={pickerScope}");
     }
   });
 });

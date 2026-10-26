@@ -215,6 +215,8 @@ export function canProceed(
     advancedModelsValid: boolean;
     /** When true (reconfigure), Apply requires at least one config diff. */
     hasConfigChanges?: boolean;
+    /** SPEC-179: false when the pair to save is not offered or has no vector size. */
+    eligibilityOk?: boolean;
   } = {
     hasConfiguredDefaults: true,
     advancedModelsValid: true,
@@ -232,6 +234,7 @@ export function canProceed(
     case 'workspace-basics':
       return draft.workspaceName.trim().length > 0;
     case 'models':
+      if (opts.eligibilityOk === false) return false;
       if (draft.useServerDefaults) {
         return opts.hasConfiguredDefaults;
       }
@@ -245,6 +248,7 @@ export function canProceed(
     case 'extraction':
       return true;
     case 'review':
+      if (opts.eligibilityOk === false) return false;
       if (opts.hasConfigChanges === false) return false;
       return true;
     default:

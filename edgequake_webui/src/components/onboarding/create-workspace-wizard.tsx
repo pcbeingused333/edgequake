@@ -12,6 +12,9 @@ import { WorkspaceExtractionStep } from '@/components/onboarding/steps/workspace
 import { ENTITY_PRESETS } from '@/constants/entity-presets';
 import { EDGE_PRESETS, RELATION_PRESETS } from '@/constants/kg-schema-presets';
 import { useInheritedModelDefaults } from '@/hooks/use-inherited-model-defaults';
+import { useSettingsAccess } from '@/hooks/use-settings-context';
+import { useWizardEligibility } from '@/hooks/use-wizard-eligibility';
+import { describeCreateFailure } from '@/lib/onboarding/create-error';
 import { useWizardDraftPicks } from '@/hooks/use-wizard-draft-picks';
 import { createWorkspace } from '@/lib/api/edgequake';
 import { buildWorkspaceIngestPayload, buildWorkspaceModelPayload } from '@/lib/onboarding/model-payload';
@@ -113,9 +116,22 @@ export function CreateWorkspaceWizard({
   }, [open, inherited.isLoading, inherited.extractionLanguage]);
 
   const advancedValid = Boolean(llm?.provider && embedding?.provider && vision?.provider);
+  // SPEC-179: the pair that will be saved must belong to this organization's offer.
+  const eligibility = useWizardEligibility({
+    scope: 'tenant',
+    id: tenantId,
+    useDefaults: draft.useServerDefaults,
+    inherited,
+    llm,
+    embedding,
+    vision,
+  });
+  const access = useSettingsAccess(tenantId, null);
+  const eligibilityOk = !eligibility.blocked && !eligibility.nothingOffered;
   const canGoNext = canProceed(stepId, draft, {
     hasConfiguredDefaults,
     advancedModelsValid: advancedValid,
+    eligibilityOk,
   });
 
   const isDirty =
@@ -147,6 +163,10 @@ export function CreateWorkspaceWizard({
       toast.error(t('workspace.noTenant', 'No tenant selected'));
       return;
     }
+    if (!eligibilityOk) {
+      goToStep('models');
+      return;
+    }
     setSubmitting(true);
     try {
       const models = buildWorkspaceModelPayload({
@@ -168,9 +188,12 @@ export function CreateWorkspaceWizard({
       onCreated?.(workspace);
       handleOpenChange(false);
     } catch (error) {
-      toast.error(t('workspace.createFailed', 'Failed to create workspace'), {
-        description: error instanceof Error ? error.message : 'Unknown error',
+      const failure = describeCreateFailure(error);
+      toast.error(failure.title, {
+        description: failure.description,
       });
+      // A refused model sends the user to the step that fixes it; nothing was created.
+      if (failure.step) goToStep(failure.step);
     } finally {
       setSubmitting(false);
     }
@@ -202,6 +225,8 @@ export function CreateWorkspaceWizard({
             onVisionChange={commitVision}
             advancedOpen={advancedOpen}
             onAdvancedOpenChange={setAdvancedOpen}
+            eligibility={eligibility}
+            canManageProviders={access.data?.tenant_manage === true}
           />
         );
       case 'document-parsing':

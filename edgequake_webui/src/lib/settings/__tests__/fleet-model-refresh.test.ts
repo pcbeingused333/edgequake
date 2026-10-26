@@ -1,16 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { LlmModelItem } from "@/lib/api/models";
 import {
-  connectionModelBody,
   showFleetModelRefresh,
   showProviderModelRefresh,
-  toggleModelId,
 } from "../fleet-model-refresh";
-
-const gemma = {
-  name: "gemma4:latest",
-  capabilities: { supports_vision: true },
-} as LlmModelItem;
 
 describe("showProviderModelRefresh", () => {
   it("refreshes a refreshable env slug when the probe is ok or unset", () => {
@@ -41,32 +33,5 @@ describe("showFleetModelRefresh", () => {
 
   it("hides refresh until the connection probe succeeds", () => {
     expect(showFleetModelRefresh(true, false)).toBe(false);
-  });
-});
-
-describe("connectionModelBody", () => {
-  it("keeps vision from the discovered card and chat for query eligibility", () => {
-    expect(connectionModelBody(["gemma4:latest", "typed-id"], [gemma])).toEqual([
-      {
-        id: "gemma4:latest",
-        supports_chat: true,
-        supports_vision: true,
-        supports_embedding: false,
-      },
-      {
-        id: "typed-id",
-        supports_chat: true,
-        supports_vision: false,
-        supports_embedding: false,
-      },
-    ]);
-  });
-});
-
-describe("toggleModelId", () => {
-  it("adds and removes without duplicates", () => {
-    expect(toggleModelId(["a"], "b", true)).toEqual(["a", "b"]);
-    expect(toggleModelId(["a", "b"], "b", true)).toEqual(["a", "b"]);
-    expect(toggleModelId(["a", "b"], "a", false)).toEqual(["b"]);
   });
 });

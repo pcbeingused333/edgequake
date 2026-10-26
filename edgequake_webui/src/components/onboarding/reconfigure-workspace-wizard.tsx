@@ -12,6 +12,8 @@ import { WorkspaceChunkingStep } from '@/components/onboarding/steps/workspace-c
 import { WorkspaceExtractBudgetStep } from '@/components/onboarding/steps/workspace-extract-budget-step';
 import { WorkspaceExtractionStep } from '@/components/onboarding/steps/workspace-extraction-step';
 import { useInheritedModelDefaults } from '@/hooks/use-inherited-model-defaults';
+import { useSettingsAccess } from '@/hooks/use-settings-context';
+import { useWizardEligibility } from '@/hooks/use-wizard-eligibility';
 import { useWizardDraftPicks } from '@/hooks/use-wizard-draft-picks';
 import { updateWorkspace } from '@/lib/api/edgequake';
 import { buildWorkspaceUpdatePayload } from '@/lib/onboarding/model-payload';
@@ -182,9 +184,21 @@ export function ReconfigureWorkspaceWizard({
       embedding?.provider &&
       embedding?.model,
   );
+  const eligibility = useWizardEligibility({
+    scope: 'workspace',
+    id: workspaceId,
+    useDefaults: draft.useServerDefaults,
+    inherited,
+    llm,
+    embedding,
+    vision,
+  });
+  const access = useSettingsAccess(tenantId, workspaceId);
+  const eligibilityOk = !eligibility.blocked && !eligibility.nothingOffered;
   const canGoNext = canProceed(stepId, draft, {
     hasConfiguredDefaults,
     advancedModelsValid: advancedValid,
+    eligibilityOk,
     hasConfigChanges: stepId === 'review' ? impact.hasChanges : undefined,
   });
 
@@ -315,6 +329,7 @@ export function ReconfigureWorkspaceWizard({
             draft={draft}
             onChange={patchDraft}
             tenantId={tenantId}
+            choiceScope="workspace"
             llm={llm}
             embedding={embedding}
             vision={vision}
@@ -323,6 +338,8 @@ export function ReconfigureWorkspaceWizard({
             onVisionChange={commitVision}
             advancedOpen={advancedOpen}
             onAdvancedOpenChange={setAdvancedOpen}
+            eligibility={eligibility}
+            canManageProviders={access.data?.tenant_manage === true}
           />
         );
       case 'document-parsing':

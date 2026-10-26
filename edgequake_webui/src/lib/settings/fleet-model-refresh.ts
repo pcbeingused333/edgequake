@@ -1,5 +1,3 @@
-import type { LlmModelItem } from "@/lib/api/models";
-
 /** Fleet checklist refresh: probe must already be ok. */
 export function showFleetModelRefresh(refreshable: boolean, probeOk: boolean): boolean {
   return refreshable && probeOk;
@@ -20,24 +18,4 @@ export function showProviderModelRefresh(input: {
   if (input.origin === "env") return probe === "" || probe === "ok";
   if (input.origin === "fleet") return probe === "ok";
   return false;
-}
-
-export function connectionModelBody(
-  ids: string[],
-  discovered: LlmModelItem[],
-): { id: string; supports_chat: boolean; supports_vision: boolean; supports_embedding: boolean }[] {
-  return ids.map((id) => {
-    const live = discovered.find((item) => item.name === id);
-    return {
-      id,
-      supports_chat: true,
-      supports_vision: live?.capabilities.supports_vision === true,
-      supports_embedding: false,
-    };
-  });
-}
-
-export function toggleModelId(ids: string[], id: string, checked: boolean): string[] {
-  if (checked) return ids.includes(id) ? ids : [...ids, id];
-  return ids.filter((current) => current !== id);
 }

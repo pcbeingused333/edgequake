@@ -5,6 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useServerModelDefaults } from '@/hooks/use-server-model-defaults';
 import type { DefaultsSource, ModelDefaultsSlice } from '@/lib/onboarding/inherited-defaults';
 import { cn } from '@/lib/utils';
+import type { RoleStatus, WizardRole } from '@/lib/onboarding/defaults-eligibility';
 import { useTranslation } from 'react-i18next';
 
 export interface ResolvedDefaultsDisplay extends ModelDefaultsSlice {
@@ -14,6 +15,8 @@ export interface ResolvedDefaultsDisplay extends ModelDefaultsSlice {
   source?: DefaultsSource;
   sourceLabel?: string;
   sourceHint?: string;
+  /** SPEC-179: how each default fares against the offer. */
+  verdicts?: Partial<Record<WizardRole, RoleStatus>>;
 }
 
 export interface ServerDefaultsCardProps {
@@ -36,6 +39,21 @@ function formatId(provider?: string, model?: string): string {
   return 'not configured';
 }
 
+function VerdictBadge({ status }: { status?: RoleStatus }) {
+  const { t } = useTranslation();
+  if (status !== 'not_eligible' && status !== 'dimension_missing') return null;
+  return (
+    <span
+      className="rounded-md bg-destructive/10 px-1.5 py-0.5 font-sans text-[10px] font-medium text-destructive"
+      data-testid="server-defaults-verdict"
+    >
+      {status === 'dimension_missing'
+        ? t('onboarding.eligibility.badgeNoSize', 'No vector size')
+        : t('onboarding.eligibility.badgeNotOffered', 'Not offered')}
+    </span>
+  );
+}
+
 function ServerDefaultsCardView({
   className,
   onCustomize,
@@ -53,6 +71,7 @@ function ServerDefaultsCardView({
   source = 'server',
   sourceLabel,
   sourceHint,
+  verdicts,
 }: ServerDefaultsCardProps &
   ResolvedDefaultsDisplay & {
     isLoading: boolean;
@@ -115,15 +134,24 @@ function ServerDefaultsCardView({
       <dl className="space-y-1 text-xs font-mono text-muted-foreground">
         <div className="flex gap-2" data-testid="server-defaults-llm">
           <dt className="w-20 shrink-0 font-sans font-medium text-foreground/80">LLM</dt>
-          <dd>{formatId(defaultLlmProvider, defaultLlmModel)}</dd>
+          <dd className="flex flex-wrap items-center gap-2">
+            {formatId(defaultLlmProvider, defaultLlmModel)}
+            <VerdictBadge status={verdicts?.llm} />
+          </dd>
         </div>
         <div className="flex gap-2" data-testid="server-defaults-embedding">
           <dt className="w-20 shrink-0 font-sans font-medium text-foreground/80">Embedding</dt>
-          <dd>{formatId(defaultEmbeddingProvider, defaultEmbeddingModel)}</dd>
+          <dd className="flex flex-wrap items-center gap-2">
+            {formatId(defaultEmbeddingProvider, defaultEmbeddingModel)}
+            <VerdictBadge status={verdicts?.embedding} />
+          </dd>
         </div>
         <div className="flex gap-2" data-testid="server-defaults-vision">
           <dt className="w-20 shrink-0 font-sans font-medium text-foreground/80">Vision</dt>
-          <dd>{formatId(defaultVisionProvider, defaultVisionModel)}</dd>
+          <dd className="flex flex-wrap items-center gap-2">
+            {formatId(defaultVisionProvider, defaultVisionModel)}
+            <VerdictBadge status={verdicts?.vision} />
+          </dd>
         </div>
       </dl>
       <p className="text-xs text-muted-foreground">{hint}</p>
@@ -180,6 +208,7 @@ export function ServerDefaultsCard({ defaults, ...rest }: ServerDefaultsCardProp
         source={defaults.source ?? 'server'}
         sourceLabel={defaults.sourceLabel}
         sourceHint={defaults.sourceHint}
+        verdicts={defaults.verdicts}
       />
     );
   }

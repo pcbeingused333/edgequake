@@ -1154,6 +1154,84 @@
       "title": "Members, roles and sign-in",
       "description": "Invite people, manage their roles and configure single sign-on from the Members page.",
       "cta": "Open Members"
+    },
+    "providers": {
+      "add": "Add",
+      "addUnderConnections": "Add one under Connections.",
+      "add_provider": "Add a provider",
+      "cap": {
+        "chat": "chat",
+        "embedding": "embedding",
+        "vision": "vision"
+      },
+      "deploymentEmpty": "This deployment has no providers yet.",
+      "empty": "This deployment has no providers yet. Add one under Connections.",
+      "diffAdded": "+{{count}} new",
+      "diffRemoved": "−{{count}} gone",
+      "dimensionFor": "Dimension for {{id}}",
+      "dimensionRequired": "An embedding model needs its dimension.",
+      "keySet": "Key set",
+      "noKey": "No key",
+      "kindFor": "Type for {{slug}}",
+      "loadError": "Could not load providers.",
+      "loading": "Loading providers…",
+      "modelId": "Model id",
+      "modelIdFor": "Model id for {{slug}}",
+      "modelsSaved": "Models saved",
+      "neverRefreshed": "Model list not refreshed yet",
+      "newDimension": "Dimension",
+      "noModels": "No model is registered yet. Refresh to discover some, or add an id.",
+      "noModelsYet": "No registered models. Refresh to discover them.",
+      "origin": {
+        "env": "Environment",
+        "fleet": "Custom"
+      },
+      "probe": {
+        "failed": "Check failed",
+        "ok": "Healthy",
+        "unchecked": "Not tested"
+      },
+      "refresh": "Refresh models",
+      "refreshFailed": "Could not refresh models.",
+      "refreshFailedAt": "Last refresh failed {{when}}",
+      "refreshed": "Models refreshed",
+      "refreshedAt": "Refreshed {{when}}",
+      "refreshedDiff": "Models refreshed: +{{added}} new, −{{removed}} gone",
+      "refreshing": "Refreshing…",
+      "registered": "Registered models",
+      "removeModel": "Remove {{id}}",
+      "restore": "Restore",
+      "retry": "Retry",
+      "saveFailed": "Save failed",
+      "showLess": "Show less",
+      "showMore": "+{{count}} more",
+      "state": {
+        "hidden": "Hidden from organizations",
+        "notOffered": "Not offered",
+        "offered": "Offered"
+      },
+      "testFirst": "Test the connection first",
+      "withdraw": "Withdraw",
+      "withdrawTitle": "Withdraw {{name}}?",
+      "withdrawBody": "Those assignments keep their choice and fail with “not eligible” until an admin picks another model.",
+      "fixConnection": "Models can be registered once the connection test passes.",
+      "openConnections": "Open Connections",
+      "useAllDeployment": "Use every provider this deployment offers",
+      "useAllOrganization": "Use every provider the organization offers"
+    },
+    "connections": {
+      "deleteTitle": "Delete {{name}}?",
+      "deleteBody": "Its stored key is removed with it. This cannot be undone.",
+      "deleteInUse": "They fail with “not eligible” until an admin picks another model.",
+      "deleteAnyway": "Delete anyway",
+      "delete": "Delete",
+      "deleteFailed": "Delete failed",
+      "testOk": "Last test passed",
+      "testFailed": "Last test failed",
+      "key": "key",
+      "keySet": "set",
+      "update": "Update",
+      "test": "Test"
     }
   },
   "context": {
@@ -1411,7 +1489,19 @@
     "impactRebuildKg": "Rebuild Knowledge Graph for the new LLM.",
     "impactRebuildVision": "Rebuild Knowledge Graph for vision/PDF changes.",
     "impactZeroDocs": "No documents yet — changes apply to future ingestions.",
-    "impactFutureOnly": "Extraction language and entity types apply to future ingestions."
+    "impactFutureOnly": "Extraction language and entity types apply to future ingestions.",
+    "eligibility": {
+      "notOffered": "{{model}} is not offered to this organization any more.",
+      "dimensionMissing": "{{model}} has no registered vector size. Pick another embedding model, or ask a deployment admin to set it.",
+      "loadError": "Could not check which models are offered. Try again in a moment.",
+      "nothingTitle": "No provider is offered to this organization yet",
+      "nothingAdmin": "Turn on at least one provider, then come back to create the workspace.",
+      "nothingMember": "Ask an organization admin to turn on a provider.",
+      "openProviders": "Open organization providers",
+      "chooseAnother": "Choose another",
+      "badgeNoSize": "No vector size",
+      "badgeNotOffered": "Not offered"
+    }
   },
   "entityTypes": {
     "title": "Entity Types",

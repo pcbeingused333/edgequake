@@ -1121,6 +1121,84 @@
       "title": "Membres, rôles et connexion",
       "description": "Invitez des personnes, gérez leurs rôles et configurez l'authentification unique depuis la page Membres.",
       "cta": "Ouvrir Membres"
+    },
+    "providers": {
+      "add": "Ajouter",
+      "addUnderConnections": "Ajoutez-en un dans Connexions.",
+      "add_provider": "Ajouter un fournisseur",
+      "cap": {
+        "chat": "chat",
+        "embedding": "embedding",
+        "vision": "vision"
+      },
+      "deploymentEmpty": "Ce déploiement n’a pas encore de fournisseur.",
+      "empty": "Ce déploiement n’a pas encore de fournisseur. Ajoutez-en un dans Connexions.",
+      "diffAdded": "+{{count}} nouveau(x)",
+      "diffRemoved": "−{{count}} disparu(s)",
+      "dimensionFor": "Dimension pour {{id}}",
+      "dimensionRequired": "Un modèle d’embedding a besoin de sa dimension.",
+      "keySet": "Clé définie",
+      "noKey": "Aucune clé",
+      "kindFor": "Type pour {{slug}}",
+      "loadError": "Impossible de charger les fournisseurs.",
+      "loading": "Chargement des fournisseurs…",
+      "modelId": "Identifiant du modèle",
+      "modelIdFor": "Identifiant du modèle pour {{slug}}",
+      "modelsSaved": "Modèles enregistrés",
+      "neverRefreshed": "Liste des modèles jamais actualisée",
+      "newDimension": "Dimension",
+      "noModels": "Aucun modèle enregistré. Actualisez pour en découvrir, ou ajoutez un identifiant.",
+      "noModelsYet": "Aucun modèle enregistré. Actualisez pour les découvrir.",
+      "origin": {
+        "env": "Environnement",
+        "fleet": "Personnalisé"
+      },
+      "probe": {
+        "failed": "Échec du test",
+        "ok": "Opérationnel",
+        "unchecked": "Non testé"
+      },
+      "refresh": "Actualiser les modèles",
+      "refreshFailed": "Impossible d’actualiser les modèles.",
+      "refreshFailedAt": "Échec de la dernière actualisation {{when}}",
+      "refreshed": "Modèles actualisés",
+      "refreshedAt": "Actualisé {{when}}",
+      "refreshedDiff": "Modèles actualisés : +{{added}} nouveau(x), −{{removed}} disparu(s)",
+      "refreshing": "Actualisation…",
+      "registered": "Modèles enregistrés",
+      "removeModel": "Retirer {{id}}",
+      "restore": "Rétablir",
+      "retry": "Réessayer",
+      "saveFailed": "Échec de l’enregistrement",
+      "showLess": "Réduire",
+      "showMore": "+{{count}} de plus",
+      "state": {
+        "hidden": "Masqué aux organisations",
+        "notOffered": "Non proposé",
+        "offered": "Proposé"
+      },
+      "testFirst": "Testez d’abord la connexion",
+      "withdraw": "Retirer",
+      "withdrawTitle": "Retirer {{name}} ?",
+      "withdrawBody": "Ces affectations gardent leur choix et échouent avec « non éligible » jusqu’à ce qu’un administrateur choisisse un autre modèle.",
+      "fixConnection": "Les modèles peuvent être enregistrés une fois le test de connexion réussi.",
+      "openConnections": "Ouvrir Connexions",
+      "useAllDeployment": "Utiliser tous les fournisseurs du déploiement",
+      "useAllOrganization": "Utiliser tous les fournisseurs de l’organisation"
+    },
+    "connections": {
+      "deleteTitle": "Supprimer {{name}} ?",
+      "deleteBody": "Sa clé stockée est supprimée avec elle. Action irréversible.",
+      "deleteInUse": "Elles échouent avec « non éligible » jusqu’à ce qu’un administrateur choisisse un autre modèle.",
+      "deleteAnyway": "Supprimer quand même",
+      "delete": "Supprimer",
+      "deleteFailed": "Échec de la suppression",
+      "testOk": "Dernier test réussi",
+      "testFailed": "Dernier test échoué",
+      "key": "clé",
+      "keySet": "définie",
+      "update": "Modifier",
+      "test": "Tester"
     }
   },
   "websocket": {
@@ -1378,7 +1456,19 @@
     "usingServerDefaults": "Using server defaults",
     "serverDefaultsMissing": "Server defaults not fully configured",
     "wizardDialogHint": "Multi-step creation wizard",
-    "pdfParserHintWithValue": "Choose how PDFs are converted to text. Server default resolves to {{value}}."
+    "pdfParserHintWithValue": "Choose how PDFs are converted to text. Server default resolves to {{value}}.",
+    "eligibility": {
+      "notOffered": "{{model}} n’est plus proposé à cette organisation.",
+      "dimensionMissing": "{{model}} n’a pas de taille de vecteur enregistrée. Choisissez un autre modèle d’embedding, ou demandez à un administrateur du déploiement de la définir.",
+      "loadError": "Impossible de vérifier les modèles proposés. Réessayez dans un instant.",
+      "nothingTitle": "Aucun fournisseur n’est encore proposé à cette organisation",
+      "nothingAdmin": "Activez au moins un fournisseur, puis revenez créer l’espace de travail.",
+      "nothingMember": "Demandez à un administrateur de l’organisation d’activer un fournisseur.",
+      "openProviders": "Ouvrir les fournisseurs de l’organisation",
+      "chooseAnother": "En choisir un autre",
+      "badgeNoSize": "Pas de taille de vecteur",
+      "badgeNotOffered": "Non proposé"
+    }
   },
   "entityTypes": {
     "title": "Types d'entités",

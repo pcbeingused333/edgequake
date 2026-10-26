@@ -70,7 +70,7 @@ export function UsageRoleRow({
     return (
       <div data-testid={`usage-row-${usage}`} className="py-3">
         <p className="text-sm font-medium">{label}</p>
-        <p className="text-xs text-muted-foreground">Follows the workspace default. It has no role of its own.</p>
+        <p className="text-xs text-muted-foreground">Follows the workspace default (it has no model of its own).</p>
         <ResolvedSummary resolved={resolved} />
       </div>
     );

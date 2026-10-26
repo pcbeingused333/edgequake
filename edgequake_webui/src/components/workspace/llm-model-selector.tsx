@@ -107,6 +107,7 @@ export function LLMModelSelector({
         }
         serverDefaultLabel={inheritLabel ?? 'Inherit'}
         placeholder="Search models…"
+        enableRemoteSearch={false}
       />
       {showUsageHint && (
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">

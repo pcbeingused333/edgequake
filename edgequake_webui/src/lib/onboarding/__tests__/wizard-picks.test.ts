@@ -19,11 +19,11 @@ describe('wizard-picks', () => {
     });
   });
 
-  it('defaults embedding dimension when the pick omits it', () => {
+  it('never guesses an embedding dimension the pick omits (SPEC-179)', () => {
     expect(
       embeddingSelectionFromPick({ provider: 'ollama', model: 'embeddinggemma' })
         ?.dimension,
-    ).toBe(768);
+    ).toBe(0);
   });
 
   it('flips useServerDefaults off when a concrete LLM is picked', () => {

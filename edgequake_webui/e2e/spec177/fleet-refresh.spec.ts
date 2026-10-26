@@ -65,6 +65,11 @@ async function install(page: Page) {
   await page.route(/\/api\/v1\/deployment\/providers\/?$/, (route) =>
     route.fulfill({ json: deployment() }),
   );
+  await page.route(/\/api\/v1\/deployment\/providers\/[^/]+\/refresh$/, (route) =>
+    route.fulfill({
+      json: { status: "ok", error: null, added: [], removed: [], refreshed_at: "2026-10-26T00:00:00Z" },
+    }),
+  );
   await page.route("**/api/v1/models/discover/refresh", (route) => {
     refreshes.push(route.request().method());
     return route.fulfill({ json: { status: "ok", message: "invalidated" } });

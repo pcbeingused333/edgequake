@@ -55,13 +55,18 @@ export function WorkspaceModelNarrowingCard({ workspaceId, readOnly = false }: W
         ) : matrix.length === 0 ? (
           <p className="text-sm text-muted-foreground">No models are available to this workspace yet.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div
+            className="overflow-x-auto"
+            role="region"
+            tabIndex={0}
+            aria-label="Models by job. Scroll sideways for more jobs."
+          >
             <Table data-testid="workspace-narrowing-table">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="min-w-56">Model</TableHead>
+                  <TableHead className="sticky left-0 z-10 min-w-40 bg-card">Model</TableHead>
                   {USAGE_KEYS.map((usage) => (
-                    <TableHead key={usage} className="text-center">
+                    <TableHead key={usage} className="h-auto min-w-20 py-2 text-center text-xs leading-tight whitespace-normal">
                       {USAGE_LABELS[usage]}
                     </TableHead>
                   ))}
@@ -70,7 +75,7 @@ export function WorkspaceModelNarrowingCard({ workspaceId, readOnly = false }: W
               <TableBody>
                 {matrix.map((row) => (
                   <TableRow key={row.value} data-testid={`narrowing-row-${row.value}`}>
-                    <TableCell className="font-medium">
+                    <TableCell className="sticky left-0 z-10 min-w-40 bg-card font-medium">
                       {row.provider} · {row.label}
                     </TableCell>
                     {USAGE_KEYS.map((usage) => {

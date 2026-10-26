@@ -1121,6 +1121,84 @@
       "title": "成员、角色与登录",
       "description": "在“成员”页面邀请成员、管理角色并配置单点登录。",
       "cta": "打开成员页面"
+    },
+    "providers": {
+      "add": "添加",
+      "addUnderConnections": "请在“连接”中添加。",
+      "add_provider": "添加提供商",
+      "cap": {
+        "chat": "对话",
+        "embedding": "嵌入",
+        "vision": "视觉"
+      },
+      "deploymentEmpty": "此部署还没有提供商。",
+      "empty": "此部署还没有提供商。请在“连接”中添加。",
+      "diffAdded": "新增 {{count}}",
+      "diffRemoved": "移除 {{count}}",
+      "dimensionFor": "{{id}} 的维度",
+      "dimensionRequired": "嵌入模型需要填写维度。",
+      "keySet": "已设置密钥",
+      "noKey": "无密钥",
+      "kindFor": "{{slug}} 的类型",
+      "loadError": "无法加载提供商。",
+      "loading": "正在加载提供商…",
+      "modelId": "模型 ID",
+      "modelIdFor": "{{slug}} 的模型 ID",
+      "modelsSaved": "模型已保存",
+      "neverRefreshed": "模型列表尚未刷新",
+      "newDimension": "维度",
+      "noModels": "尚未登记模型。刷新以发现模型，或添加 ID。",
+      "noModelsYet": "没有已登记的模型。刷新以发现。",
+      "origin": {
+        "env": "环境变量",
+        "fleet": "自定义"
+      },
+      "probe": {
+        "failed": "检测失败",
+        "ok": "正常",
+        "unchecked": "未测试"
+      },
+      "refresh": "刷新模型",
+      "refreshFailed": "无法刷新模型。",
+      "refreshFailedAt": "上次刷新失败 {{when}}",
+      "refreshed": "模型已刷新",
+      "refreshedAt": "已刷新 {{when}}",
+      "refreshedDiff": "模型已刷新：新增 {{added}}，移除 {{removed}}",
+      "refreshing": "正在刷新…",
+      "registered": "已登记的模型",
+      "removeModel": "移除 {{id}}",
+      "restore": "恢复",
+      "retry": "重试",
+      "saveFailed": "保存失败",
+      "showLess": "收起",
+      "showMore": "另外 {{count}} 个",
+      "state": {
+        "hidden": "对组织隐藏",
+        "notOffered": "未提供",
+        "offered": "已提供"
+      },
+      "testFirst": "请先测试连接",
+      "withdraw": "撤回",
+      "withdrawTitle": "撤回 {{name}}？",
+      "withdrawBody": "这些分配保持原选择，在管理员选择其他模型之前会因“不合规”而失败。",
+      "fixConnection": "连接测试通过后即可登记模型。",
+      "openConnections": "打开“连接”",
+      "useAllDeployment": "使用此部署提供的所有提供商",
+      "useAllOrganization": "使用组织提供的所有提供商"
+    },
+    "connections": {
+      "deleteTitle": "删除 {{name}}？",
+      "deleteBody": "其存储的密钥也会被删除，且无法撤销。",
+      "deleteInUse": "在管理员选择其他模型之前，它们会因“不合规”而失败。",
+      "deleteAnyway": "仍然删除",
+      "delete": "删除",
+      "deleteFailed": "删除失败",
+      "testOk": "上次测试通过",
+      "testFailed": "上次测试失败",
+      "key": "密钥",
+      "keySet": "已设置",
+      "update": "更新",
+      "test": "测试"
     }
   },
   "websocket": {
@@ -1378,7 +1456,19 @@
     "usingServerDefaults": "Using server defaults",
     "serverDefaultsMissing": "Server defaults not fully configured",
     "wizardDialogHint": "Multi-step creation wizard",
-    "pdfParserHintWithValue": "Choose how PDFs are converted to text. Server default resolves to {{value}}."
+    "pdfParserHintWithValue": "Choose how PDFs are converted to text. Server default resolves to {{value}}.",
+    "eligibility": {
+      "notOffered": "{{model}} 已不再向此组织提供。",
+      "dimensionMissing": "{{model}} 没有登记向量维度。请选择其他嵌入模型，或请部署管理员设置。",
+      "loadError": "无法检查可用模型。请稍后重试。",
+      "nothingTitle": "此组织尚未提供任何提供商",
+      "nothingAdmin": "请至少启用一个提供商，然后回来创建工作区。",
+      "nothingMember": "请联系组织管理员启用提供商。",
+      "openProviders": "打开组织提供商",
+      "chooseAnother": "另选一个",
+      "badgeNoSize": "无向量维度",
+      "badgeNotOffered": "未提供"
+    }
   },
   "entityTypes": {
     "title": "实体类型",

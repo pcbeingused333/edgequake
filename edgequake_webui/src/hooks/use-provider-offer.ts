@@ -43,7 +43,8 @@ export function useDeploymentProviders() {
 export function useWithdrawProvider() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ slug, withdrawn }: { slug: string; withdrawn: boolean }) => withdrawProvider(slug, withdrawn),
+    mutationFn: ({ slug, withdrawn, confirm }: { slug: string; withdrawn: boolean; confirm?: boolean }) =>
+      withdrawProvider(slug, withdrawn, confirm === true),
     onSuccess: () => invalidateAfterOffer(queryClient),
   });
 }
@@ -57,6 +58,7 @@ export function useSaveConnectionModels(slug: string) {
         supports_chat: boolean;
         supports_vision: boolean;
         supports_embedding: boolean;
+        embedding_dimension?: number;
       }[],
     ) => putConnectionModels(slug, models),
     onSuccess: () => invalidateAfterOffer(queryClient),
@@ -74,7 +76,10 @@ export function useTenantOffer(tenantId: string | null) {
 export function useSaveTenantOffer(tenantId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: PutOfferBody) => putTenantOffer(tenantId, body),
+    mutationFn: (body: PutOfferBody) => {
+      const current = queryClient.getQueryData<ProviderOffer>(providerOfferKeys.tenant(tenantId));
+      return putTenantOffer(tenantId, body, current?.revision);
+    },
     onSuccess: (data) => {
       queryClient.setQueryData(providerOfferKeys.tenant(tenantId), data);
       invalidateAfterOffer(queryClient);
@@ -93,7 +98,10 @@ export function useWorkspaceOffer(workspaceId: string | null) {
 export function useSaveWorkspaceOffer(workspaceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: PutOfferBody) => putWorkspaceOffer(workspaceId, body),
+    mutationFn: (body: PutOfferBody) => {
+      const current = queryClient.getQueryData<ProviderOffer>(providerOfferKeys.workspace(workspaceId));
+      return putWorkspaceOffer(workspaceId, body, current?.revision);
+    },
     onSuccess: (data: ProviderOffer) => {
       queryClient.setQueryData(providerOfferKeys.workspace(workspaceId), data);
       invalidateAfterOffer(queryClient, workspaceId);

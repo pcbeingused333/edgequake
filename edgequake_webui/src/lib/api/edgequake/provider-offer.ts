@@ -1,8 +1,9 @@
-import { apiClient } from "@/lib/api/client";
+import { ApiRequestError, apiClient } from "@/lib/api/client";
 
 export interface OfferModel {
   id: string;
   usages: string[];
+  embedding_dimension?: number;
 }
 
 export interface DeploymentProvider {
@@ -15,6 +16,13 @@ export interface DeploymentProvider {
   probe: string;
   key_configured: boolean;
   models: OfferModel[];
+  refresh?: {
+    refreshed_at: string;
+    status: "ok" | "error";
+    error?: string | null;
+    added: number;
+    removed: number;
+  };
 }
 
 export interface OfferProvider {
@@ -34,6 +42,7 @@ export interface ProviderOffer {
   can_manage: boolean;
   providers: OfferProvider[];
   legacy: { slug: string; display_name: string }[];
+  revision?: number;
 }
 
 export interface PutOfferBody {
@@ -44,15 +53,48 @@ export interface PutOfferBody {
 export const fetchDeploymentProviders = () =>
   apiClient<{ providers: DeploymentProvider[] }>("/deployment/providers");
 
-export const withdrawProvider = (slug: string, withdrawn: boolean) =>
-  apiClient<DeploymentProvider>(`/deployment/providers/${encodeURIComponent(slug)}`, {
-    method: "PUT",
-    body: JSON.stringify({ withdrawn }),
+export const withdrawProvider = (slug: string, withdrawn: boolean, confirm = false) =>
+  apiClient<DeploymentProvider>(
+    `/deployment/providers/${encodeURIComponent(slug)}${confirm ? "?confirm=true" : ""}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ withdrawn }),
+    },
+  );
+
+export interface ProviderRefreshResult {
+  status: "ok" | "error";
+  error?: string | null;
+  added: string[];
+  removed: string[];
+  refreshed_at: string;
+}
+
+export const refreshProviderModels = (slug: string) =>
+  apiClient<ProviderRefreshResult>(`/deployment/providers/${encodeURIComponent(slug)}/refresh`, {
+    method: "POST",
   });
+
+export interface ProviderImpact {
+  assignments: { scope: string; id: string; field: string }[];
+}
+
+export const fetchProviderImpact = (slug: string) =>
+  apiClient<ProviderImpact>(`/deployment/providers/${encodeURIComponent(slug)}/impact`);
+
+/** True when the server wants an explicit confirm because assignments still use the provider. */
+export const needsConfirm = (error: unknown): error is ApiRequestError =>
+  error instanceof ApiRequestError && error.status === 409 && error.code === "confirm_required";
 
 export const putConnectionModels = (
   slug: string,
-  models: { id: string; supports_chat: boolean; supports_vision: boolean; supports_embedding: boolean }[],
+  models: {
+    id: string;
+    supports_chat: boolean;
+    supports_vision: boolean;
+    supports_embedding: boolean;
+    embedding_dimension?: number;
+  }[],
 ) =>
   apiClient<void>(`/deployment/providers/${encodeURIComponent(slug)}/models`, {
     method: "PUT",
@@ -62,17 +104,19 @@ export const putConnectionModels = (
 export const fetchTenantOffer = (tenantId: string) =>
   apiClient<ProviderOffer>(`/tenants/${tenantId}/provider-offer`);
 
-export const putTenantOffer = (tenantId: string, body: PutOfferBody) =>
+export const putTenantOffer = (tenantId: string, body: PutOfferBody, revision?: number) =>
   apiClient<ProviderOffer>(`/tenants/${tenantId}/provider-offer`, {
     method: "PUT",
     body: JSON.stringify(body),
+    headers: revision === undefined ? undefined : { "If-Match": String(revision) },
   });
 
 export const fetchWorkspaceOffer = (workspaceId: string) =>
   apiClient<ProviderOffer>(`/workspaces/${workspaceId}/provider-offer`);
 
-export const putWorkspaceOffer = (workspaceId: string, body: PutOfferBody) =>
+export const putWorkspaceOffer = (workspaceId: string, body: PutOfferBody, revision?: number) =>
   apiClient<ProviderOffer>(`/workspaces/${workspaceId}/provider-offer`, {
     method: "PUT",
     body: JSON.stringify(body),
+    headers: revision === undefined ? undefined : { "If-Match": String(revision) },
   });
