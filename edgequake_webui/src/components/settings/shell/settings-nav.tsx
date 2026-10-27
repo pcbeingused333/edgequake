@@ -79,10 +79,14 @@ export function SettingsNav({
           <div key={scope.id} role="group" aria-labelledby={headingId} data-scope={scope.id}>
             <p
               id={headingId}
-              className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+              className="flex min-w-0 items-baseline gap-1.5 px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
             >
-              {scope.fallback}
-              {groupName ? <span className="ml-1.5 normal-case tracking-normal text-foreground/70">{groupName}</span> : null}
+              <span className="shrink-0">{scope.fallback}</span>
+              {groupName ? (
+                <span className="min-w-0 truncate normal-case tracking-normal text-foreground/70" title={groupName}>
+                  {groupName}
+                </span>
+              ) : null}
             </p>
             <ul className="flex flex-col gap-0.5">
               {sections.map((section) => {

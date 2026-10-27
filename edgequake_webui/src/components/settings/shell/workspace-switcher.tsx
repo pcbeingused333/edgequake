@@ -45,16 +45,18 @@ export function WorkspaceSwitcher({
       </label>
       <Select value={workspace?.id ?? undefined} onValueChange={onChange}>
         <SelectTrigger
+          size="sm"
           aria-labelledby="settings-switcher-label"
-          className="h-8 w-full text-sm"
+          title={workspace?.name}
+          className="w-full min-w-0 text-left *:data-[slot=select-value]:!block *:data-[slot=select-value]:!truncate *:data-[slot=select-value]:!text-left"
           data-testid="settings-workspace-switcher"
         >
           <SelectValue placeholder={t("settings.switcher.placeholder", "Choose a workspace")} />
         </SelectTrigger>
         <SelectContent>
           {workspaces.map((w) => (
-            <SelectItem key={w.id} value={w.id}>
-              {w.name}
+            <SelectItem key={w.id} value={w.id} title={w.name}>
+              <span className="truncate">{w.name}</span>
             </SelectItem>
           ))}
         </SelectContent>
