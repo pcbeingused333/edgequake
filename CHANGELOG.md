@@ -20,6 +20,7 @@ so this is a statistical tie. EdgeQuake does not claim a win.
 ### Fixed
 
 - Creating a workspace with organization defaults can pin the decision engine model `tev1:0.8b`. That tag stays out of the chat catalog. The save checks the decision-engine name instead of refusing it as `model_not_eligible`.
+- Transitive TLS crates move to the patched releases for RUSTSEC-2026-0381, 0382, 0383, and 0385 (`webpki-roots` 1.0.11, `rustls-webpki` 0.103.16, `webpki-root-certs` 1.0.11, `ctutils` 0.4.6). `crypto-bigint` 0.5.5 stays, because `openidconnect` 4.0.1 pins the `p256` 0.13 stack that cannot select 0.7.
 
 ## [0.38.2] — 2026-10-26
 
