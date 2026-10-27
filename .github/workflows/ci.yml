@@ -199,7 +199,10 @@ jobs:
         # edgeparse-core 0.3.2 requires zip ^2.2 and only writes archives.
         # utoipa-swagger-ui 9 requires zip ^3 and copies entries itself; it does
         # not call ZipArchive::extract(). Neither parent can select zip 9 yet.
-        run: cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0173 --ignore RUSTSEC-2026-0367 --ignore RUSTSEC-2026-0368 --ignore RUSTSEC-2026-0369
+        # crypto-bigint 0.5.5 (RUSTSEC-2026-0387) is pinned by elliptic-curve 0.13
+        # through p256, which openidconnect 4.0.1 requires. The fix is
+        # crypto-bigint >=0.7.6, and that curve stack cannot select it.
+        run: cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0173 --ignore RUSTSEC-2026-0367 --ignore RUSTSEC-2026-0368 --ignore RUSTSEC-2026-0369 --ignore RUSTSEC-2026-0387
 
   docs:
     name: Documentation

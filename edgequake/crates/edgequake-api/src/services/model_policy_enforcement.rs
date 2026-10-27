@@ -300,15 +300,12 @@ pub async fn ensure_workspace_choice(
         )?;
     }
     if let Some(model) = named_one(decision_model) {
-        let allowed = eligible_models(Usage::Decision, &entries, &ceiling, &narrowing, offered)
-            .iter()
-            .any(|entry| entry.model == model);
-        if !allowed {
-            return Err(ApiError::unprocessable_coded(
-                "model_not_eligible",
-                "model is not selectable for this workspace",
-            ));
-        }
+        // EC-175-08: a decision tag is not a chat-catalog pair. `tev1:0.8b`
+        // is absent from `eligible_models` on purpose (it lives on the decision
+        // host). Judging it there refuses every create that pins the default
+        // engine, including "Use organization defaults". Name shape is SPEC-160;
+        // inherit words are cleared later by `apply_decision_metadata`.
+        judge_decision_model(model)?;
     }
     if let Some(roles) = llm_roles.and_then(|value| value.as_object()) {
         for (key, value) in roles {
@@ -456,6 +453,23 @@ fn ensure_family(
         check_pair(usage, provider, model, entries, ceiling, narrowing, offered)?;
     }
     Ok(())
+}
+
+/// A decision-engine tag. Not filtered by the provider offer or the chat catalog.
+fn judge_decision_model(model: &str) -> ApiResult<()> {
+    if is_decision_inherit(model) {
+        return Ok(());
+    }
+    edgequake_pipeline::extractor::decision::settings::check_model_name(model)
+        .map_err(|err| ApiError::bad_request_coded("invalid_decision_model", err.to_string()))?;
+    Ok(())
+}
+
+fn is_decision_inherit(model: &str) -> bool {
+    matches!(
+        model.trim().to_ascii_lowercase().as_str(),
+        "" | "inherit" | "none"
+    )
 }
 
 fn named_one(value: Option<&str>) -> Option<&str> {
@@ -779,6 +793,25 @@ mod tests {
             None,
         );
         assert_eq!(code(got), Some("capability_mismatch"));
+    }
+
+    #[test]
+    fn decision_tag_is_accepted_when_absent_from_the_chat_catalog() {
+        // EC-175-08: tev1 is kept off the chat catalog. Create still sends it
+        // as the decision engine default, and that save must not be
+        // model_not_eligible.
+        let catalog = [chat("mistral", "mistral-large-latest")];
+        let offered = std::collections::BTreeSet::from(["mistral".to_string()]);
+        let in_chat_catalog = eligible_models(Usage::Decision, &catalog, &[], &[], Some(&offered))
+            .iter()
+            .any(|entry| entry.model == "tev1:0.8b");
+        assert!(!in_chat_catalog);
+        assert!(judge_decision_model("tev1:0.8b").is_ok());
+        assert!(judge_decision_model("inherit").is_ok());
+        assert_eq!(
+            judge_decision_model("a b").err().map(|err| err.code()),
+            Some("invalid_decision_model")
+        );
     }
 
     #[test]

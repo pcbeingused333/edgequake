@@ -7,7 +7,7 @@ description: Run EdgeQuake in production - deploy, configure, secure, upgrade, m
 
 This section is for people who run EdgeQuake: platform engineers, SREs, and anyone who owns a deployment. Start here to find the right page for your task.
 
-> **Current release: v0.38.2** · Schema train **224** · Contract: OpenAPI
+> **Current release: v0.38.3** · Schema train **224** · Contract: OpenAPI
 
 ## Operating rules
 
@@ -58,6 +58,6 @@ How to read it: pick the branch that matches your situation. Each leaf is a page
 | Repair the entity spine or edge index (SPEC-098) | [Entity spine ensure](spec098-entity-spine-ensure.md) |
 | Send traces to Langfuse 3.1.x | [Langfuse 3.1.x](langfuse-3.1.md) |
 | Cut a release | [Release and CD](release-and-cd.md) and the [pre-delivery checklist](pre-delivery-checklist.md) |
-| Read what changed in a release | [Upgrade to v0.38.2](upgrade-to-0.38.2.md), [v0.38.1](upgrade-to-0.38.1.md), [v0.38.0](upgrade-to-0.38.0.md), [v0.37.0](upgrade-to-0.37.0.md) |
+| Read what changed in a release | [Upgrade to v0.38.3](upgrade-to-0.38.3.md), [v0.38.2](upgrade-to-0.38.2.md), [v0.38.1](upgrade-to-0.38.1.md), [v0.38.0](upgrade-to-0.38.0.md) |
 | Use decision extraction (preview) | [Decision extraction](../concepts/decision-extraction.md) |
 | Understand cancel, lease and fairness | [Ingestion cancel and fairness](../ingestion-cancel-and-fairness.md) |
