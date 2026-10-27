@@ -3,7 +3,7 @@ title: Decision Extraction
 description: Preview knowledge-graph extraction that answers closed questions on a local decision model.
 ---
 
-> **Preview since v0.31.0** · Current release: v0.38.2 · Schema 166 or later · Spec: [SPEC-160](../../specs/160-tev1/README.md) · Quality: [W8 report](../../specs/160-tev1/measurements/w8-report.md)
+> **Preview since v0.31.0** · Current release: v0.38.3 · Schema 166 or later · Spec: [SPEC-160](../../specs/160-tev1/README.md) · Quality: [W8 report](../../specs/160-tev1/measurements/w8-report.md)
 
 # Decision extraction
 

@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.38.3] — 2026-10-27
+
+Patch on v0.38.2. Schema stays **224**. An upgrade from 0.38.2 applies no new migration:
+[`docs/operations/upgrade-to-0.38.3.md`](docs/operations/upgrade-to-0.38.3.md).
+
+**CD:** GHCR `edgequake`, `edgequake-frontend`, `edgequake-postgres` (`0.38.3`, `-pg16`, `-pg17`, `-pg18`), and `edgequake-keycloak` on tag `v0.38.3`.
+
+**SPEC-001 Acc:** not re-scored on this cut. This patch does not change mix retrieval. The latest valid medical-mid n=200 pack remains
+[`medical-mid-20261024T031725Z`](specs/001-benchmark/e2e/artifacts/history/medical-mid-20261024T031725Z/)
+(`valid: true`). EdgeQuake **0.8084**, LightRAG **0.7681**, delta **+0.0403**
+(95% bootstrap CI [-0.0241, +0.1036], n_paired 72). The interval includes 0,
+so this is a statistical tie. EdgeQuake does not claim a win.
+
+### Fixed
+
+- Creating a workspace with organization defaults can pin the decision engine model `tev1:0.8b`. That tag stays out of the chat catalog. The save checks the decision-engine name instead of refusing it as `model_not_eligible`.
+
 ## [0.38.2] — 2026-10-26
 
 Patch on v0.38.1. Schema stays **224**. An upgrade from 0.38.1 applies no new migration:

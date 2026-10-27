@@ -3,7 +3,7 @@ title: "What's new"
 description: "Per-release highlights moved out of the README."
 ---
 
-This page lists the highlights of each release from v0.38.2 back to v0.24.0, newest first. Most entries name the schema number, so you can plan a database migration before you upgrade. For the full change list, see the [CHANGELOG](CHANGELOG.md), and for the upgrade steps, see the linked upgrade guide. A plain-English [picture tour](https://edgequake.com/tutorial/) of the UI is on the marketing site.
+This page lists the highlights of each release from v0.38.3 back to v0.24.0, newest first. Most entries name the schema number, so you can plan a database migration before you upgrade. For the full change list, see the [CHANGELOG](CHANGELOG.md), and for the upgrade steps, see the linked upgrade guide. A plain-English [picture tour](https://edgequake.com/tutorial/) of the UI is on the marketing site.
 
 ## Schema train at a glance
 
@@ -32,11 +32,21 @@ timeline
     v0.38.0 : 219
     v0.38.1 : 224
     v0.38.2 : 224 pinned
+    v0.38.3 : 224 pinned
 ```
 
-The timeline shows the schema number each release leaves the database at, from v0.23.0 through v0.38.2.
+The timeline shows the schema number each release leaves the database at, from v0.23.0 through v0.38.3.
 
 Run `edgequake migrate` when you move to a release with a higher number. The [upgrading guide](operations/upgrading.md) covers the steps.
+
+### What's new in 0.38.3
+
+Patch on v0.38.2. Schema stays **224**. Upgrade from 0.38.2 applies no new migration. Restart replicas after the image bump.
+
+- Creating a workspace can store the decision-engine model `tev1:0.8b`. That tag stays out of the chat catalog, and the save accepts a valid decision-engine name.
+- SPEC-001 Acc was not re-scored. The pack [`medical-mid-20261024T031725Z`](../specs/001-benchmark/e2e/artifacts/history/medical-mid-20261024T031725Z/) stays the valid score: EdgeQuake **0.8084** vs LightRAG **0.7681**, a statistical tie. EdgeQuake does not claim a win.
+
+Upgrade: **[upgrade-to-0.38.3.md](operations/upgrade-to-0.38.3.md)** · changelog: [CHANGELOG.md](CHANGELOG.md).
 
 ### What's new in 0.38.2
 
