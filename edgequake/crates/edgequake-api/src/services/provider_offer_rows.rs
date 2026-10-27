@@ -381,9 +381,9 @@ pub async fn provider_assignment_count(state: &AppState, slug: &str) -> ApiResul
         .map_err(internal)?;
         let columns: i64 = sqlx::query_scalar(
             "SELECT COUNT(*)::bigint FROM workspaces \
-             WHERE lower(llm_provider) = $1 \
-                OR lower(embedding_provider) = $1 \
-                OR lower(coalesce(vision_llm_provider, '')) = $1",
+             WHERE lower(metadata->>'llm_provider') = $1 \
+                OR lower(metadata->>'embedding_provider') = $1 \
+                OR lower(coalesce(metadata->>'vision_llm_provider', '')) = $1",
         )
         .bind(slug)
         .fetch_one(pool)

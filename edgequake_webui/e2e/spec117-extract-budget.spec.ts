@@ -7,6 +7,7 @@
 
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { GOTO_OPTS } from "./helpers/app-ready";
+import { mockHermeticModelOffer } from "./helpers/hermetic-models";
 
 const MOCK_TENANT_ID = "aaaaaaaa-0117-0117-0117-aaaaaaaaaaaa";
 const MOCK_WORKSPACE_ID = "bbbbbbbb-0117-0117-0117-bbbbbbbbbbbb";
@@ -177,6 +178,7 @@ async function mockSpec117Backend(page: Page) {
   await page.route("**/api/v1/models/health**", (route) =>
     fulfillJson(route, 200, []),
   );
+  await mockHermeticModelOffer(page);
   await page.route("**/api/v1/providers*", (route) =>
     fulfillJson(route, 200, []),
   );

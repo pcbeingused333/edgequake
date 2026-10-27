@@ -3,6 +3,7 @@
  * Extends the SPEC-017 tenant seed pattern with full surface coverage.
  */
 import type { Page } from "@playwright/test";
+import { mockHermeticModelOffer } from "../../helpers/hermetic-models";
 import { installHermeticGuard, SEED_PATH } from "./mock-hermetic";
 import {
   FIXTURE_100,
@@ -695,6 +696,7 @@ export async function mockSpec155Api(
   await page.route("**/api/v1/models/llm**", (route) =>
     route.fulfill(json(MOCK_LLM_CATALOG)),
   );
+  await mockHermeticModelOffer(page, { llm: "gemma3:latest" });
 
   await page.route("**/api/v1/providers**", (route) =>
     route.fulfill(json({ items: [{ id: "mock", name: "Mock", status: "ready" }] })),

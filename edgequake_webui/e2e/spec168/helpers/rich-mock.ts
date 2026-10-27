@@ -9,6 +9,7 @@ import {
   SPEC155_TENANT,
   SPEC155_WORKSPACE,
 } from "../../spec155/helpers/mock-api";
+import { mockSettingsAccess } from "../../spec175/helpers/access-mock";
 import {
   DEMO_CONVERSATIONS,
   buildCostHistory,
@@ -318,6 +319,7 @@ export async function prepareSpec168Page(page: Page, opts: RichOptions = {}) {
     },
     { collapsed: opts.collapsedSidebar, theme: opts.theme },
   );
+  await mockSettingsAccess(page, "platform_admin");
   await page.reload({ waitUntil: "domcontentloaded" });
 }
 

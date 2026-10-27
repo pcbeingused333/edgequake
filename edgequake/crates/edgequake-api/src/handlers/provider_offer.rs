@@ -647,26 +647,37 @@ pub async fn get_provider_impact(
                 });
             }
         }
-        let columns: Vec<(Uuid, String, String, Option<String>)> = sqlx::query_as(
-            "SELECT workspace_id, llm_provider, embedding_provider, vision_llm_provider \
+        // Model pins live in workspace metadata. The old column names are not
+        // on the migrated table, so this query used to fail with 500.
+        let columns: Vec<(Uuid, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT workspace_id, \
+                    metadata->>'llm_provider', \
+                    metadata->>'embedding_provider', \
+                    metadata->>'vision_llm_provider' \
              FROM workspaces \
-             WHERE lower(llm_provider) = $1 \
-                OR lower(embedding_provider) = $1 \
-                OR lower(coalesce(vision_llm_provider, '')) = $1",
+             WHERE lower(metadata->>'llm_provider') = $1 \
+                OR lower(metadata->>'embedding_provider') = $1 \
+                OR lower(coalesce(metadata->>'vision_llm_provider', '')) = $1",
         )
         .bind(&slug)
         .fetch_all(pool)
         .await
         .map_err(|err| ApiError::Internal(err.to_string()))?;
         for (id, llm, embedding, vision) in columns {
-            if llm.eq_ignore_ascii_case(&slug) {
+            if llm
+                .as_deref()
+                .is_some_and(|value| value.eq_ignore_ascii_case(&slug))
+            {
                 assignments.push(ProviderImpactRow {
                     scope: "workspace".into(),
                     id: id.to_string(),
                     field: "llm".into(),
                 });
             }
-            if embedding.eq_ignore_ascii_case(&slug) {
+            if embedding
+                .as_deref()
+                .is_some_and(|value| value.eq_ignore_ascii_case(&slug))
+            {
                 assignments.push(ProviderImpactRow {
                     scope: "workspace".into(),
                     id: id.to_string(),

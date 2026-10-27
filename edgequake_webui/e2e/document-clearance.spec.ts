@@ -129,8 +129,7 @@ test.describe("SPEC-174 document clearance", () => {
     await prepareMembersPage(page);
     await accessRoutes(page, state);
     await setViewport(page, 1440);
-    await page.goto("/settings", { waitUntil: "domcontentloaded" });
-    await page.getByRole("link", { name: "Access" }).click();
+    await page.goto("/settings/workspace/access", { waitUntil: "domcontentloaded" });
     const card = page.getByTestId("document-labels-card");
     await expect(card).toBeVisible({ timeout: 30_000 });
     await card.scrollIntoViewIfNeeded();

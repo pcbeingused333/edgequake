@@ -37,6 +37,15 @@ describe("settings access (LAW-175-17 badge order)", () => {
     expect(access.workspaceManage).toBe(true);
   });
 
+  it("treats a payload with no workspace id list as a member", () => {
+    const raw = {
+      ...payload(),
+      administered_workspace_ids: undefined,
+    } as unknown as SettingsAccessPayload;
+    expect(accessChip(toSettingsAccess(raw))).toBe("member");
+    expect(toSettingsAccess(raw).administeredWorkspaceIds).toEqual([]);
+  });
+
   it("fails closed before the server answers", () => {
     expect(NO_SETTINGS_ACCESS.instanceAdmin).toBe(false);
     expect(NO_SETTINGS_ACCESS.tenantManage).toBe(false);
