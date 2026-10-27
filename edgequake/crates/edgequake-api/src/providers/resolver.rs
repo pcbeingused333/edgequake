@@ -497,6 +497,10 @@ impl WorkspaceProviderResolver {
             .await
             {
                 Ok(offer) => offer,
+                // The offer tables arrive with SPEC-177. A database that only
+                // has the connection table has not installed that gate, so a
+                // saved host still resolves. A real query error still stops.
+                Err(err) if offer_schema_absent(&err) => return Ok(()),
                 Err(err) => {
                     return Err(ProviderResolutionError::OfferUnavailable {
                         message: err.to_string(),
@@ -947,9 +951,29 @@ fn configured_provider(request: &LlmResolutionRequest, workspace: Option<&Worksp
     ws.llm_provider.trim().to_string()
 }
 
+/// A missing offer relation is an unmigrated connection database, not a refusal.
+#[cfg_attr(not(feature = "postgres"), allow(dead_code))]
+fn offer_schema_absent(err: &crate::error::ApiError) -> bool {
+    let message = err.to_string();
+    message.contains("does not exist") && message.contains("relation")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn missing_offer_table_is_not_a_refusal() {
+        let missing = crate::error::ApiError::Internal(
+            "error returned from database: relation \"deployment_provider_overrides\" does not exist"
+                .into(),
+        );
+        assert!(offer_schema_absent(&missing));
+        let down = crate::error::ApiError::Internal(
+            "error communicating with database: connection closed".into(),
+        );
+        assert!(!offer_schema_absent(&down));
+    }
 
     #[test]
     fn test_parse_legacy_format() {
