@@ -6,6 +6,7 @@ import { expect, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { GOTO_OPTS } from "../helpers/app-ready";
+import { mockHermeticModelOffer } from "../helpers/hermetic-models";
 import {
   GRAPH_FILTER_DOC_A,
   mockGraphDocumentFilterRoutes,
@@ -192,6 +193,34 @@ export async function mockAskQueryRoutes(page: Page): Promise<void> {
     }
     await route.fallback();
   });
+
+  // Send stays disabled until the workspace query pair is eligible. The
+  // hermetic page has no backend, so the composer must see a matching offer.
+  await page.route("**/api/v1/config/effective**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        workspace_id: null,
+        policy_mode: "unconstrained",
+        usages: [
+          {
+            usage: "query",
+            provider: "ollama",
+            provider_display_name: "Ollama",
+            model: "gemma4:latest",
+            connection_id: null,
+            reasoning_effort: null,
+            source: "compiled_default",
+            locked: false,
+            eligible: true,
+            broken_reason: "none",
+          },
+        ],
+      }),
+    }),
+  );
+  await mockHermeticModelOffer(page);
 }
 
 export async function prepareGraphAskPage(page: Page): Promise<void> {
