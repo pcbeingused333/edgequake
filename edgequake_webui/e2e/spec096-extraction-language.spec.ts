@@ -11,6 +11,7 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 import * as fs from "node:fs";
 import { GOTO_OPTS } from "./helpers/app-ready";
 import { spec096Screenshot } from "./helpers/screenshot-paths";
+import { mockHermeticModelOffer } from "./helpers/hermetic-models";
 import { wizardGoUntilStep } from "./helpers/spec013-bootstrap";
 
 const MOCK_TENANT_ID = "aaaaaaaa-0096-0096-0096-aaaaaaaaaaaa";
@@ -271,6 +272,7 @@ async function mockSpec096Backend(page: Page) {
   await page.route("**/api/v1/models/health**", (route) =>
     fulfillJson(route, 200, []),
   );
+  await mockHermeticModelOffer(page);
   await page.route("**/api/v1/providers*", (route) =>
     fulfillJson(route, 200, []),
   );

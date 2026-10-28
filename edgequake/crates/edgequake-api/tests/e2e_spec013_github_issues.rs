@@ -694,31 +694,48 @@ async fn spec013_workspace_reset_llm_embedding_to_server_default() {
     .await;
     let workspace_id = ws_body["id"].as_str().unwrap();
 
-    // Simulate stale E2E/test override stuck in metadata
-    let pin = app
+    // A stale pin is data already in the row, not a model the catalog would
+    // accept. PUT of an unknown pair is 422 model_not_eligible on purpose.
+    // The app migrates a scratch database (`{name}_test`), not the service
+    // database named by DATABASE_URL. Planting into the service database
+    // looks up a `workspaces` table that was never created.
+    let db = spec013_postgres::database_url().expect("isolated SPEC-013 database");
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&db)
+        .await
+        .expect("connect to plant the stale pin");
+    sqlx::query(
+        "UPDATE workspaces \
+         SET metadata = metadata || jsonb_build_object( \
+             'llm_provider', 'mock', \
+             'llm_model', 'stale-stuck-model', \
+             'embedding_provider', 'mock', \
+             'embedding_model', 'stale-embed-model', \
+             'embedding_dimension', 768 \
+         ) \
+         WHERE workspace_id = $1",
+    )
+    .bind(uuid::Uuid::parse_str(workspace_id).expect("workspace id"))
+    .execute(&pool)
+    .await
+    .expect("plant stale model pin");
+    pool.close().await;
+
+    let planted = app
         .clone()
         .oneshot(
             Request::builder()
-                .method("PUT")
+                .method("GET")
                 .uri(format!("/api/v1/workspaces/{workspace_id}"))
-                .header("Content-Type", "application/json")
                 .header("X-Tenant-ID", tenant_id)
-                .body(Body::from(
-                    json!({
-                        "llm_provider": "mock",
-                        "llm_model": "stale-stuck-model",
-                        "embedding_provider": "mock",
-                        "embedding_model": "stale-embed-model",
-                        "embedding_dimension": 768
-                    })
-                    .to_string(),
-                ))
+                .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(pin.status(), StatusCode::OK);
-    let pinned = extract_json(pin).await;
+    assert_eq!(planted.status(), StatusCode::OK);
+    let pinned = extract_json(planted).await;
     assert_eq!(pinned["llm_provider"].as_str(), Some("mock"));
 
     // Simulate production server env (ollama) before reset — create_postgres_mock_app sets mock

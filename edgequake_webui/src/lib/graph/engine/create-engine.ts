@@ -18,6 +18,7 @@ import { EdgeArrowProgram } from "sigma/rendering";
 import { animateNodes } from "sigma/utils";
 import { applyDelta, diffToDelta, type ApplyDeltaContext } from "./apply-delta";
 import { sigmaContainerBox } from "./container-box";
+import { releaseContainerWebGL, webglSlotsFree } from "./webgl-slot";
 import { clampEgoDepth, collectHopDistances, hopFade } from "./ego";
 import { bindInteractions, type InteractionHandle } from "./interactions";
 import { LayoutScheduler, markAllPlaced } from "./layout-scheduler";
@@ -414,6 +415,7 @@ export class GraphEngine {
     this.focusEdgeOverlay = null;
     this.sigma?.kill();
     this.sigma = null;
+    releaseContainerWebGL(this.container);
     this.container.removeAttribute("data-graph-engine-id");
     this.container.removeAttribute("data-graph-engine");
   }
@@ -609,6 +611,13 @@ export class GraphEngine {
       );
     };
 
+    if (!webglSlotsFree()) {
+      console.warn("[GraphEngine] WebGL context unavailable; graph canvas skipped");
+      this.sigma = null;
+      this.options.onWebglError?.(new Error("WebGL is unavailable in this browser."));
+      return;
+    }
+
     try {
       const sigma = new Sigma(this.graph, this.container, {
         renderLabels: this.options.showLabels,
@@ -691,7 +700,11 @@ export class GraphEngine {
         error instanceof Error
           ? error
           : new Error("Failed to initialize WebGL graph renderer");
-      console.warn("[GraphEngine] Sigma init failed:", error);
+      // Sigma may have appended a canvas before blendFunc threw. Drop it or
+      // the next mount inherits a dead context. Log the message only: passing
+      // the Error object makes the Next.js dev overlay print a code frame.
+      releaseContainerWebGL(this.container);
+      console.warn("[GraphEngine] Sigma init failed:", err.message);
       this.sigma = null;
       this.options.onWebglError?.(err);
     }

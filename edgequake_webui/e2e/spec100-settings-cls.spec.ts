@@ -19,18 +19,12 @@ test.describe("SPEC-100 settings CLS", () => {
     await installStabilityProbe(page);
     await page.goto("/settings", GOTO_OPTS);
 
-    await expect(page.getByRole("heading", { name: /^Settings$/i })).toBeAttached({
+    await expect(page.getByTestId("settings-shell")).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByRole("heading", { name: /^Appearance$/i })).toBeAttached({
       timeout: 45_000,
     });
     // SPEC-100: no crash boundary (null→tall / remount CLS)
     await expect(page.getByText("Something went wrong")).toHaveCount(0);
-    await expect(
-      page
-        .getByTestId("spec100-admin-quota-skeleton")
-        .or(page.getByTestId("spec100-admin-quota-section"))
-        .or(page.getByTestId("spec100-user-management-skeleton"))
-        .or(page.getByRole("heading", { name: /^Settings$/i })),
-    ).toBeAttached();
     await expectClsWithinBudget(page);
   });
 });

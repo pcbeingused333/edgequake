@@ -256,12 +256,16 @@ async fn http_saved_connection_roundtrip() {
             )
             .await
             .unwrap();
-        if created.status() != StatusCode::CREATED {
-            return Err(format!("create status {}", created.status()));
-        }
+        let status = created.status();
         let bytes = axum::body::to_bytes(created.into_body(), usize::MAX)
             .await
             .unwrap();
+        if status != StatusCode::CREATED {
+            return Err(format!(
+                "create status {status} {}",
+                String::from_utf8_lossy(&bytes)
+            ));
+        }
         let view: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         if view["locality"] != "local" {
             return Err(format!("locality {:?}", view["locality"]));

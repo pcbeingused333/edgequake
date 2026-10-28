@@ -101,7 +101,7 @@ export function useQueryStreamSession({
     id: workspaceId,
     usage: "query",
   });
-  const selected = eligible.data?.models.find(
+  const selected = (eligible.data?.models ?? []).find(
     (entry) => entry.provider === querySettings.provider && entry.model === querySettings.model,
   );
   const effectiveStream = resolveStreamMode(

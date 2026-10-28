@@ -206,7 +206,7 @@ test.describe("SPEC-169 members @spec169", () => {
   });
 
   test("settings links to members; sidebar has Members", async ({ page }) => {
-    await open(page, {}, "/settings");
+    await open(page, {}, "/settings/organization/people");
     await expect(page.getByTestId("members-link-card")).toBeAttached({ timeout: 30_000 });
     await expect(page.getByText("User Management", { exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Members" }).first()).toBeVisible();

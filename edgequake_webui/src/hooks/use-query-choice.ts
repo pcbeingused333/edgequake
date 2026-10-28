@@ -20,7 +20,7 @@ export function useQueryChoice() {
   });
   const effective = useEffectiveUsages(workspaceId);
   const adoptLegacyQueryModel = useSettingsStore((s) => s.adoptLegacyQueryModel);
-  const queryUsage = effective.data?.usages.find((row) => row.usage === "query");
+  const queryUsage = (effective.data?.usages ?? []).find((row) => row.usage === "query");
   const models = visibleChoiceModels(eligible.data?.models ?? []);
   const override = useSettingsStore((s) =>
     workspaceId ? s.queryModelsByWorkspace[workspaceId] : undefined,

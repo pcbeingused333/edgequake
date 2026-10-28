@@ -40,11 +40,14 @@ export const NO_SETTINGS_ACCESS: SettingsAccess = {
 };
 
 export function toSettingsAccess(payload: SettingsAccessPayload): SettingsAccess {
+  const ids = payload.administered_workspace_ids;
+  const instanceAdmin = payload.instance_admin === true;
+  const tenantManage = payload.tenant_manage === true || instanceAdmin;
   return {
-    instanceAdmin: payload.instance_admin,
-    tenantManage: payload.tenant_manage || payload.instance_admin,
-    workspaceManage: payload.workspace_manage || payload.tenant_manage || payload.instance_admin,
-    administeredWorkspaceIds: payload.administered_workspace_ids,
+    instanceAdmin,
+    tenantManage,
+    workspaceManage: payload.workspace_manage === true || tenantManage,
+    administeredWorkspaceIds: Array.isArray(ids) ? ids : [],
   };
 }
 
@@ -55,7 +58,7 @@ export function toSettingsAccess(payload: SettingsAccessPayload): SettingsAccess
 export function accessChip(access: SettingsAccess): AccessChip {
   if (access.instanceAdmin) return "platform_admin";
   if (access.tenantManage) return "super_admin";
-  if (access.workspaceManage || access.administeredWorkspaceIds.length > 0) return "workspace_admin";
+  if (access.workspaceManage || (access.administeredWorkspaceIds?.length ?? 0) > 0) return "workspace_admin";
   return "member";
 }
 
