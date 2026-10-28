@@ -92,10 +92,50 @@ pub async fn load_catalog(state: &AppState) -> Vec<CatalogItem> {
         .model_catalog
         .list_embedding_models(config, &allowed)
         .await;
-    llm.iter()
+    let mut items: Vec<CatalogItem> = llm
+        .iter()
         .map(from_llm)
         .chain(embedding.iter().map(from_embedding))
-        .collect()
+        .collect();
+    // The mock pair is the test double, not a user-selectable model. It joins
+    // the catalog only while the test escape hatch is set, so a context-only
+    // query that names mock-model can pass the same gate production uses.
+    if crate::provider_visibility::mock_provider_allowed() {
+        for card in mock_test_cards() {
+            let present = items.iter().any(|item| {
+                item.entry.provider == card.entry.provider && item.entry.model == card.entry.model
+            });
+            if !present {
+                items.push(card);
+            }
+        }
+    }
+    items
+}
+
+fn mock_test_cards() -> Vec<CatalogItem> {
+    let chat = |model: &str, embedding: bool, dimension: Option<i32>| CatalogItem {
+        entry: CatalogEntry {
+            provider: "mock".into(),
+            model: model.into(),
+            facts: ModelFacts {
+                chat: !embedding,
+                vision: false,
+                embedding,
+                registered: true,
+                probe: None,
+            },
+        },
+        display_name: model.into(),
+        provider_display_name: "Mock".into(),
+        supports_vision: false,
+        supports_streaming: false,
+        embedding_dimension: dimension,
+    };
+    vec![
+        chat("mock-model", false, None),
+        chat("mock-embedding", true, Some(1536)),
+    ]
 }
 
 /// Models saved on a fleet connection join the catalog under that connection's slug.

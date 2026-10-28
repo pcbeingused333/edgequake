@@ -696,7 +696,10 @@ async fn spec013_workspace_reset_llm_embedding_to_server_default() {
 
     // A stale pin is data already in the row, not a model the catalog would
     // accept. PUT of an unknown pair is 422 model_not_eligible on purpose.
-    let db = std::env::var("DATABASE_URL").expect("DATABASE_URL");
+    // The app migrates a scratch database (`{name}_test`), not the service
+    // database named by DATABASE_URL. Planting into the service database
+    // looks up a `workspaces` table that was never created.
+    let db = spec013_postgres::database_url().expect("isolated SPEC-013 database");
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(1)
         .connect(&db)

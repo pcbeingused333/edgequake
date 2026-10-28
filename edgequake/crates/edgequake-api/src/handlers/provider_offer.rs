@@ -24,6 +24,15 @@ use crate::services::provider_offer_rows::{
 };
 use crate::state::AppState;
 
+#[cfg(feature = "postgres")]
+#[derive(Debug, sqlx::FromRow)]
+struct WorkspaceProviderPin {
+    workspace_id: Uuid,
+    llm_provider: Option<String>,
+    embedding_provider: Option<String>,
+    vision_provider: Option<String>,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct OfferModelDto {
     pub id: String,
@@ -649,11 +658,11 @@ pub async fn get_provider_impact(
         }
         // Model pins live in workspace metadata. The old column names are not
         // on the migrated table, so this query used to fail with 500.
-        let columns: Vec<(Uuid, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+        let columns: Vec<WorkspaceProviderPin> = sqlx::query_as(
             "SELECT workspace_id, \
-                    metadata->>'llm_provider', \
-                    metadata->>'embedding_provider', \
-                    metadata->>'vision_llm_provider' \
+                    metadata->>'llm_provider' AS llm_provider, \
+                    metadata->>'embedding_provider' AS embedding_provider, \
+                    metadata->>'vision_llm_provider' AS vision_provider \
              FROM workspaces \
              WHERE lower(metadata->>'llm_provider') = $1 \
                 OR lower(metadata->>'embedding_provider') = $1 \
@@ -663,7 +672,13 @@ pub async fn get_provider_impact(
         .fetch_all(pool)
         .await
         .map_err(|err| ApiError::Internal(err.to_string()))?;
-        for (id, llm, embedding, vision) in columns {
+        for pin in columns {
+            let WorkspaceProviderPin {
+                workspace_id: id,
+                llm_provider: llm,
+                embedding_provider: embedding,
+                vision_provider: vision,
+            } = pin;
             if llm
                 .as_deref()
                 .is_some_and(|value| value.eq_ignore_ascii_case(&slug))

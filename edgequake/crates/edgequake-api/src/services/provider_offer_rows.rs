@@ -111,6 +111,19 @@ async fn global_offer_from_pool(pool: &sqlx::PgPool) -> ApiResult<BTreeSet<Strin
             });
         }
     }
+    // Integration tests opt in with EDGEQUAKE_ALLOW_MOCK_PROVIDER. Production
+    // leaves that unset, so mock stays out of the offer and the picker.
+    if crate::provider_visibility::mock_provider_allowed()
+        && !candidates
+            .iter()
+            .any(|candidate| candidate.slug.eq_ignore_ascii_case("mock"))
+    {
+        candidates.push(ProviderCandidate {
+            slug: "mock".into(),
+            from_env: true,
+            last_test_ok: None,
+        });
+    }
     let withdrawn: BTreeSet<String> = withdrawn_rows.into_iter().map(|(slug,)| slug).collect();
     let allow = active_provider_names().map(|names| names.into_iter().collect());
     Ok(global_offer(&candidates, &withdrawn, allow.as_ref()))
