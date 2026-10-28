@@ -69,6 +69,25 @@ async fn e2e_spec091_retrieval_slo_protection() {
         "IW1 GAP-091-22 pool acquisition p95",
     );
 
+    // The first searches fill the HNSW buffer cache. On a shared runner that
+    // costs about 250ms; the hot path after that is about 8ms. p95 measures the hot path.
+    for s in 0..5u32 {
+        let q = VectorQuery {
+            model_id: ModelId(Uuid::nil()),
+            model_revision: "test-current".into(),
+            workspace_id: Some(WorkspaceId::new(ws)),
+            document_ids: None,
+            tenant_id: None,
+            modalities: None,
+            filter_ids: None,
+            vector_type: None,
+            embedding: w3::make_embedding(DIM, 3000 + s),
+            limit: 10,
+        };
+        let hits = index.search(&q).await.expect("warmup search");
+        assert!(!hits.is_empty());
+    }
+
     let mut search_samples = Vec::with_capacity(SAMPLES);
     for s in 0..SAMPLES {
         let q = VectorQuery {
